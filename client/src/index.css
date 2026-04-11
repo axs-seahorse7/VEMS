@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* shrink step spacing */
+.ant-steps-horizontal.ant-steps-small .ant-steps-item {
+  padding-inline-start: 4px !important;
+}
+
+/* shrink tail line */
+.ant-steps-item-tail {
+  top: 8px !important;
+}
+
+/* reduce icon size */
+.ant-steps-item-icon {
+  width: 16px !important;
+  height: 16px !important;
+  line-height: 16px !important;
+  font-size: 10px !important;
+}
+
+/* reduce content spacing */
+.ant-steps-item-content {
+  margin-top: 2px !important;
+}
+
+/* reduce title spacing */
+.ant-steps-item-title {
+  font-size: 9px !important;
+  line-height: 1 !important;
+}
+
+/* reduce description */
+.ant-steps-item-description {
+  font-size: 8px !important;
+  line-height: 1.2 !important;
+}
