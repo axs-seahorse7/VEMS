@@ -1,7 +1,7 @@
 import {externalVehicleRegister, getVehicleTrips, getActiveTrip, getTripHistory, getFactoryTrips, cancelTrip, getIncomingTrips, createTrip, unloadTrip } from "../controllers/trip.contollers.js";
 import express from "express";
 import {isAuthenticated} from "../middleware/isAuth/isAuthenticated.js";
-import {internalVehicleRegister, checkinVehicle, checkoutVehicle, markArrived, closeTrip, } from "../controllers/trip.contollers.js";
+import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, closeTrip, } from "../controllers/trip.contollers.js";
 const router = express.Router();
 
 router.use(isAuthenticated);
@@ -21,6 +21,7 @@ router.post("/new/internal-trip", internalVehicleRegister);
 router.get("/vehicle/trips", getVehicleTrips);
 router.post("/trip/checkin/:tripId", checkinVehicle);
 router.post("/trip/checkout/:tripId", checkoutVehicle);
+router.post("/trip/exit-checkout/:tripId", checkoutAndExitVehicle);
 router.post("/trip/arrive/:tripId", markArrived);
 router.post("/trip/close/:tripId", closeTrip);
 export default router;
