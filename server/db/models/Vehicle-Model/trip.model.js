@@ -41,7 +41,7 @@ const TripSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ["ORIGIN", "IN_TRANSIT", "ARRIVED", ],
+    enum: ["ORIGIN", "IN_TRANSIT", "ARRIVED", "DESTINATION" ],
     default: "ORIGIN",
     index: true
   },

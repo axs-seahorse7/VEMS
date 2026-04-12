@@ -189,11 +189,23 @@ export const externalVehicleRegister = async (req, res) => {
   try {
     const { vehicleNumber } = req.body;
     console.log(req.body);
+    const isInternalShifting = req.body.isInternalShifting;
+    const user = await User.findById(req.userId).populate("factory");
     if (!vehicleNumber) {
       return res.status(400).json({ message: "vehicleNumber is required." });
     }
 
     let vehicle = await Vehicle.findOne({ vehicleNumber: vehicleNumber });
+
+    const existingTrip = await Trip.findOne({
+      vehicleId: vehicle?._id,
+      tripState: { $in: ["ACTIVE", "COMPLETED", "PENDING"] }
+    });
+
+    if(existingTrip){
+      return res.status(400).json({ message: "Vehicle already on a trip." });
+    }
+
     if (!vehicle){
       const newVehicle = await Vehicle.create({ 
         ...req.body,
@@ -208,16 +220,16 @@ export const externalVehicleRegister = async (req, res) => {
       if(vehicle){
        newTrip = await Trip.create({
         vehicleId: vehicle._id,
-        type: "external_delivery",
-        phase: "DESTINATION",
-        location: "outside_factory",
-        sourceFactoryId: null,
-        destinationFactoryId: req.body.sourceFactoryId || null,
+        type: isInternalShifting ? "internal_transfer" : "external_delivery",
+        phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
+        location: isInternalShifting ? "inside_factory" : "outside_factory",
+        sourceFactoryId: isInternalShifting ? user.factory._id : null,
+        destinationFactoryId: isInternalShifting ? req.body.destinationFactoryId : req.body.sourceFactoryId,
         purpose: "Delivery",
-        status: "ARRIVED",
+        status: isInternalShifting ? "ORIGIN" : "ARRIVED",
         loadStatus: "pending",
         startedAt: new Date(),
-        completedAt: new Date(),
+        completedAt: null,
         materials: [{
           material: req.body.material,
           quantity: req.body.quantity,
@@ -227,8 +239,9 @@ export const externalVehicleRegister = async (req, res) => {
           customer: req.body.customer
         }],
         tripHistory: [{
-          status: "ARRIVED",
-          location: "outside_factory",
+          status: isInternalShifting ? "ORIGIN" : "ARRIVED",
+          location: isInternalShifting ? "inside_factory" : "outside_factory",
+          phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
           action: "begin",
           timestamp: new Date()
         }]
@@ -350,11 +363,9 @@ export const getVehicleTrips = async (req, res) => {
       //  Restriction
       {
         $match: {
-          $nor: [
-            {
-              "vehicle.status": "checkout",
-              type: "external_delivery"
-            }
+          $or: [
+            { type: "internal_transfer" },
+            { type: "external_delivery", "vehicle.status": { $ne: "checkout" } }
           ]
         }
       },
@@ -404,6 +415,7 @@ export const getVehicleTrips = async (req, res) => {
           loadStatus: 1,
           sourceFactory: 1,
           tripHistory: 1,
+          materials: 1,
           destinationFactory: 1,
           createdAt: 1
         }
@@ -444,6 +456,7 @@ export const checkinVehicle = async (req, res) => {
           tripHistory: {
             status: trip.status,
             location: "inside_factory",
+            phase: "DESTINATION",
             action: "checkin",
             timestamp: new Date()
           }
@@ -494,6 +507,7 @@ export const unloadTrip = async (req, res) => {
           tripHistory: {
             status: trip.status,
             location: trip.location,
+            phase:"DESTINATION",
             action: "unload",
             timestamp: new Date()
           }
@@ -536,13 +550,13 @@ export const closeTrip = async (req, res) => {
     const updatedTrip = await Trip.findByIdAndUpdate(
       tripId,
       {
-        tripState: "CLOSED",
+        tripState: "COMPLETE",
         completedAt: new Date(),
-
         $push: {
           tripHistory: {
             status: trip.status,
             location: trip.location,
+            phase:"DESTINATION",
             action: "complete",
             timestamp: new Date()
           }
@@ -583,6 +597,7 @@ export const checkoutVehicle = async (req, res) => {
           tripHistory: {
             status: trip.status,
             location: "enroute",
+            phase: "DESTINATION",
             action: "checkout",
             timestamp: new Date()
           }
@@ -596,6 +611,48 @@ export const checkoutVehicle = async (req, res) => {
       message: "Vehicle checked out successfully"
     });
   } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
+export const checkoutAndExitVehicle = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const trip = await Trip.findById(tripId);
+
+    if (!trip) throw new Error("Trip not found");
+
+    if (trip.location !== "inside_factory") {
+      throw new Error("Vehicle must be in transit to checkout and exit");
+    }
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      {
+        location: "outside_factory",
+        status: "DESTINATION",
+        tripState: "CLOSED",
+        completedAt: new Date(),
+        $push: {
+          tripHistory: {
+            status: trip.status,
+            location: "outside_factory",
+            phase: "DESTINATION",
+            action: "complete",
+            timestamp: new Date()
+          }
+        }
+      },
+      { new: true }
+    );
+    res.json({
+      success: true,
+      trip: updatedTrip,
+      message: "Vehicle checked out and trip closed successfully"
+    });
+  }
+    catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
   }
