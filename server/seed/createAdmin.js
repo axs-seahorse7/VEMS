@@ -2,6 +2,7 @@ import User from "../db/models/User-Model/user.model.js";
 import bcrypt from "bcryptjs";
 
 export const createAdmin = async () => {
+  console.log("🔥 createAdmin file loaded");
   try {
     const adminEmail = "admin@example.com"; // change if needed
 

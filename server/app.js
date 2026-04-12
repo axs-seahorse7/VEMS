@@ -1,15 +1,22 @@
+console.log("🔥 APP.JS STARTED");
 import e from "express";
+import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import cors from "cors";
 dotenv.config();
-import cookieParser from "cookie-parser";
-
-import { createAdmin } from "./seed/createAdmin.js";
-// createAdmin(); // Create admin user on server start (if not exists)
 
 import dbConfig from "./db/config/db.config.js";
 dbConfig; // Initialize DB connection
 
+console.log("Before createAdmin import");
+import { createAdmin } from "./seed/createAdmin.js";
+console.log("After import");
+
+console.log("Calling createAdmin...");
+
+createAdmin();
+
+console.log("DONE");
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
@@ -36,6 +43,9 @@ const app = e();
 app.use(cookieParser());
 app.use(cors(corsOptions));
 app.use(e.json());
+app.get("/", (req, res) => {
+  res.send("Welcome to the Vehicle Management System API");
+});
 app.use("/api/auth", authRoutes)
 app.use("/api", userRoutes)
 app.use("/api", indexRoutes)
