@@ -23,7 +23,6 @@ const app = e();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://vems-client.vercel.app",
-  "https://vems-client.vercel.app"
 ];
 
 const corsOptions = {

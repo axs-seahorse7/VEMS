@@ -1,5 +1,14 @@
 {
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.js" }
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index.js" }],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://vems-client.vercel.app" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, Cookie" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" }
+      ]
+    }
   ]
 }
