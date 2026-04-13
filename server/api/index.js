@@ -1,11 +1,10 @@
 import e from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import serverless from "serverless-http";
 
-import db from "../db/config/db.config.js";
-db; 
+import connectDB from "../db/config/db.config.js";
 
-console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
 import authRoutes from "../routes/auth.routes.js";
 import userRoutes from "../routes/user.routes.js";
@@ -14,37 +13,55 @@ import vehicleRoutes from "../routes/vehicle.routes.js";
 import gateRoutes from "../routes/gate.routes.js";
 import tripRoutes from "../routes/trip.routes.js";
 
-const allowedOrigins = ['http://localhost:5173', 'https://vems-client.vercel.app', ];
+const app = e();
+
+// DB
+await connectDB();
+
+// CORS
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://vems-client.vercel.app"
+];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true, // Allow cookies
+  credentials: true
 };
 
-const app = e();
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // 🔥 IMPORTANT
 
 app.use(cookieParser());
-app.use(cors(corsOptions));
 app.use(e.json());
+
+// Routes
 app.get("/", (req, res) => {
-  res.send("Welcome to the Vehicle Management System API");
+  res.send("API Running");
 });
-app.use("/api/auth", authRoutes)
-app.use("/api", userRoutes)
-app.use("/api", indexRoutes)
-app.use("/api", vehicleRoutes)
-app.use("/api", gateRoutes)
-app.use("/api", tripRoutes)
+
+app.use("/api/auth", authRoutes);
+app.use("/api", userRoutes);
+app.use("/api", indexRoutes);
+app.use("/api", vehicleRoutes);
+app.use("/api", gateRoutes);
+app.use("/api", tripRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: err.message });
+});
 
-
+// Export
+export default serverless(app);
