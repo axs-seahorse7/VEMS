@@ -1,6 +1,7 @@
 import e from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import serverless from "serverless-http";
 
 import connectDB from "../db/config/db.config.js";
 
@@ -14,7 +15,6 @@ import tripRoutes from "../routes/trip.routes.js";
 
 const app = e();
 
-// DB
 
 
 
@@ -24,45 +24,41 @@ const allowedOrigins = [
   "https://vems-client.vercel.app",
 ];
 
-const corsOptions = {
+
+// CORS FIRST
+app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
 
-    if (
-      origin.includes("localhost") ||
-      origin.includes("vems-client.vercel.app")
-    ) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
     return callback(new Error("Not allowed by CORS"));
   },
-  credentials: true
+  credentials: true,
+}));
+
+let isDbConnected = false;
+
+const ensureDB = async () => {
+  if (!isDbConnected) {
+    await connectDB();
+    isDbConnected = true;
+  }
 };
 
-// CORS FIRST
-app.use(cors(corsOptions));
-app.options("/*", cors(corsOptions));
-
-// OPTIONS safety (optional but fine)
-app.use((req, res, next) => {
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-// THEN DB
 app.use(async (req, res, next) => {
-  if (req.method === "OPTIONS") return next();
-
   try {
-    await connectDB();
+    await ensureDB();
     next();
   } catch (err) {
-    return res.status(500).json({ message: "DB connection failed" });
+    console.error("DB fail:", err);
+    res.status(500).json({ message: "DB connection failed" });
   }
 });
+
+
 
 
 app.use(cookieParser());
@@ -91,4 +87,4 @@ app.use((err, req, res, next) => {
 });
 
 // Export
-export default app;
+export default serverless(app);
