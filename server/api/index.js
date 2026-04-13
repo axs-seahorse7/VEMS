@@ -2,17 +2,17 @@ import e from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 
-import db from "./db/config/db.config.js";
+import db from "../db/config/db.config.js";
 db; 
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
-import authRoutes from "./routes/auth.routes.js";
-import userRoutes from "./routes/user.routes.js";
-import indexRoutes from "./routes/index.routes.js";
-import vehicleRoutes from "./routes/vehicle.routes.js";
-import gateRoutes from "./routes/gate.routes.js";
-import tripRoutes from "./routes/trip.routes.js";
+import authRoutes from "../routes/auth.routes.js";
+import userRoutes from "../routes/user.routes.js";
+import indexRoutes from "../routes/index.routes.js";
+import vehicleRoutes from "../routes/vehicle.routes.js";
+import gateRoutes from "../routes/gate.routes.js";
+import tripRoutes from "../routes/trip.routes.js";
 
 const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000'];
 
