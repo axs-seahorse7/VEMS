@@ -14,7 +14,7 @@ import vehicleRoutes from "../routes/vehicle.routes.js";
 import gateRoutes from "../routes/gate.routes.js";
 import tripRoutes from "../routes/trip.routes.js";
 
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000'];
+const allowedOrigins = ['http://localhost:5173', 'https://vems-client.vercel.app', ];
 
 const corsOptions = {
   origin: function (origin, callback) {
