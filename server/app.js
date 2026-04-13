@@ -8,15 +8,10 @@ dotenv.config();
 import dbConfig from "./db/config/db.config.js";
 dbConfig; // Initialize DB connection
 
-console.log("Before createAdmin import");
 import { createAdmin } from "./seed/createAdmin.js";
-console.log("After import");
 
-console.log("Calling createAdmin...");
+// createAdmin();
 
-createAdmin();
-
-console.log("DONE");
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
@@ -61,4 +56,3 @@ app.listen(process.env.PORT, (function () {
   console.log(`Server is running on port ${process.env.PORT}`);
 }));
 
-7

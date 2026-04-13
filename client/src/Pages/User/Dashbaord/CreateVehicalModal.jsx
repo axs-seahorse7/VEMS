@@ -11,7 +11,7 @@ const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val
 const lsDel = (...keys) => keys.forEach(k => { try { localStorage.removeItem(k); } catch {} });
 
 // ─── Default Shapes ───────────────────────────────────────────────────────────
-const DEFAULT_COMMON   = { driverName:"", driverContact:"", driverIdType:"Aadhar", driverIdType:'', driverIdNumber:"", vehicleNumber:"", transporterName:"", typeOfVehicle:"truck", PUCExpiry:"" };
+const DEFAULT_COMMON   = { driverName:"", driverContact:"", driverIdType:"Aadhar", driverIdNumber:"", vehicleNumber:"", transporterName:"", typeOfVehicle:"truck", PUCExpiry:"" };
 const DEFAULT_INTERNAL = { ...DEFAULT_COMMON, destinationFactoryId:"", purpose:"", materialType:"" };
 const DEFAULT_EXTERNAL = { ...DEFAULT_COMMON, purpose:"", materialType:"", supplier:"", material:"", quantity:"", invoiceNo:"", invoiceAmount:"", customer:"", isInternalShifting:false, destinationFactoryId:"", passType:"Incoming" };
 
@@ -68,7 +68,7 @@ function Modal({ open, onClose, children, title, width = 680 }) {
 function TabBar({ active, setActive, autoSwitched }) {
   return (
     <div style={{ display:"flex", gap:3, marginBottom:10, background:"#f3f4f6", borderRadius:8, padding:3, flexShrink:0 }}>
-      {[{ key:"internal", label:"Internal Vehicle", emoji:"" }, { key:"external", label:"External Vehicle", emoji:"" }].map(t => (
+      {[{ key:"internal", label:"Internal Vehicle", emoji:"🏭" }, { key:"external", label:"External Vehicle", emoji:"🔄" }].map(t => (
         <button key={t.key} className="veh-tab" onClick={() => setActive(t.key)}
           style={{ flex:1, border:"none", background:active===t.key?"#fff":"transparent", fontSize:11, fontWeight:active===t.key?700:500, color:active===t.key?"#4f46e5":"#6b7280", cursor:"pointer", padding:"5px 10px", borderRadius:6, boxShadow:active===t.key?"0 1px 4px rgba(0,0,0,.1)":"none", position:"relative" }}>
           {t.emoji} {t.label}
@@ -323,7 +323,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
       {activeTab === "internal" && (
         <div className="veh-sec">
           <div style={{ background:"linear-gradient(135deg,#eef2ff,#e0e7ff)", borderRadius:7, padding:"5px 10px", marginBottom:8, fontSize:10, color:"#4338ca", fontWeight:500, display:"flex", alignItems:"center", gap:5 }}>
-             Internal vehicles default to <code style={{ background:"rgba(99,102,241,.12)", padding:"0 4px", borderRadius:3, marginLeft:2 }}>inside_factory</code> status.
+            🏭 Internal vehicles default to <code style={{ background:"rgba(99,102,241,.12)", padding:"0 4px", borderRadius:3, marginLeft:2 }}>inside_factory</code> status.
           </div>
           <LookupBanner found={vehicleLookup.found} vehicleNumber={internalForm.vehicleNumber} />
 
@@ -359,7 +359,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
       {activeTab === "external" && (
         <div className="veh-sec">
           <div style={{ background:"linear-gradient(135deg,#fffbeb,#fef3c7)", borderRadius:7, padding:"5px 10px", marginBottom:8, fontSize:10, color:"#92400e", fontWeight:500, display:"flex", alignItems:"center", gap:5 }}>
-            External vehicles await <strong style={{ marginLeft:2 }}>gate check-in</strong>. Material type reveals extra fields.
+            🔄 External vehicles await <strong style={{ marginLeft:2 }}>gate check-in</strong>. Material type reveals extra fields.
           </div>
           <LookupBanner found={vehicleLookup.found} vehicleNumber={externalForm.vehicleNumber} />
 
