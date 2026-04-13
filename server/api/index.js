@@ -1,7 +1,6 @@
 import e from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import serverless from "serverless-http";
 
 import connectDB from "../db/config/db.config.js";
 
@@ -92,4 +91,4 @@ app.use((err, req, res, next) => {
 });
 
 // Export
-export default serverless(app);
+export default app;
