@@ -16,36 +16,47 @@ import tripRoutes from "../routes/trip.routes.js";
 const app = e();
 
 // DB
+
+
+
+// CORS
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://vems-client.vercel.app",
+  "https://vems-client.vercel.app"
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    if (
+      origin.includes("localhost") ||
+      origin.includes("vems-client.vercel.app")
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true
+};
+
+// CORS FIRST
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// DB AFTER
 app.use(async (req, res, next) => {
   try {
     await connectDB();
     next();
   } catch (err) {
-    console.error("DB connection failed:", err);
+    console.error(err);
     return res.status(500).json({ message: "DB connection failed" });
   }
 });
 
-
-// CORS
-const allowedOrigins = [
-  "https://vems-client.vercel.app",
-  "https://vems-client.vercel.app/"
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true
-};
-
-app.use(cors(corsOptions));
-app.options(cors(corsOptions)); // 🔥 IMPORTANT
 
 app.use(cookieParser());
 app.use(e.json());
