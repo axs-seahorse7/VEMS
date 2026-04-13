@@ -1,11 +1,9 @@
 import e from "express";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import cors from "cors";
-dotenv.config();
 
 import db from "./db/config/db.config.js";
-db; // Initialize DB connection
+db; 
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
@@ -48,7 +46,5 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.listen(process.env.PORT, (function () {
-  console.log(`Server is running on port ${process.env.PORT}`);
-}));
+
 
