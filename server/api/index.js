@@ -46,13 +46,22 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// DB AFTER
+// OPTIONS safety (optional but fine)
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// THEN DB
 app.use(async (req, res, next) => {
+  if (req.method === "OPTIONS") return next();
+
   try {
     await connectDB();
     next();
   } catch (err) {
-    console.error(err);
     return res.status(500).json({ message: "DB connection failed" });
   }
 });
