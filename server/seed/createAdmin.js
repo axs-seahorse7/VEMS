@@ -2,6 +2,7 @@ import User from "../db/models/User-Model/user.model.js";
 import bcrypt from "bcryptjs";
 
 export const createAdmin = async () => {
+  console.log("🔥 createAdmin file loaded");
   try {
     const adminEmail = process.env.ADMIN_EMAIL; // change if needed
     const adminPassword = process.env.ADMIN_PASSWORD; // change if needed
