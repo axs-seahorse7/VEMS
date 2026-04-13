@@ -4,8 +4,8 @@ import dotenv from "dotenv";
 import cors from "cors";
 dotenv.config();
 
-import db from "./db/config/db.config.js";
-db; // Initialize DB connection
+import connectDB from "./db/config/db.config.js";
+await connectDB(); // Initialize DB connection
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes

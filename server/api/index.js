@@ -16,12 +16,21 @@ import tripRoutes from "../routes/trip.routes.js";
 const app = e();
 
 // DB
-await connectDB();
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error("DB connection failed:", err);
+    return res.status(500).json({ message: "DB connection failed" });
+  }
+});
+
 
 // CORS
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://vems-client.vercel.app"
+  "https://vems-client.vercel.app",
+  "https://vems-client.vercel.app/"
 ];
 
 const corsOptions = {
@@ -36,7 +45,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // 🔥 IMPORTANT
+app.options(cors(corsOptions)); // 🔥 IMPORTANT
 
 app.use(cookieParser());
 app.use(e.json());
