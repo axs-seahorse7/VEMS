@@ -44,7 +44,7 @@ const corsOptions = {
 
 // CORS FIRST
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+app.options("/*", cors(corsOptions));
 
 // OPTIONS safety (optional but fine)
 app.use((req, res, next) => {
