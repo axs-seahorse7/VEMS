@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Tag, Divider } from "antd";
+import { Tag, Divider, Badge } from "antd";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function isPUCExpired(date) {
@@ -28,10 +28,7 @@ const Icon = {
 };
 
 // ─── State-based top border colors ────────────────────────────────────────────
-// waiting (outside_factory) → amber
-// inside (inside_factory)   → emerald
-// enroute (in transit)      → blue
-// closed / completed        → slate
+
 const STATE_BORDER = {
   waiting: { bar: "linear-gradient(90deg, #f59e0b, #d97706, #f59e0b)", glow: "#f59e0b" },
   inside:  { bar: "linear-gradient(90deg, #10b981, #059669, #10b981)", glow: "#10b981" },
@@ -71,7 +68,7 @@ const STAGE_META = {
   unknown: { label: "Unknown",  bg: "#f3f4f6", color: "#6b7280" },
 };
 
-function Badge({ stage }) {
+function CBadge({ stage }) {
   const s = STAGE_META[stage] || STAGE_META.unknown;
   return (
     <span style={{ background: s.bg, color: s.color, fontSize: 9.5, fontWeight: 700, borderRadius: 4, padding: "1px 6px", letterSpacing: .3, whiteSpace: "nowrap" }}>
@@ -82,9 +79,9 @@ function Badge({ stage }) {
 
 function InfoRow({ icon, iconColor, label, value }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#374151" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#374151" }} className="border-b  border-gray-100 " >
       <i className={`${icon}`} style={{ fontSize: 11, color: iconColor, width: 13, textAlign: "center", flexShrink: 0 }} />
-      <span style={{ color: "#9ca3af", flexShrink: 0 }}>{label}</span>
+      <span style={{ color: "black", flexShrink: 0, width: 50 }}>{label}</span>
       <span style={{ fontWeight: 600, color: "#1e40af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
     </div>
   );
@@ -137,12 +134,31 @@ export default function VehicleCard({ vehicle, onClick }) {
   const borderMeta = STATE_BORDER[stageKey];
 
   const route =
-    vehicle.type === "internal_transfer"
-      ? `${vehicle.sourceFactory?.name || "Source"} → ${vehicle.destinationFactory?.name || "Dest"}`
-      : `External → ${vehicle.destinationFactory?.name || "Unknown"}`;
+  vehicle.type === "internal_transfer" ? (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+      {vehicle.sourceFactory?.name || "Source"}
+      <i class="ri-arrow-right-long-line"></i>
+      {vehicle.destinationFactory?.name || "Dest"}
+    </span>
+  ) : (
+    <span>
+      External <i class="ri-arrow-right-long-line"></i> {vehicle.destinationFactory?.name || "Unknown"}
+    </span>
+  );
 
   const isAtOrigin      = phase === "ORIGIN";
   const isAtDestination = phase === "DESTINATION";
+  const isAtInTransit     = vehicle.status === "IN_TRANSIT";
+
+  const materialNames = Array.isArray(vehicle?.materials)
+  ? vehicle.materials
+      .filter((m) => m && m.material) // remove null / invalid
+      .map((m) =>
+        typeof m.material === "string"
+          ? m.material
+          : m.material?.name
+      )
+  : [];
 
   return (
     <>
@@ -194,29 +210,26 @@ export default function VehicleCard({ vehicle, onClick }) {
 
       <div
         onClick={onClick}
-        className={isOverdue ? `vehicle-card-overdue ${shaking ? " shaking" : ""}` : ""}
+        className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-sm "}
         style={{
           display: "flex",
           flexDirection: "column",
           borderRadius: 10,
           overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+          // boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
           cursor: "pointer",
           transition: "box-shadow .15s, transform .15s",
           position: "relative",
         }}
         onMouseEnter={e => {
-          if (!isOverdue) {
             e.currentTarget.style.boxShadow = `0 4px 16px ${theme.accent}22, 0 0 0 1.5px ${theme.accent}`;
             e.currentTarget.style.transform = "translateY(-1px)";
-          }
         }}
         onMouseLeave={e => {
-          if (!isOverdue) {
-            e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)";
+            e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
             e.currentTarget.style.transform = "";
-          }
         }}
+        
       >
         {/* ── State-based top accent bar ── */}
         <div
@@ -250,12 +263,7 @@ export default function VehicleCard({ vehicle, onClick }) {
 
         <div style={{ padding: "9px 12px 10px", paddingTop: isOverdue ? 22 : 9 }}>
 
-          {/* PUC alert */}
-          {pucAlert && (
-            <div style={{ position: "absolute", bottom: 8, right: 8, color: "#dc2626", width: 12, height: 12 }} title="PUC Expired">
-              {Icon.alert}
-            </div>
-          )}
+          
 
           {/* ── Row 1: Icon + Vehicle No + Phase + Type tags ── */}
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
@@ -269,11 +277,17 @@ export default function VehicleCard({ vehicle, onClick }) {
             </div>
 
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 12.5, color: "#111", letterSpacing: .2, lineHeight: 1.2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 800, fontSize: 12.5, color: "#111", letterSpacing: .2, lineHeight: 1.2 }}>
                 {vehicleData?.vehicleNumber}
+                {pucAlert && (
+                  <div style={{  color: "#dc2626", width: 14, height: 14 }} title="PUC Expired">
+                    {Icon.alert}
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: 10, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {vehicleData?.transporterName}
+                {vehicleData?.transporterName} {/* PUC alert */}
+
               </div>
             </div>
 
@@ -301,9 +315,9 @@ export default function VehicleCard({ vehicle, onClick }) {
 
               <Tag
                 color={vehicle.type === "external_delivery" ? "red" : "cyan"}
-                style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5, margin: 0, padding: "1px 5px" }}
+                style={{ fontSize: 9, fontWeight: 700, letterSpacing: .5, margin: 0, padding: "1px 5px" }}
               >
-                {vehicle.type === "external_delivery" ? "Ext" : "Int"}
+                {vehicle.type === "external_delivery" ? "External" : "Internal"}
               </Tag>
             </div>
           </div>
@@ -314,7 +328,7 @@ export default function VehicleCard({ vehicle, onClick }) {
               {vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle}
             </span>
 
-            <Badge stage={stageKey} />
+            <CBadge stage={stageKey} />
 
             {(user.factoryId === vehicle.sourceFactoryId ||
               user.factoryId === vehicle.destinationFactory?._id) && (
@@ -332,11 +346,11 @@ export default function VehicleCard({ vehicle, onClick }) {
 
           {/* ── Row 3: Info rows ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" label="Driver" value={vehicleData?.driverName || "—"} />
+            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" color={theme.label} label="Driver" value={vehicleData?.driverName || "—"} />
             <InfoRow
               icon="ri-truck-fill" iconColor="#ea580c"
               label="Purpose"
-              value={vehicle?.purpose === "pickup" ? "Pickup" : "Delivery"}
+              value={vehicle?.purpose === "Pickup" ? "Pickup" : "Delivery"}
             />
             <InfoRow icon="ri-route-line" iconColor="#ca8a04" label="Route" value={route} />
             <InfoRow
@@ -345,6 +359,12 @@ export default function VehicleCard({ vehicle, onClick }) {
               value={loadStatus.charAt(0).toUpperCase() + loadStatus.slice(1)}
             />
             <InfoRow
+                icon="ri-box-1-line"
+                iconColor="#059669"
+                label="Material"
+                value={materialNames.join(", ") || "Empty"}
+              />
+            <InfoRow
               icon="ri-time-line" iconColor="#7c3aed"
               label="Trip At"
               value={fmtTime(vehicle?.createdAt)}
@@ -352,7 +372,7 @@ export default function VehicleCard({ vehicle, onClick }) {
           </div>
 
           {/* ── Origin → Destination tracker ── */}
-          <div className="absolute right-5 top-25 flex flex-col items-center text-[10px]">
+          <div className="absolute right-5 top-20 flex flex-col items-center text-[10px]">
 
             {/* ORIGIN */}
             <div className="flex flex-col items-center">
@@ -366,7 +386,22 @@ export default function VehicleCard({ vehicle, onClick }) {
             </div>
 
             {/* GRADIENT LINE */}
-            <div className="w-[1.5px] h-6 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #3b82f6, #10b981)" }}></div>
+            <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #3b82f6, #10b981)" }}></div>
+
+            {/* DESTINATION */}
+            <div className="flex flex-col items-center">
+              <div className="relative flex items-center justify-center">
+                {isAtInTransit && (
+                  <span className="absolute inline-flex w-4 h-4 rounded-full bg-purple-500 opacity-75 animate-ping"></span>
+                )}
+                <div className={`relative w-2 h-2 rounded-full ${isAtInTransit ? "bg-purple-500" : "bg-purple-500"}`}></div>
+              </div>
+              <span className={`mt-1 ${isAtInTransit ? "text-purple-600" : "text-purple-500"}`}>
+                {"On the way"}
+              </span>
+            </div>
+
+                <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #3b82f6, #10b981)" }}></div>
 
             {/* DESTINATION */}
             <div className="flex flex-col items-center">
@@ -374,7 +409,7 @@ export default function VehicleCard({ vehicle, onClick }) {
                 {isAtDestination && (
                   <span className="absolute inline-flex w-4 h-4 rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
                 )}
-                <div className={`relative w-2 h-2 rounded-full ${isAtDestination ? "bg-emerald-500" : "bg-gray-300"}`}></div>
+                <div className={`relative w-2 h-2 rounded-full ${isAtDestination ? "bg-emerald-500" :  "bg-gray-300"}`}></div>
               </div>
               <span className={`mt-1 ${isAtDestination ? "text-emerald-600" : "text-gray-400"}`}>
                 {vehicle?.destinationFactory?.name || "DESTINATION"}
@@ -385,6 +420,7 @@ export default function VehicleCard({ vehicle, onClick }) {
 
         </div>
       </div>
+
     </>
   );
 }

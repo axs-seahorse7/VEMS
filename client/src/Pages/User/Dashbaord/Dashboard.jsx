@@ -5,6 +5,7 @@ import { Button, message, Table, Tag as AntTag, Avatar, Popover } from "antd";
 import VehicleDetailModal from "./VehicleDetailsModal.jsx";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
 import VehicleCard from "./VehicleCard.jsx";
+import LiveButton from "../../../components/buttons/LiveButtons.jsx";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -47,7 +48,7 @@ const getWorkflowStage = (vehicle) => {
   const location = getVehicleLocation(vehicle);
 
   if (location === "waiting_outside") return "waiting";
-  if (location === "inside_factory") return "inside";
+  if (location === "inside_factory" && vehicle.tripState !== "CLOSED") return "inside";
   if (location === "in_transit") return "enroute";
 
   return "unknown";
@@ -367,7 +368,7 @@ function SegmentFilter({ filter, setFilter, counts }) {
     { v: "inside", l: "Inside", count: counts.inside },
     { v: "enroute", l: "Upcoming", count: counts.enroute },
     { v: "dispatched", l: "Dispatched", count: counts.dispatched },
-    { v: "closed", l: "Closed", count: counts.closed },
+    // { v: "closed", l: "Closed", count: counts.closed },
   ];
 
   return (
@@ -651,12 +652,8 @@ export default function VehicleDashboard() {
     );
 
   // ── Open trips ──────────────────────────────────────────────────────────────
-  const filteredData =
-    data?.filter((v) => v.tripState !== "CLOSED") || [];
-
-  // Closed trips
+  const filteredData = data?.filter((v) => v.tripState !== "CLOSED") || [];
   const closedTrips = data?.filter((v) => v.tripState === "CLOSED") || [];
-
   const upcomingVehicles = filteredData.filter(
     (v) =>
       v.destinationFactory?._id === userFactoryId &&
@@ -671,7 +668,7 @@ export default function VehicleDashboard() {
 
   const insideVehicles = (data || []).filter(
     (v) =>
-      v.location === "inside_factory" &&
+      v.location === "inside_factory" && v.tripState !== "CLOSED" &&
       ((v.phase === "ORIGIN" &&
         v.sourceFactory?._id?.toString() === userFactoryId?.toString()) ||
         (v.phase === "DESTINATION" &&
@@ -698,22 +695,52 @@ export default function VehicleDashboard() {
   const allVehicles = Array.from(uniqueVehiclesMap.values());
 
   // ── KPI ─────────────────────────────────────────────────────────────────────
-  const alerts = allVehicles.filter((v) =>
-    isPUCExpired(v.vehicle?.PUCExpiry)
-  );
 
   const pickupVehicles = allVehicles.filter(
-    (v) => v.currentTrip?.purpose === "pickup"
+    (v) => v.purpose === "Pickup"
   );
 
   const deliveryVehicles = allVehicles.filter(
-    (v) => v.currentTrip?.purpose === "delivery"
+    (v) => v.purpose === "Delivery"
   );
+
+ const FGVehicles = allVehicles.filter((v) =>
+  Array.isArray(v.materials) &&
+  v.materials
+    .filter((m) => m && m.material)
+    .some((m) =>
+      typeof m.material === "string"
+        ? m.material === "FG"
+        : m.material?.name === "FG"
+    )
+);
+
+const RMVehicles = allVehicles.filter((v) =>
+  Array.isArray(v.materials) &&
+  v.materials
+    .filter((m) => m && m.material)
+    .some((m) =>
+      typeof m.material === "string"
+        ? m.material === "RM"
+        : m.material?.name === "RM"
+    )
+);
+
+const pickupCount = pickupVehicles.length;
+  const deliveryCount = deliveryVehicles.length;
+  const fgCount = FGVehicles.length;
+  const rmCount = RMVehicles.length;
+  console.log("FG Vehicles:", FGVehicles);
+  console.log("RM Vehicles:", RMVehicles);
 
   // ── Counts ───────────────────────────────────────────────────────────────────
   const segCounts = {
     all: allVehicles.length,
     waiting: waitingVehicles.length,
+    pickup: pickupVehicles.length,
+    delivery: deliveryVehicles.length,
+    FG: FGVehicles.length,
+    RM: RMVehicles.length,
     inside: insideVehicles.length,
     enroute: enrouteVehicles.length,
     dispatched: dispatchedVehicles.length,
@@ -725,6 +752,10 @@ export default function VehicleDashboard() {
     if (filter === "waiting") return waitingVehicles;
     if (filter === "inside") return insideVehicles;
     if (filter === "enroute") return enrouteVehicles;
+    if (filter === "pickup") return pickupVehicles;
+    if (filter === "delivery") return deliveryVehicles;
+    if (filter === "FG") return FGVehicles;
+    if (filter === "RM") return RMVehicles;
     if (filter === "dispatched") return dispatchedVehicles;
     if (filter === "closed") return closedTrips;
     return allVehicles;
@@ -823,6 +854,9 @@ export default function VehicleDashboard() {
             counts={segCounts}
           />
         </div>
+
+        {/* Live Button */}
+        {/* <LiveButton /> */}
 
         {/* Right: Actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -952,7 +986,7 @@ export default function VehicleDashboard() {
             >
               {Icon.refresh}
             </span>
-            Refresh
+            
           </Button>
 
           {/* New Entry */}
@@ -984,7 +1018,7 @@ export default function VehicleDashboard() {
               >
                 {Icon.plus}
               </span>
-              New Entry
+             <span className=" max-2xl:hidden " > New Entry</span> 
             </button>
           )}
 
@@ -1034,36 +1068,56 @@ export default function VehicleDashboard() {
           value={waitingVehicles.length}
           color="#f59e0b"
           icon={Icon.clock}
+          active={filter === "waiting"}
+          onClick={() => setFilter('waiting')}
         />
         <KpiCard
           label="Inside"
           value={insideVehicles.length}
           color="#10b981"
           icon={Icon.truck}
+          active={filter === "inside"}
+          onClick={() => setFilter('inside')}
         />
         <KpiCard
           label="Upcoming"
           value={enrouteVehicles.length}
           color="#3b82f6"
           icon={Icon.map}
+          active={filter === "enroute"}
+          onClick={() => setFilter('enroute')}
         />
         <KpiCard
-          label="PUC Alerts"
-          value={alerts.length}
-          color="#dc2626"
+          label="FG Vehicles"
+          value={FGVehicles.length}
+          color="#79AE6F"
           icon={Icon.alert}
+          active={filter === "fg"}
+          onClick={() => setFilter('fg')}
+        />
+        <KpiCard
+          label="RM Vehicles"
+          value={RMVehicles.length}
+          color="#66D0BC"
+          icon={Icon.alert}
+          active={filter === "rm"}
+          onClick={() => setFilter('rm')}
         />
         <KpiCard
           label="Pickups"
           value={pickupVehicles.length}
-          color="#8b5cf6"
+          color="purple"
           icon={Icon.package}
+          active={filter === "pickup"}
+          onClick={() => setFilter("pickup")}
         />
         <KpiCard
           label="Deliveries"
           value={deliveryVehicles.length}
           color="#ec4899"
           icon={Icon.location}
+          active={filter === "delivery"}
+          onClick={() => setFilter("delivery")}
         />
         {/* Dispatched KPI — clickable to switch filter */}
         <KpiCard
@@ -1080,7 +1134,7 @@ export default function VehicleDashboard() {
         <KpiCard
           label="Closed Trips"
           value={closedTrips.length}
-          color="#dc2626"
+          color="#2C687B"
           icon={Icon.close}
           active={filter === "closed"}
           onClick={() =>

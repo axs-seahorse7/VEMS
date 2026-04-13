@@ -9,7 +9,6 @@ const factorySchema = new momngoose.Schema({
     location:{
         type:String,
         required:true,
-        unique:true
     },
     contactNumber:{
         type:String,

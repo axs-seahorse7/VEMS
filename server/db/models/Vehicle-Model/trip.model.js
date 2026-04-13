@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 const materialSchema = new mongoose.Schema({
+  name:String,
   material: String,
   quantity: Number,
   invoiceNo: String,
@@ -94,7 +95,7 @@ const TripSchema = new mongoose.Schema({
     Phase: String,
     action:{
       type: String,
-      enum: ["begin","checkin", "checkout", "load", "unload", "cancel", "complete"]
+      enum: ["begin","checkin", "checkout", "load", "unload", "cancel", "complete", "closed"]
     },
     timestamp: Date
   }]

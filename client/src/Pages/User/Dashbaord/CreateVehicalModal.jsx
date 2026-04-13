@@ -7,6 +7,89 @@ import { Factory, Truck } from "lucide-react";
 const LS_INTERNAL = "veh_modal_internal_draft";
 const LS_EXTERNAL = "veh_modal_external_draft";
 const LS_TAB      = "veh_modal_active_tab";
+const CUSTOMER = [
+  { v: "Abs Electroplaters", l: "Abs Electroplaters", type: "customer" },
+  { v: "Acerpure India Pvt Ltd", l: "Acerpure India Pvt Ltd", type: "customer" },
+  { v: "Air Liquide", l: "Air Liquide", type: "customer" },
+  { v: "Amber Enterprises India Ltd", l: "Amber Enterprises India Ltd", type: "customer" },
+  { v: "Amstrad Consumer India Pvt Ltd", l: "Amstrad Consumer India Pvt Ltd", type: "customer" },
+  { v: "Assiya Paint", l: "Assiya Paint", type: "customer" },
+  { v: "Atul Plast Cr", l: "Atul Plast Cr", type: "customer" },
+  { v: "Atomberg Technologies Pvt Ltd", l: "Atomberg Technologies Pvt Ltd", type: "customer" },
+  { v: "Avadhoot Paper", l: "Avadhoot Paper", type: "customer" },
+  { v: "Belrise Industries Ltd", l: "Belrise Industries Ltd", type: "customer" },
+  { v: "Blue Star Ltd", l: "Blue Star Ltd", type: "customer" },
+  { v: "BPL Ltd", l: "BPL Ltd", type: "customer" },
+  { v: "Carrier Airconditioning & Refrigeration Ltd", l: "Carrier Airconditioning & Refrigeration Ltd", type: "customer" },
+  { v: "Carrier Midea India Pvt Ltd", l: "Carrier Midea India Pvt Ltd", type: "customer" },
+  { v: "Croma", l: "Croma", type: "customer" },
+  { v: "Enpar Steels", l: "Enpar Steels", type: "customer" },
+  { v: "Flipkart Internet Pvt Ltd", l: "Flipkart Internet Pvt Ltd", type: "customer" },
+  { v: "Godrej Enterprises Group", l: "Godrej Enterprises Group", type: "customer" },
+  { v: "Haier Appliances India Pvt Ltd", l: "Haier Appliances India Pvt Ltd", type: "customer" },
+  { v: "Hamster Air Conditioner", l: "Hamster Air Conditioner", type: "customer" },
+  { v: "Havells India Ltd", l: "Havells India Ltd", type: "customer" },
+  { v: "Hitachi", l: "Hitachi", type: "customer" },
+  { v: "Infiniti Retail Ltd", l: "Infiniti Retail Ltd", type: "customer" },
+  { v: "Jabil Circuit India Pvt Ltd", l: "Jabil Circuit India Pvt Ltd", type: "customer" },
+  { v: "Jaydeep Industries", l: "Jaydeep Industries", type: "customer" },
+  { v: "Kenstar", l: "Kenstar", type: "customer" },
+  { v: "Kinetic Green Energy And Power Solution Ltd", l: "Kinetic Green Energy And Power Solution Ltd", type: "customer" },
+  { v: "Kosh Innovations Pvt Ltd", l: "Kosh Innovations Pvt Ltd", type: "customer" },
+  { v: "LG Electronics India Pvt Ltd", l: "LG Electronics India Pvt Ltd", type: "customer" },
+  { v: "Machhar Packaging", l: "Machhar Packaging", type: "customer" },
+  { v: "Maniar Plast", l: "Maniar Plast", type: "customer" },
+  { v: "Marq Solutions", l: "Marq Solutions", type: "customer" },
+  { v: "Md Graphics Pvt Ltd", l: "Md Graphics Pvt Ltd", type: "customer" },
+  { v: "Microtask Engineering", l: "Microtask Engineering", type: "customer" },
+  { v: "Minda Vast Access Systems Pvt Ltd", l: "Minda Vast Access Systems Pvt Ltd", type: "customer" },
+  { v: "Mirc Electronics Ltd", l: "Mirc Electronics Ltd", type: "customer" },
+  { v: "Motorola Mobility India Pvt Ltd", l: "Motorola Mobility India Pvt Ltd", type: "customer" },
+  { v: "Navin Fluorine International Ltd", l: "Navin Fluorine International Ltd", type: "customer" },
+  { v: "Nidec India Ltd", l: "Nidec India Ltd", type: "customer" },
+  { v: "Onida", l: "Onida", type: "customer" },
+  { v: "Pankaj Plastics Product", l: "Pankaj Plastics Product", type: "customer" },
+  { v: "Pacoline Industries Pvt Ltd", l: "Pacoline Industries Pvt Ltd", type: "customer" },
+  { v: "Paramount Polymers Pvt Ltd", l: "Paramount Polymers Pvt Ltd", type: "customer" },
+  { v: "PG Electroplast", l: "PG Electroplast", type: "customer" },
+  { v: "PG Technoplast", l: "PG Technoplast", type: "customer" },
+  { v: "Poonam Petrochem", l: "Poonam Petrochem", type: "customer" },
+  { v: "Posco India Pune Processing Center Pvt Ltd", l: "Posco India Pune Processing Center Pvt Ltd", type: "customer" },
+  { v: "Pravin Engineering Works", l: "Pravin Engineering Works", type: "customer" },
+  { v: "Procyon Star Pvt Ltd", l: "Procyon Star Pvt Ltd", type: "customer" },
+  { v: "Qualis Engineers", l: "Qualis Engineers", type: "customer" },
+  { v: "Ravago Shah Polymers", l: "Ravago Shah Polymers", type: "customer" },
+  { v: "Realme Mobile Telecommunications India Pvt Ltd", l: "Realme Mobile Telecommunications India Pvt Ltd", type: "customer" },
+  { v: "Reliance Retail Ltd", l: "Reliance Retail Ltd", type: "customer" },
+  { v: "Renu Electronics Pvt Ltd", l: "Renu Electronics Pvt Ltd", type: "customer" },
+  { v: "Royalux Lighting Pvt Ltd", l: "Royalux Lighting Pvt Ltd", type: "customer" },
+  { v: "Sadguru Industries", l: "Sadguru Industries", type: "customer" },
+  { v: "Samarth Enterprises", l: "Samarth Enterprises", type: "customer" },
+  { v: "Sharp Business Systems India Pvt Ltd", l: "Sharp Business Systems India Pvt Ltd", type: "customer" },
+  { v: "Shree Enterprises", l: "Shree Enterprises", type: "customer" },
+  { v: "Shree Swaraj Mold", l: "Shree Swaraj Mold", type: "customer" },
+  { v: "Shreenath Plastic", l: "Shreenath Plastic", type: "customer" },
+  { v: "SP Industries", l: "SP Industries", type: "customer" },
+  { v: "SRF Limited", l: "SRF Limited", type: "customer" },
+  { v: "Starion India Pvt Ltd", l: "Starion India Pvt Ltd", type: "customer" },
+  { v: "Styrenix Performance Materials Ltd", l: "Styrenix Performance Materials Ltd", type: "customer" },
+  { v: "Sudarshan Polyblends Pvt Ltd", l: "Sudarshan Polyblends Pvt Ltd", type: "customer" },
+  { v: "Sunshine Technoplast", l: "Sunshine Technoplast", type: "customer" },
+  { v: "Supreme", l: "Supreme", type: "customer" },
+  { v: "Syrma SGS Technology Ltd", l: "Syrma SGS Technology Ltd", type: "customer" },
+  { v: "TCL", l: "TCL", type: "customer" },
+  { v: "Trinity Material Handling Solutions", l: "Trinity Material Handling Solutions", type: "customer" },
+  { v: "Tri Gases Pvt Ltd", l: "Tri Gases Pvt Ltd", type: "customer" },
+  { v: "Tushar Engineering", l: "Tushar Engineering", type: "customer" },
+  { v: "UKB Electronics Ltd", l: "UKB Electronics Ltd", type: "customer" },
+  { v: "VBROS Auto Pvt Ltd", l: "VBROS Auto Pvt Ltd", type: "customer" },
+  { v: "Victor Pushin Cords", l: "Victor Pushin Cords", type: "customer" },
+  { v: "Voltas Ltd", l: "Voltas Ltd", type: "customer" },
+  { v: "Voltbek Home Appliances Pvt Ltd", l: "Voltbek Home Appliances Pvt Ltd", type: "customer" },
+  { v: "Whirlpool Of India Ltd", l: "Whirlpool Of India Ltd", type: "customer" },
+  { v: "Yash Engineering", l: "Yash Engineering", type: "customer" },
+  { v: "Yashoda Industries", l: "Yashoda Industries", type: "customer" }
+];
 
 const lsGet = (key, fallback) => {
   try {
@@ -50,6 +133,7 @@ const Icon = {
 };
 
 // ─── Modal Shell ──────────────────────────────────────────────────────────────
+
 function Modal({ open, onClose, children, title, width = 780 }) {
   if (!open) return null;
   return (
@@ -424,17 +508,82 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const factoryOpts    = factories.map(f => ({ v: f._id, l: `${f.name} – ${f.location}` }));
 
   // ── Field builders ─────────────────────────────────────────────────────────
-  const inp = (key, label, value, onChange, type = "text", req = false) => (
-    <div style={col}>
-      <label style={LBL}>{label}{req && <span style={{ color: "#6366f1", marginLeft: 2 }}>*</span>}</label>
-      <input type={type} value={value}
-        onChange={e => { onChange(key, e.target.value); clearErr(key); }}
-        className="veh-inp"
-        style={{ ...IB, border: errors[key] ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb" }}
-      />
+  const inp = (key, label, value, onChange, type = "text", placeHolder, req = false) =>{ 
+    const ruleKey = {
+      driverContact: {maxLength: 10},
+    }
+    const placeholderRule = {
+      driverContact: " _ _ _ _ _ _ _ _ _ _ ",
+      driverName: "Enter Driver Name",
+      driverIdNumber: "Enter ID Number",
+      transporterName: "Enter Transporter Name",
+      vehicleNumber: "e.g. MH12AB1234",
+    }
+
+    const fieldRule = ruleKey[key] || {};
+
+   return (
+    <div style={{ ...col }}>
+      <label style={LBL}>
+        {label}
+        {req && <span style={{ color: "#6366f1", marginLeft: 2 }}>*</span>}
+      </label>
+
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        border: errors[key] ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb",
+        borderRadius: 6,
+        overflow: "hidden"
+      }}>
+        
+        {/* Prefix */}
+        {key === "driverContact" && (
+          <span style={{
+            padding: "0px 8px",
+            background: "#f3f4f6",
+            borderRight: "1px solid #e5e7eb",
+            fontSize: 13,
+            color: "#374151",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+          }}>
+            +91
+          </span>
+        )}
+
+        {/* Input */}
+        <input
+          type="text"
+          inputMode={key === "driverContact" ? "numeric" : "text"}
+          value={value}
+          maxLength={fieldRule.maxLength || undefined}
+          onChange={e => {
+            let val = e.target.value;
+
+            if (key === "driverContact") {
+              val = val.replace(/\D/g, "").slice(0, 10);
+            } else {
+              val = val.toUpperCase();
+            }
+
+            onChange(key, val);
+            clearErr(key);
+          }}
+          placeholder={placeholderRule[key] || placeHolder}
+          className=""
+          style={{
+            ...IB,
+            border: "none",
+            flex: 1
+          }}
+        />
+      </div>
+
       {errors[key] && <span style={ERR}>{errors[key]}</span>}
     </div>
-  );
+  )};
 
   const sel = (key, label, value, onChange, options, req = false) => (
     <div style={col}>
@@ -499,7 +648,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           <div style={g3}>
             {vnField(internalForm, setInternal)}
             {inp("driverName", "Driver Name", internalForm.driverName, setInternal, "text", true)}
-            {inp("driverContact", "Contact", internalForm.driverContact, setInternal)}
+            {inp("driverContact", "Contact", internalForm.driverContact, setInternal, "text", "+91 _ _ _ _ _ _ _ _ _ _ ")}
           </div>
           <div style={g3}>
             {sel("driverIdType", "ID Type", internalForm.driverIdType, setInternal, ID_TYPES)}
@@ -582,7 +731,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           <div style={g3}>
             {vnField(externalForm, setExternal)}
             {inp("driverName", "Driver Name", externalForm.driverName, setExternal, "text", true)}
-            {inp("driverContact", "Contact", externalForm.driverContact, setExternal)}
+            {inp("driverContact", "Contact", externalForm.driverContact, setExternal, "text")}
           </div>
           <div style={g3}>
             {sel("driverIdType", "ID Type", externalForm.driverIdType, setExternal, ID_TYPES)}
@@ -607,11 +756,11 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
                 <div style={g3}>
                   {sel("supplier", "Supplier", externalForm.supplier, setExternal, [{ v: "supplier1", l: "Supplier A" }, { v: "supplier2", l: "Supplier B" }, { v: "other", l: "Other" }])}
                   {inp("material", "Material Name", externalForm.material, setExternal)}
-                  {inp("quantity", "Quantity", externalForm.quantity, setExternal)}
+                  {inp("quantity", "Quantity", externalForm.quantity, setExternal, "number")}
                 </div>
                 <div style={g2}>
                   {inp("invoiceNo", "Invoice No.", externalForm.invoiceNo, setExternal)}
-                  {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal)}
+                  {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal, "number")}
                 </div>
               </div>
             </div>
@@ -622,12 +771,12 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               <SL label="Finished Goods Details" color="#2563eb" />
               <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
                 <div style={g2}>
-                  {inp("customer", "Customer", externalForm.customer, setExternal)}
+                  {sel("customer", "Customer", externalForm.customer, setExternal, CUSTOMER, [{v: CUSTOMER.name, l: CUSTOMER.name}])}
                   {inp("invoiceNo", "Invoice No.", externalForm.invoiceNo, setExternal)}
                 </div>
                 <div style={g2}>
-                  {inp("quantity", "Quantity", externalForm.quantity, setExternal)}
-                  {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal)}
+                  {inp("quantity", "Quantity", externalForm.quantity, setExternal, "number")}
+                  {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal, "number")}
                 </div>
               </div>
             </div>
@@ -639,7 +788,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
                 <div style={g2}>
                   {inp("material", "Material / Description", externalForm.material, setExternal)}
-                  {inp("quantity", "Quantity", externalForm.quantity, setExternal)}
+                  {inp("quantity", "Quantity", externalForm.quantity, setExternal, "number")}
                 </div>
               </div>
             </div>

@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 
 export const createAdmin = async () => {
   try {
-    const adminEmail = "admin@example.com"; // change if needed
+    const adminEmail = process.env.ADMIN_EMAIL; // change if needed
+    const adminPassword = process.env.ADMIN_PASSWORD; // change if needed
 
     // Check if admin already exists
     const existingAdmin = await User.findOne({ email: adminEmail });
@@ -14,7 +15,7 @@ export const createAdmin = async () => {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash("admin123", 10);
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     // Create admin
     const admin = await User.create({
@@ -26,11 +27,9 @@ export const createAdmin = async () => {
       workLocation: "atGate" // default, can be updated later
     });
 
-    console.log("✅ Admin created successfully");
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: admin123`);
+    console.log("✅ Admin user created:", adminEmail);
 
   } catch (error) {
-    console.error("❌ Error creating admin:", error.message);
+    console.error(" Error creating admin:", error.message);
   }
 };

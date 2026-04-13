@@ -7,9 +7,10 @@ import cookieParser from "cookie-parser";
 import { createAdmin } from "./seed/createAdmin.js";
 // createAdmin(); // Create admin user on server start (if not exists)
 
-import dbConfig from "./db/config/db.config.js";
-dbConfig; // Initialize DB connection
+import db from "./db/config/db.config.js";
+db; // Initialize DB connection
 
+console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
