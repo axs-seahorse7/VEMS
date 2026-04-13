@@ -791,24 +791,26 @@ export default function VehicleDashboard() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <div
             style={{
-              width: 32,
-              height: 32,
+              width: 72,
+              height: 72,
               borderRadius: 8,
-              background: "linear-gradient(135deg,#6366f1,#4f46e5)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "#fff",
             }}
           >
-            <span style={{ width: 17, height: 17 }}>{Icon.truck}</span>
+            <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="" />
           </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 14, color: "#111" }}>
-              PG Group
+          <div className="border-l-2 border-red-500 px-2" >
+            <div 
+            style={{ fontWeight: 800, fontSize: 14, color: "#111" }}
+            
+            >
+              VEMS
             </div>
-            <div style={{ fontSize: 9.5, color: "#9ca3af" }}>
-              {user?.factory?.name} · VEMS
+            <div style={{ fontSize: 9.5, color: "blue", letterSpacing: 0.8, marginTop: -2 }}>
+              {user?.factory?.name} · {user.workLocation === "atGate" ? "Security Gate" : user.workLocation === "storeSite" ? "Store" : "Dispatch"}
             </div>
           </div>
         </div>
