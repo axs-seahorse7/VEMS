@@ -15,54 +15,71 @@ import tripRoutes from "../routes/trip.routes.js";
 
 const app = e();
 
-
-
-
-// CORS
+/* =========================
+   CORS (keep it simple)
+========================= */
 const allowedOrigins = [
   "http://localhost:5173",
   "https://vems-client.vercel.app",
 ];
 
-
-// CORS FIRST
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(new Error("Not allowed by CORS"));
-  },
+  origin: allowedOrigins,
   credentials: true,
 }));
 
+// Handle preflight instantly
+app.options("*", cors());
+
+/* =========================
+   Parsers
+========================= */
+app.use(cookieParser());
+app.use(e.json());
+
+/* =========================
+   Health (NO DB)
+========================= */
+app.get("/api/health", (req, res) => {
+  return res.status(200).json({ status: "ok" });
+});
+
+/* =========================
+   DB Connection (smart)
+========================= */
 let isDbConnected = false;
 
 const ensureDB = async () => {
   if (!isDbConnected) {
     await connectDB();
     isDbConnected = true;
+    console.log("DB connected");
   }
 };
 
+// Apply DB only where needed
 app.use(async (req, res, next) => {
   try {
+    // Skip DB for lightweight routes
+    if (
+      req.method === "OPTIONS" ||
+      req.path === "/api/health" ||
+      req.path === "/"
+    ) {
+      return next();
+    }
+
     await ensureDB();
-    next();
+    return next();
   } catch (err) {
-    console.error("DB fail:", err);
-    res.status(500).json({ message: "DB connection failed" });
+    console.error("DB connection error:", err);
+    return res.status(500).json({ message: "DB connection failed" });
   }
 });
 
-
-app.use(cookieParser());
-app.use(e.json());
-
-// Routes
+/* =========================
+   Routes
+========================= */
 app.get("/", (req, res) => {
   return res.send("API Running");
 });
@@ -74,15 +91,15 @@ app.use("/api", vehicleRoutes);
 app.use("/api", gateRoutes);
 app.use("/api", tripRoutes);
 
-app.get("/api/health", (req, res) => {
-  return res.json({ status: "ok" });
-});
-
-// Error handler
+/* =========================
+   Error Handler
+========================= */
 app.use((err, req, res, next) => {
-  console.error(err);
- return res.status(500).json({ message: err.message });
+  console.error("Global error:", err);
+  return res.status(500).json({ message: err.message || "Server error" });
 });
 
-// Export
+/* =========================
+   Export (serverless)
+========================= */
 export default serverless(app);
