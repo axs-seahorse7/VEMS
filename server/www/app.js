@@ -1,8 +1,8 @@
 import e from "express";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import cors from "cors";
-dotenv.config();
+// import dotenv from "dotenv";
+// dotenv.config();
 
 import connectDB from "../db/config/db.config.js";
 await connectDB(); // Initialize DB connection
@@ -50,7 +50,8 @@ app.get("/api/health", (req, res) => {
  return res.json({ status: "ok" });
 });
 
-app.listen(process.env.PORT, (function () {
-  console.log(`Server is running on port ${process.env.PORT}`);
-}));
+// app.listen(process.env.PORT, (function () {
+//   console.log(`Server is running on port ${process.env.PORT}`);
+// }));
 
+export default app;
