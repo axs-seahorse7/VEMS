@@ -5,8 +5,12 @@ let isConnected = false;
 const connectDB = async () => {
   if (isConnected) return;
 
+  const isProduction = process.env.SERVER_ENV === "production";
+  console.log(`Connecting to MongoDB... (Production: ${isProduction})`);
   try {
-    const MONGO_URI = process.env.DB_HOST_PROD; // only use cloud
+    const MONGO_URI = isProduction 
+      ? process.env.DB_HOST_PROD 
+      : process.env.DB_LOCAL_URI;
 
     if (!MONGO_URI) {
       console.error("MONGO_URI not defined in environment variables");

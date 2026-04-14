@@ -202,7 +202,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded") {
     return <button style={btnStyle("#8b5cf6")} onClick={() => doAction(() => api.post(`/trip/load-complete/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Mark Load Complete</button>;
   }
-  if (userRole === "storeSite" && location === "inside_factory"  && trip?.loadStatus !== "pending" && trip?.tripState !== "CLOSED" && trip.tripState === "COMPLETED") {
+  if (userRole === "storeSite" && location === "inside_factory"  && trip?.loadStatus !== "pending" && trip?.tripState !== "CLOSED" && trip.tripState !== "COMPLETED") {
     return (
       <div style={{ display: "flex", gap: 8 }}>
         <button style={btnStyle("#8b5cf6")} 

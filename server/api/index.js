@@ -49,37 +49,7 @@ app.get("/api/health", (req, res) => {
   return res.status(200).json({ status: "ok" });
 });
 
-/* =========================
-   DB Connection (smart)
-========================= */
-// let isDbConnected = false;
-// const ensureDB = async () => {
-//   if (!isDbConnected) {
-//     await connectDB();
-//     isDbConnected = true;
-//     console.log("DB connected");
-//   }
-// };
 
-// Apply DB only where needed
-// app.use(async (req, res, next) => {
-//   try {
-//     // Skip DB for lightweight routes
-//     if (
-//       req.method === "OPTIONS" ||
-//       req.path === "/api/health" ||
-//       req.path === "/"
-//     ) {
-//       return next();
-//     }
-
-//     await ensureDB();
-//     return next();
-//   } catch (err) {
-//     console.error("DB connection error:", err);
-//     return res.status(500).json({ message: "DB connection failed" });
-//   }
-// });
 
 /* =========================
    Routes
@@ -103,7 +73,5 @@ app.use((err, req, res, next) => {
   return res.status(500).json({ message: err.message || "Server error" });
 });
 
-/* =========================
-   Export (serverless)
-========================= */
-// export default serverless(app);
+
+export default serverless(app);
