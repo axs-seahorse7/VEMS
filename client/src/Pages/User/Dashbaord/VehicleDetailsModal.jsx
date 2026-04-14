@@ -1,6 +1,6 @@
 import { useState } from "react";
 import api from "../../../../services/API/Api/api";
-import { message } from "antd";
+import { message, Popconfirm  } from "antd";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -185,24 +185,48 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   });
 
   if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "DESTINATION" && vehicle.tripState !== "CLOSED" ) {
-    return <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/checkin/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Allow Entry (Checkin)</button>;
+    return (
+      <div style={{ display: "flex", gap: 8 }}>
+          <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/checkin/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Allow Entry (Checkin)</button>
+          <Popconfirm
+            title="Cancel this trip?"
+            onConfirm={async () => {
+              setLoading(true);
+              try {
+                await doAction(() =>
+                  api.post(`/trip/cancel/${trip._id}`, {
+                    vehicleNumber: vehicle.vehicle?.vehicleNumber,
+                    factoryId: userFactoryId,
+                  })
+                );
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            <button style={btnStyle("#D75656")} disabled={loading}>
+              {loading ? "Cancelling..." : "Cancel Trip"}
+            </button>
+          </Popconfirm>      
+          </div>
+    )
   }
   if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "ORIGIN" && userFactoryId === trip.destinationFactory._id && vehicle.tripState !== "CLOSED") {
-    return <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/arrive/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Mark Arrived</button>;
+    return <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/arrive/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Mark Arrived</button>
   }
   if (userRole === "atGate" && location === "inside_factory" && phase === "ORIGIN"  && userFactoryId !== trip.sourceFactoryId  && vehicle.tripState !== "CLOSED"  ) {
-    return <button style={btnStyle("#6366f1")} onClick={() => doAction(() => api.post(`/trip/checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactoryId, purpose: trip?.purpose || "pickup" }))}>→ Dispatch Vehicle (Checkout)</button>;
+    return <button style={btnStyle("#6366f1")} onClick={() => doAction(() => api.post(`/trip/checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactoryId, purpose: trip?.purpose || "pickup" }))}>→ Dispatch Vehicle (Checkout)</button>
   }
   if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip.sourceFactoryId  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" ) {
-    return <button style={btnStyle("#D75656")} onClick={() => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactoryId, purpose: trip?.purpose || "pickup" }))}>Checkout & Exit</button>;
+    return <button style={btnStyle("#D75656")} onClick={() => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactoryId, purpose: trip?.purpose || "pickup" }))}>Checkout & Exit</button>
   }
   if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Delivery" && trip?.loadStatus !== "unloaded" && (trip.type === "external_delivery" || trip.type === "internal_transfer")) {
-    return <button style={btnStyle("#f59e0b")} onClick={() => doAction(() => api.post(`/trip/unload/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>↓ Mark Unloaded</button>;
+    return <button style={btnStyle("#f59e0b")} onClick={() => doAction(() => api.post(`/trip/unload/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>↓ Mark Unloaded</button>
   }
   if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded") {
-    return <button style={btnStyle("#8b5cf6")} onClick={() => doAction(() => api.post(`/trip/load-complete/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Mark Load Complete</button>;
+    return <button style={btnStyle("#8b5cf6")} onClick={() => doAction(() => api.post(`/trip/load-complete/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Mark Load Complete</button>
   }
-  if (userRole === "storeSite" && location === "inside_factory"  && trip?.loadStatus !== "pending" && trip?.tripState !== "CLOSED" && trip.tripState !== "COMPLETED") {
+  if (userRole === "storeSite" && location === "inside_factory"  && trip?.loadStatus !== "pending" && vehicle?.tripState !== "CLOSED" && vehicle.tripState !== "COMPLETE") {
     return (
       <div style={{ display: "flex", gap: 8 }}>
         <button style={btnStyle("#8b5cf6")} 
@@ -215,7 +239,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
     );
   }
   if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded" && vehicle.tripState !== "CLOSED") {
-    return <button style={btnStyle("#ec4899")} onClick={() => doAction(() => api.post(`/dispatch/load/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Final Load Check</button>;
+    return <button style={btnStyle("#ec4899")} onClick={() => doAction(() => api.post(`/dispatch/load/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Final Load Check</button>
   }
   return null;
 }
@@ -244,14 +268,14 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
   );
 
   const Section = ({ title, children }) => (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 10, fontWeight: 800, color: "#6366f1", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
-      <div style={{ background: "#fafafa", borderRadius: 8, padding: "4px 10px" }}>{children}</div>
+    <div   style={{ marginBottom: 14 }}>
+      <div  style={{ fontSize: 10, fontWeight: 800, color: "#6366f1", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
+      <div  style={{ background: "#fafafa", borderRadius: 8, padding: "4px 10px" }}>{children}</div>
     </div>
   );
 
   return (
-    <Modal open={!!vehicle} onClose={onClose} title={`${vehicleData?.vehicleNumber} — Vehicle Details`} width={640}>
+    <Modal open={!!vehicle} onClose={onClose} title={`${vehicleData?.vehicleNumber} — Vehicle Details`} width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
       {/* Status & Phase row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <TypeBadge type={vehicleData?.typeOfVehicle} />
@@ -271,29 +295,45 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
       </div>
 
       {/* Info grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,  }}>
         <Section title="Driver">
-          <Row label="Name"    value={vehicleData?.driverName} />
-          <Row label="Contact" value={vehicleData?.driverContact} />
-          <Row label="ID Type" value={vehicleData?.driverIdType} />
-          <Row label="ID Number" value={vehicleData?.driverIdNumber} />
+          <Row label="Name"             value={vehicleData?.driverName} />
+          <Row label="Contact"          value={vehicleData?.driverContact} />
+          <Row label="ID Type"          value={vehicleData?.driverIdType} />
+          <Row label="ID Number"        value={vehicleData?.driverIdNumber} />
         </Section>
         <Section title="Vehicle">
-          <Row label="Number"      value={vehicleData?.vehicleNumber} accent />
-          <Row label="Transporter" value={vehicleData?.transporterName} />
-          <Row label="Type"        value={vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle} />
-          <Row label="PUC End"     value={fmtDate(vehicleData?.PUCExpiry)} warn={pucAlert} />
+          <Row label="Number"           value={vehicleData?.vehicleNumber} accent />
+          <Row label="Transporter"      value={vehicleData?.transporterName} />
+          <Row label="Type"             value={vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle} />
+          <Row label="PUC End"          value={fmtDate(vehicleData?.PUCExpiry)} warn={pucAlert} />
         </Section>
         <Section title="Trip Details">
-          <Row label="Status"      value={trip?.status} />
-          <Row label="Load Status" value={trip?.loadStatus} accent={trip?.loadStatus === "loaded"} />
-          <Row label="Purpose"     value={trip?.purpose} />
-          <Row label="Type"        value={trip?.type} />
+          <Row label="Status"           value={trip?.status} />
+          <Row label="Load Status"      value={trip?.loadStatus} accent={trip?.loadStatus === "loaded"} />
+          <Row label="Purpose"          value={trip?.purpose} />
+          <Row label="Type"             value={trip?.type} />
         </Section>
         <Section title="Location">
-          <Row label="State"          value={location === "outside_factory" ? "Outside Factory" : location === "inside_factory" ? "Inside Factory" : "In Transit"} accent />
-          <Row label="Source Factory" value={trip?.sourceFactory?.name || (trip.type === "external_delivery" ? "External" : "Internal")} />
-          <Row label="Destination"    value={trip?.destinationFactory?.name || "N/A"} />
+          <Row label="State"            value={location === "outside_factory" ? "Outside Factory" : location === "inside_factory" ? "Inside Factory" : "In Transit"} accent />
+          <Row label="Source Factory"   value={trip?.sourceFactory?.name || (trip.type === "external_delivery" ? "External" : "Internal")} />
+          <Row label="Destination"      value={trip?.destinationFactory?.name || "N/A"} />
+          <Row label="Trip Start At"    value={fmtTime(trip?.createdAt) || "N/A"} />
+        </Section>
+        <Section title="Material Details">
+          <Row label="Material"         value={trip?.materials[0]?.material || "N/A"} accent />
+          <Row label="Quantity"         value={trip?.materials[0]?.quantity || "N/A"} accent />
+          {trip?.materials[0] && 
+          trip?.materials[0].customer === "" && (
+              <Row label="Customer"     value={trip?.materials[0]?.customer || "N/A"} />
+          )}
+          <Row label="Supplier"         value={trip?.materials[0]?.supplier || "N/A"} />
+        </Section>
+
+        <Section title="Invoice Details">
+          <Row label="Material Type"    value={trip?.materials[0]?.name === "RM" ? "Raw Material" : trip?.materials[0]?.name === "FG" ? "Finished Goods" : trip?.materials[0]?.name || "N/A" } accent />
+          <Row label="Invoice No"       value={trip?.materials[0]?.invoiceNo || "N/A"} accent />
+          <Row label="Amount"           value={trip?.materials[0]?.invoiceAmmount|| "N/A"} accent />
         </Section>
       </div>
 

@@ -22,7 +22,7 @@ const connectDB = async () => {
     });
 
     isConnected = conn.connections[0].readyState;
-    console.log("MongoDB Connected");
+    console.log(isProduction ? "Production MongoDB Connected" : "Development MongoDB Connected");
   } catch (error) {
     console.error("MongoDB Error:", error);
     throw error;

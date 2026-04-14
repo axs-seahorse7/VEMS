@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../../../../services/API/Api/api";
-import { message } from "antd";
+import { message, Select  } from "antd";
 import { Factory, Truck } from "lucide-react";
+const { Option } = Select;
 
 // ─── LocalStorage Helpers ─────────────────────────────────────────────────────
 const LS_INTERNAL = "veh_modal_internal_draft";
@@ -90,6 +91,83 @@ const CUSTOMER = [
   { v: "Yash Engineering", l: "Yash Engineering", type: "customer" },
   { v: "Yashoda Industries", l: "Yashoda Industries", type: "customer" }
 ];
+
+const SUPPLIERS = [
+  { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" },
+  { v: "NGM : Next Generation Mfg", l: "NGM : Next Generation Mfg" },
+  { v: "PGTI-2/Sanjeevani", l: "PGTI-2/Sanjeevani" },
+  { v: "PG4: PG Electroplast", l: "PG4: PG Electroplast" },
+  { v: "TRIUMPH Warehouse", l: "TRIUMPH Warehouse" },
+  { v: "VIHAAN Warehouse", l: "VIHAAN Warehouse" },
+  { v: "D111 Warehouse", l: "D111 Warehouse" },
+  { v: "Pg Bhiwadi", l: "Pg Bhiwadi" },
+  { v: "STYROTECH INDUSTRIES", l: "STYROTECH INDUSTRIES" },
+  { v: "KSH DISTRIPARKS PVT.LTD", l: "KSH DISTRIPARKS PVT.LTD" },
+  { v: "MD GRAPHICS PRIVATE LIMITED", l: "MD GRAPHICS PRIVATE LIMITED" },
+  { v: "Carrier Midea", l: "Carrier Midea" },
+  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
+  { v: "SAI AUTO COMPONENTS PVT.LTD", l: "SAI AUTO COMPONENTS PVT.LTD" },
+  { v: "Hakimuddin", l: "Hakimuddin" },
+  { v: "Prijai cooltech", l: "Prijai cooltech" },
+  { v: "V G ENGINEERING ENTERPRISES", l: "V G ENGINEERING ENTERPRISES" },
+  { v: "SUMITI PACKING", l: "SUMITI PACKING" },
+  { v: "YEEMAK PVT LTD", l: "YEEMAK PVT LTD" },
+  { v: "ALIGN COMPONENTS PVT.LTD", l: "ALIGN COMPONENTS PVT.LTD" },
+  { v: "VAIBHAV AMIT IND HP GAS AGENCY.", l: "VAIBHAV AMIT IND HP GAS AGENCY." },
+  { v: "SP INDUSTRIES", l: "SP INDUSTRIES" },
+  { v: "MD Graphics", l: "MD Graphics" },
+  { v: "YASH ENGINEERING", l: "YASH ENGINEERING" },
+  { v: "ATUL PLAST", l: "ATUL PLAST" },
+  { v: "Unipack Packaging Pvt Ltd", l: "Unipack Packaging Pvt Ltd" },
+  { v: "Productive technologies", l: "Productive technologies" },
+  { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
+  { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" },
+  { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
+  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
+  { v: "MADAN ELECTRO", l: "MADAN ELECTRO" },
+  { v: "KV BOXCORP", l: "KV BOXCORP" },
+  { v: "Suyog eng", l: "Suyog eng" },
+  { v: "AVADHOOT PAPER PRO", l: "AVADHOOT PAPER PRO" },
+  { v: "SAMARTH", l: "SAMARTH" },
+  { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
+  { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" },
+
+  { v: "Macdermid alpha", l: "Macdermid alpha" },
+  { v: "SHRI JI FOAM", l: "SHRI JI FOAM" },
+  { v: "Metacool", l: "Metacool" },
+  { v: "OM SANTOSHI", l: "OM SANTOSHI" },
+  { v: "M/S. S.B", l: "M/S. S.B" },
+  { v: "CRAFTED SOLUTION", l: "CRAFTED SOLUTION" },
+  { v: "SKM GALVA", l: "SKM GALVA" },
+  { v: "Axalta coating", l: "Axalta coating" },
+  { v: "M/s S.B. PRECISON SPRINGS - 2025-26", l: "M/s S.B. PRECISON SPRINGS - 2025-26" },
+  { v: "METCAP TUB PVT. LTD.", l: "METCAP TUB PVT. LTD." },
+  { v: "Royal polymer", l: "Royal polymer" },
+  { v: "ANUSHKA INDUS", l: "ANUSHKA INDUS" },
+  { v: "OIENTECH INDIA PVT.LTD.", l: "OIENTECH INDIA PVT.LTD." },
+  { v: "Nahata plastikos llp", l: "Nahata plastikos llp" },
+  { v: "KINGFA", l: "KINGFA" },
+  { v: "Nidec INDIA", l: "Nidec INDIA" },
+  { v: "Steel Suppliers Ltd", l: "Steel Suppliers Ltd" },
+  { v: "Plastic Materials Co", l: "Plastic Materials Co" },
+  { v: "Empire Fastner", l: "Empire Fastner" },
+  { v: "Asian Paint", l: "Asian Paint" },
+  { v: "SHREE ENTERPRISES", l: "SHREE ENTERPRISES" },
+  { v: "MACHHAR PACKAGING", l: "MACHHAR PACKAGING" },
+  { v: "PRAVIN ENGINEERING WORKS", l: "PRAVIN ENGINEERING WORKS" },
+  { v: "ATUL PLAST-CR", l: "ATUL PLAST-CR" },
+  { v: "SPF LIMITED", l: "SPF LIMITED" },
+  { v: "SUPREME PETROCHEM LTD", l: "SUPREME PETROCHEM LTD" },
+  { v: "FRIENDS AND COMPANY UNIT-2", l: "FRIENDS AND COMPANY UNIT-2" },
+  { v: "VINDHYAWASNI INDUSTRIES", l: "VINDHYAWASNI INDUSTRIES" },
+  { v: "TUSHAR ENG.", l: "TUSHAR ENG." },
+  { v: "SHARDA INDUSTRIES", l: "SHARDA INDUSTRIES" },
+  { v: "BHARGAVI ENTERPRISES", l: "BHARGAVI ENTERPRISES" },
+  { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" },
+  { v: "MAULI POLYMER", l: "MAULI POLYMER" },
+  { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
+  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" }
+]
 
 const lsGet = (key, fallback) => {
   try {
@@ -326,7 +404,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const [submitting, setSubmitting]     = useState(false);
   const [vehicleLookup, setVL]          = useState({ loading: false, found: false });
   const [autoSwitched, setAutoSwitched] = useState(null);
-  const [draftSaved, setDraftSaved]     = useState(false);
+  const [draftSaved, setDraftSaved]    = useState(false);
 
   // Track whether each tab has a non-empty draft
   const [hasDraft, setHasDraft] = useState({ internal: false, external: false });
@@ -555,7 +633,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
         {/* Input */}
         <input
-          type="text"
+          type={key === "driverContact" ? "text" : type}
           inputMode={key === "driverContact" ? "numeric" : "text"}
           value={value}
           maxLength={fieldRule.maxLength || undefined}
@@ -632,6 +710,13 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </div>
   );
 
+  const supplierOptions = SUPPLIERS.map((s) => ({
+    value: s.v,
+    label: s.l,
+  }));
+
+  console.log(SUPPLIERS.length, supplierOptions.length);
+
   return (
     <Modal open={open} onClose={handleClose} title="New Vehicle Entry">
       <TabBar active={activeTab} setActive={setActiveTab} autoSwitched={autoSwitched} hasDraft={hasDraft} />
@@ -647,25 +732,25 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           <SL label="Driver & Vehicle" />
           <div style={g3}>
             {vnField(internalForm, setInternal)}
-            {inp("driverName", "Driver Name", internalForm.driverName, setInternal, "text", true)}
-            {inp("driverContact", "Contact", internalForm.driverContact, setInternal, "text", "+91 _ _ _ _ _ _ _ _ _ _ ")}
+            {inp("driverName", "Driver Name",                   internalForm.driverName, setInternal, "text", true)}
+            {inp("driverContact", "Contact",                    internalForm.driverContact, setInternal, "text", "+91 _ _ _ _ _ _ _ _ _ _ ")}
           </div>
           <div style={g3}>
-            {sel("driverIdType", "ID Type", internalForm.driverIdType, setInternal, ID_TYPES)}
-            {inp("driverIdNumber", "ID Number", internalForm.driverIdNumber, setInternal)}
-            {inp("transporterName", "Transporter", internalForm.transporterName, setInternal)}
+            {sel("driverIdType", "ID Type",                     internalForm.driverIdType, setInternal, ID_TYPES)}
+            {inp("driverIdNumber", "ID Number",                 internalForm.driverIdNumber, setInternal)}
+            {inp("transporterName", "Transporter",              internalForm.transporterName, setInternal)}
           </div>
           <div style={g2}>
-            {sel("typeOfVehicle", "Vehicle Type", internalForm.typeOfVehicle, setInternal, VEHICLE_TYPES)}
-            {inp("PUCExpiry", "PUC Expiry", internalForm.PUCExpiry, setInternal, "date")}
+            {sel("typeOfVehicle", "Vehicle Type",               internalForm.typeOfVehicle, setInternal, VEHICLE_TYPES)}
+            {inp("PUCExpiry", "PUC Expiry",                     internalForm.PUCExpiry, setInternal, "date")}
           </div>
 
           <SL label="Trip Details" color="#4f46e5" />
           <div style={g3}>
             {sel("destinationFactoryId", "Destination Factory", internalForm.destinationFactoryId, setInternal,
-              fetchingFactories ? [{ v: "", l: "Loading…" }] : factoryOpts, true)}
-            {sel("purpose", "Purpose", internalForm.purpose, setInternal, PURPOSE_OPTS, true)}
-            {sel("materialType", "Material Type", internalForm.materialType, setInternal, MATERIAL_TYPES, true)}
+              fetchingFactories ? [{ v: "", l: "Loading…" }] :  factoryOpts, true)}
+            {sel("purpose", "Purpose",                          internalForm.purpose, setInternal, PURPOSE_OPTS, true)}
+            {sel("materialType", "Material Type",               internalForm.materialType, setInternal, MATERIAL_TYPES, true)}
           </div>
 
           {submitRow("Create Internal Entry", handleSubmitInternal, "linear-gradient(135deg,#6366f1,#4f46e5)")}
@@ -696,20 +781,18 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
             <div
               onClick={() => setExternalForm(p => ({ ...p, isInternalShifting: !p.isInternalShifting }))}
               style={{
-                width: 44, height: 24, borderRadius: 12,
-                background: externalForm.isInternalShifting
-                  ? "linear-gradient(135deg,#6366f1,#4f46e5)"
-                  : "#e5e7eb",
-                position: "relative", cursor: "pointer",
+                width: 44,  height: 24, borderRadius: 12,
+                background: externalForm.isInternalShifting? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e5e7eb",
+                position:   "relative", cursor: "pointer",
                 transition: "background .25s",
-                boxShadow: externalForm.isInternalShifting ? "0 0 0 3px rgba(99,102,241,.2)" : "none",
+                boxShadow:  externalForm.isInternalShifting ? "0 0 0 3px rgba(99,102,241,.2)" : "none",
                 flexShrink: 0,
               }}
             >
               <div style={{
-                position: "absolute",
-                width: 18, height: 18,
-                background: "#fff",
+                position:     "absolute",
+                width: 18,    height: 18,
+                background:   "#fff",
                 borderRadius: "50%",
                 top: 3,
                 left: externalForm.isInternalShifting ? 23 : 3,
@@ -721,7 +804,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
           {externalForm.isInternalShifting && (
             <div style={{ ...g2, animation: "vehFade .18s ease", marginBottom: 9 }}>
-              {sel("passType", "Pass Type", externalForm.passType, setExternal, PASS_TYPE_OPTS, true)}
+              {sel("passType", "Pass Type",         externalForm.passType, setExternal, PASS_TYPE_OPTS, true)}
               {sel("destinationFactoryId", "Destination Factory", externalForm.destinationFactoryId, setExternal,
                 fetchingFactories ? [{ v: "", l: "Loading…" }] : factoryOpts, true)}
             </div>
@@ -730,23 +813,23 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           <SL label="Driver & Vehicle" />
           <div style={g3}>
             {vnField(externalForm, setExternal)}
-            {inp("driverName", "Driver Name", externalForm.driverName, setExternal, "text", true)}
-            {inp("driverContact", "Contact", externalForm.driverContact, setExternal, "text")}
+            {inp("driverName", "Driver Name",                 externalForm.driverName, setExternal, "text", true)}
+            {inp("driverContact", "Contact",                  externalForm.driverContact, setExternal, "text")}
           </div>
           <div style={g3}>
-            {sel("driverIdType", "ID Type", externalForm.driverIdType, setExternal, ID_TYPES)}
-            {inp("driverIdNumber", "ID Number", externalForm.driverIdNumber, setExternal)}
-            {inp("transporterName", "Transporter", externalForm.transporterName, setExternal)}
+            {sel("driverIdType", "ID Type",                   externalForm.driverIdType, setExternal, ID_TYPES)}
+            {inp("driverIdNumber", "ID Number",               externalForm.driverIdNumber, setExternal)}
+            {inp("transporterName", "Transporter",            externalForm.transporterName, setExternal)}
           </div>
           <div style={g2}>
-            {sel("typeOfVehicle", "Vehicle Type", externalForm.typeOfVehicle, setExternal, VEHICLE_TYPES)}
-            {inp("PUCExpiry", "PUC Expiry", externalForm.PUCExpiry, setExternal, "date")}
+            {sel("typeOfVehicle", "Vehicle Type",             externalForm.typeOfVehicle, setExternal, VEHICLE_TYPES)}
+            {inp("PUCExpiry", "PUC Expiry",                   externalForm.PUCExpiry, setExternal, "date")}
           </div>
 
           <SL label="Trip Details" color="#d97706" />
           <div style={g2}>
-            {sel("purpose", "Purpose", externalForm.purpose, setExternal, PURPOSE_OPTS, true)}
-            {sel("materialType", "Material Type", externalForm.materialType, setExternal, MATERIAL_TYPES, true)}
+            {sel("purpose", "Purpose",                        externalForm.purpose, setExternal, PURPOSE_OPTS, true)}
+            {sel("materialType", "Material Type",             externalForm.materialType, setExternal, MATERIAL_TYPES, true)}
           </div>
 
           {externalForm.materialType === "RM" && (
@@ -754,12 +837,24 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               <SL label="Raw Material Details" color="#059669" />
               <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
                 <div style={g3}>
-                  {sel("supplier", "Supplier", externalForm.supplier, setExternal, [{ v: "supplier1", l: "Supplier A" }, { v: "supplier2", l: "Supplier B" }, { v: "other", l: "Other" }])}
-                  {inp("material", "Material Name", externalForm.material, setExternal)}
-                  {inp("quantity", "Quantity", externalForm.quantity, setExternal, "number")}
+                  <div className="flex flex-col" >
+                    <label className="text-[11px]">Supplier</label>
+                      <Select
+                        label="Supplier"
+                        mode="tags"
+                        showSearch
+                        style={{ width: "100%", height: 32 }}
+                        placeholder="Search or enter supplier"
+                        value={externalForm.supplier ? [externalForm.supplier] : []}
+                        onChange={(value) => setExternal("supplier", value[0])}
+                        options={supplierOptions}
+                      />                  
+                  </div>
+                    {inp("material", "Material Name",         externalForm.material, setExternal)}
+                  {inp("quantity", "Quantity",                externalForm.quantity, setExternal, "number")}
                 </div>
                 <div style={g2}>
-                  {inp("invoiceNo", "Invoice No.", externalForm.invoiceNo, setExternal)}
+                  {inp("invoiceNo", "Invoice No.",            externalForm.invoiceNo, setExternal)}
                   {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal, "number")}
                 </div>
               </div>
@@ -771,11 +866,11 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               <SL label="Finished Goods Details" color="#2563eb" />
               <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
                 <div style={g2}>
-                  {sel("customer", "Customer", externalForm.customer, setExternal, CUSTOMER, [{v: CUSTOMER.name, l: CUSTOMER.name}])}
-                  {inp("invoiceNo", "Invoice No.", externalForm.invoiceNo, setExternal)}
+                  {sel("customer", "Customer",                externalForm.customer, setExternal, CUSTOMER, [{v: CUSTOMER.name, l: CUSTOMER.name}])}
+                  {inp("invoiceNo", "Invoice No.",            externalForm.invoiceNo, setExternal)}
                 </div>
                 <div style={g2}>
-                  {inp("quantity", "Quantity", externalForm.quantity, setExternal, "number")}
+                  {inp("quantity", "Quantity",                externalForm.quantity, setExternal, "number")}
                   {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal, "number")}
                 </div>
               </div>
@@ -788,7 +883,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
                 <div style={g2}>
                   {inp("material", "Material / Description", externalForm.material, setExternal)}
-                  {inp("quantity", "Quantity", externalForm.quantity, setExternal, "number")}
+                  {inp("quantity", "Quantity",               externalForm.quantity, setExternal, "number")}
                 </div>
               </div>
             </div>

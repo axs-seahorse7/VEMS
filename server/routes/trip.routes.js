@@ -1,7 +1,9 @@
-import {externalVehicleRegister, getVehicleTrips, getActiveTrip, getTripHistory, getFactoryTrips, cancelTrip, getIncomingTrips, createTrip, unloadTrip } from "../controllers/trip.contollers.js";
+import {externalVehicleRegister, getVehicleTrips, getActiveTrip, getTripHistory, getFactoryTrips, getIncomingTrips, createTrip, unloadTrip } from "../controllers/trip.contollers.js";
 import express from "express";
 import {isAuthenticated} from "../middleware/isAuth/isAuthenticated.js";
-import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination } from "../controllers/trip.contollers.js";
+import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, 
+    completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination , cancelTrip,
+} from "../controllers/trip.contollers.js";
 const router = express.Router();
 
 router.use(isAuthenticated);
@@ -25,6 +27,7 @@ router.post("/trip/complete/:tripId", completeTrip);
 router.post("/trip/internal-transfer-complete/:tripId", markInternalTransferComplete);
 router.post("/trip/load-complete/:tripId", markLoadCompleteAtDestination);
 router.post("/trip/unload/:tripId", unloadTrip);
+router.post("/trip/cancel/:tripId", cancelTrip);
 
 
 

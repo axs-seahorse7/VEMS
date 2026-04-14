@@ -7,7 +7,9 @@ const materialSchema = new mongoose.Schema({
   invoiceNo: String,
   unit: String,
   invoiceAmmount: Number,
-  customer: String
+  seal: String,
+  customer: String,
+  supplier: String,
 }, { _id: false });
 
 const TripSchema = new mongoose.Schema({
@@ -95,7 +97,7 @@ const TripSchema = new mongoose.Schema({
     Phase: String,
     action:{
       type: String,
-      enum: ["begin","checkin", "checkout", "load", "unload", "cancel", "complete", "closed"]
+      enum: ["begin","checkin", "checkout", "load", "unload", "cancelled", "complete", "closed"]
     },
     timestamp: Date
   }]

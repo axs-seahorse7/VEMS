@@ -222,12 +222,12 @@ export default function VehicleCard({ vehicle, onClick }) {
           position: "relative",
         }}
         onMouseEnter={e => {
-            e.currentTarget.style.boxShadow = `0 4px 16px ${theme.accent}22, 0 0 0 1.5px ${theme.accent}`;
-            e.currentTarget.style.transform = "translateY(-1px)";
+          e.currentTarget.style.boxShadow = `0 4px 16px ${theme.accent}22, 0 0 0 1.5px ${theme.accent}`;
+          e.currentTarget.style.transform = "translateY(-1px)";
         }}
         onMouseLeave={e => {
-            e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
-            e.currentTarget.style.transform = "";
+          e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
+          e.currentTarget.style.transform = "";
         }}
         
       >
@@ -332,12 +332,13 @@ export default function VehicleCard({ vehicle, onClick }) {
 
             {(user.factoryId === vehicle.sourceFactoryId ||
               user.factoryId === vehicle.destinationFactory?._id) && (
-              <span style={{
-                fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
-                background: theme.labelBg, color: theme.label,
-                textTransform: "uppercase", letterSpacing: .4,
+              <span 
+                style={{
+                  fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+                  background: theme.labelBg, color: theme.label,
+                  textTransform: "uppercase", letterSpacing: .4,
               }}>
-                {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
+                  {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
               </span>
             )}
           </div>
@@ -359,10 +360,10 @@ export default function VehicleCard({ vehicle, onClick }) {
               value={loadStatus.charAt(0).toUpperCase() + loadStatus.slice(1)}
             />
             <InfoRow
-                icon="ri-box-1-line"
-                iconColor="#059669"
-                label="Material"
-                value={materialNames.join(", ") || "Empty"}
+              icon="ri-box-1-line"
+              iconColor="#059669"
+              label="Material"
+              value={materialNames.join(", ") || "Empty"}
               />
             <InfoRow
               icon="ri-time-line" iconColor="#7c3aed"
