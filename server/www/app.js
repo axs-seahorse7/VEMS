@@ -39,6 +39,10 @@ app.get("/", (req, res) => {
  return res.send("Welcome to the Vehicle Management System API");
 });
 
+app.get("/api/health", (req, res) => {
+ return res.json({ status: "ok" });
+});
+
 app.use((req, res, next) => {
   console.log("HIT:", req.method, req.url);
   next();
@@ -51,9 +55,6 @@ app.use("/api", vehicleRoutes)
 app.use("/api", gateRoutes)
 app.use("/api", tripRoutes)
 
-app.get("/api/health", (req, res) => {
- return res.json({ status: "ok" });
-});
 
 app.listen(process.env.PORT, (function () {
   console.log(`Server is running on port ${process.env.PORT}`);
