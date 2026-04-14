@@ -8,7 +8,7 @@
   "license": "ISC",
   "author": "PGTL GROUP",
   "type": "module",
-  "main": "app.js",
+  "main": "www/app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js"

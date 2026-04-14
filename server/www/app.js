@@ -4,17 +4,17 @@ import dotenv from "dotenv";
 import cors from "cors";
 dotenv.config();
 
-import connectDB from "./db/config/db.config.js";
+import connectDB from "../db/config/db.config.js";
 await connectDB(); // Initialize DB connection
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
-import authRoutes from "./routes/auth.routes.js";
-import userRoutes from "./routes/user.routes.js";
-import indexRoutes from "./routes/index.routes.js";
-import vehicleRoutes from "./routes/vehicle.routes.js";
-import gateRoutes from "./routes/gate.routes.js";
-import tripRoutes from "./routes/trip.routes.js";
+import authRoutes from "../routes/auth.routes.js";
+import userRoutes from "../routes/user.routes.js";
+import indexRoutes from "../routes/index.routes.js";
+import vehicleRoutes from "../routes/vehicle.routes.js";
+import gateRoutes from "../routes/gate.routes.js";
+import tripRoutes from "../routes/trip.routes.js";
 
 const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000'];
 
