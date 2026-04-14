@@ -9,6 +9,7 @@ const connectDB = async () => {
     const MONGO_URI = process.env.DB_HOST_PROD; // only use cloud
 
     if (!MONGO_URI) {
+      console.error("MONGO_URI not defined in environment variables");
       throw new Error("MONGO_URI not defined");
     }
 

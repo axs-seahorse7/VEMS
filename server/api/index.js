@@ -14,6 +14,7 @@ import gateRoutes from "../routes/gate.routes.js";
 import tripRoutes from "../routes/trip.routes.js";
 
 const app = e();
+await connectDB(); // Initialize DB connection
 
 /* =========================
    CORS (keep it simple)
@@ -24,12 +25,16 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.includes(".vercel.app")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
 }));
 
-// Handle preflight instantly
-app.options("*", cors());
 
 /* =========================
    Parsers
@@ -47,35 +52,34 @@ app.get("/api/health", (req, res) => {
 /* =========================
    DB Connection (smart)
 ========================= */
-let isDbConnected = false;
-
-const ensureDB = async () => {
-  if (!isDbConnected) {
-    await connectDB();
-    isDbConnected = true;
-    console.log("DB connected");
-  }
-};
+// let isDbConnected = false;
+// const ensureDB = async () => {
+//   if (!isDbConnected) {
+//     await connectDB();
+//     isDbConnected = true;
+//     console.log("DB connected");
+//   }
+// };
 
 // Apply DB only where needed
-app.use(async (req, res, next) => {
-  try {
-    // Skip DB for lightweight routes
-    if (
-      req.method === "OPTIONS" ||
-      req.path === "/api/health" ||
-      req.path === "/"
-    ) {
-      return next();
-    }
+// app.use(async (req, res, next) => {
+//   try {
+//     // Skip DB for lightweight routes
+//     if (
+//       req.method === "OPTIONS" ||
+//       req.path === "/api/health" ||
+//       req.path === "/"
+//     ) {
+//       return next();
+//     }
 
-    await ensureDB();
-    return next();
-  } catch (err) {
-    console.error("DB connection error:", err);
-    return res.status(500).json({ message: "DB connection failed" });
-  }
-});
+//     await ensureDB();
+//     return next();
+//   } catch (err) {
+//     console.error("DB connection error:", err);
+//     return res.status(500).json({ message: "DB connection failed" });
+//   }
+// });
 
 /* =========================
    Routes
