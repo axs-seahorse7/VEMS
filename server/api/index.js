@@ -64,7 +64,7 @@ app.use(e.json());
 
 // Routes
 app.get("/", (req, res) => {
-  res.send("API Running");
+  return res.send("API Running");
 });
 
 app.use("/api/auth", authRoutes);
@@ -75,13 +75,13 @@ app.use("/api", gateRoutes);
 app.use("/api", tripRoutes);
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+  return res.json({ status: "ok" });
 });
 
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ message: err.message });
+ return res.status(500).json({ message: err.message });
 });
 
 // Export

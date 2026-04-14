@@ -19,11 +19,12 @@ export const createUser = async (req, res) => {
       ...req.body,
       password: hashedPassword,
     });
+    
     await newUser.save();
-    res.status(201).json({ message: "User created successfully" });
+   return res.status(201).json({ message: "User created successfully" });
   } catch (error) {
     console.error("Error creating user:", error);
-    res.status(400).json({ message: error.message });
+   return res.status(400).json({ message: error.message });
   }
 };
 
@@ -63,14 +64,14 @@ export const loginUser = async (req, res) => {
     });
 
     // Send minimal response
-    res.status(200).json({
+   return res.status(200).json({
       message: "Login successful",
       success: true,
       user,
     });
 
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+  return  res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -81,7 +82,7 @@ export const logoutUser = (req, res) => {
     sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   });
 
-  res.json({ message: "Logged out successfully" });
+  return res.json({ message: "Logged out successfully" });
 };
 
 export const getMe = async (req, res) => {
@@ -98,10 +99,10 @@ export const getMe = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json({ user });
+   return res.status(200).json({ user });
   } catch (error) {
     console.error("getMe error:", error);
-    res.status(500).json({ message: "Server error" });
+   return res.status(500).json({ message: "Server error" });
   }
 };
 

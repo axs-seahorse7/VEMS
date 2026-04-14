@@ -34,9 +34,11 @@ const app = e();
 app.use(cookieParser());
 app.use(cors(corsOptions));
 app.use(e.json());
+
 app.get("/", (req, res) => {
-  res.send("Welcome to the Vehicle Management System API");
+ return res.send("Welcome to the Vehicle Management System API");
 });
+
 app.use("/api/auth", authRoutes)
 app.use("/api", userRoutes)
 app.use("/api", indexRoutes)
@@ -45,7 +47,7 @@ app.use("/api", gateRoutes)
 app.use("/api", tripRoutes)
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+ return res.json({ status: "ok" });
 });
 
 app.listen(process.env.PORT, (function () {

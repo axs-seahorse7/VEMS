@@ -5,10 +5,10 @@ export const getUsers = async (req, res) => {
     try {
       const data = await userModel.find().select("-password").populate("factory");
       const excludeAdmin = data.filter(user => !user.isSystemAdmin);
-      res.status(200).json({ users: excludeAdmin });
+     return res.status(200).json({ users: excludeAdmin });
     } catch (err) {
         console.error("Error fetching users:", err);
-        res.status(500).json({ error: "Failed to fetch users" });
+        return res.status(500).json({ error: "Failed to fetch users" });
     }
 }
 
@@ -19,10 +19,10 @@ export const deleteUser = async (req, res) => {
         if(!deleted) {
             return res.status(404).json({ message: "User not found" });
         }
-        res.status(200).json({ message: "User deleted successfully" });
+        return res.status(200).json({ message: "User deleted successfully" });
     } catch (err) {
         console.error("Error deleting user:", err);
-        res.status(500).json({ error: "Failed to delete user" });
+        return res.status(500).json({ error: "Failed to delete user" });
     }
 }
 
@@ -34,9 +34,9 @@ export const updateUser = async (req, res) => {
         if(!updated) {
             return res.status(404).json({ message: "User not found" });
         }
-        res.status(200).json({ message: "User updated successfully", user: updated });
+        return res.status(200).json({ message: "User updated successfully", user: updated });
     } catch (err) {
         console.error("Error updating user:", err);
-        res.status(500).json({ error: "Failed to update user" });
+        return res.status(500).json({ error: "Failed to update user" });
     }
 }

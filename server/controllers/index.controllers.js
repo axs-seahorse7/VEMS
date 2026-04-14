@@ -45,10 +45,10 @@ export const getEntries = async (req, res) => {
       .populate("currentTrip.fromLocation", "name location")
       .populate("currentTrip.toLocation", "name location");
 
-    res.status(200).json({ vans, upcoming, destination });
+    return res.status(200).json({ vans, upcoming, destination });
   } catch (error) {
     console.error("getEntries error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    return res.status(500).json({ message: error.message || "Server error" });
   }
 };
 
@@ -130,7 +130,7 @@ export const upsertEntry = async (req, res) => {
     }
   } catch (error) {
     console.error("upsertEntry error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+   return res.status(500).json({ message: error.message || "Server error" });
   }
 };
 
@@ -158,9 +158,9 @@ export const checkIn = async (req, res) => {
     van.markModified("currentTrip");
 
     await van.save();
-    res.status(200).json({ message: "Van checked in", entry: van });
+  return   res.status(200).json({ message: "Van checked in", entry: van });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+   return res.status(500).json({ message: error.message });
   }
 };
 
@@ -185,9 +185,9 @@ export const loadingStart = async (req, res) => {
     van.markModified("currentTrip");
 
     await van.save();
-    res.status(200).json({ message: `${event} recorded`, entry: van });
+   return res.status(200).json({ message: `${event} recorded`, entry: van });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -213,9 +213,9 @@ export const loadingEnd = async (req, res) => {
     pushTimeline(van.currentTrip, event, user.factory._id, req.body.note || "", phase);
 
     await van.save();
-    res.status(200).json({ message: `${event} recorded`, entry: van });
+   return res.status(200).json({ message: `${event} recorded`, entry: van });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -293,9 +293,9 @@ export const checkOut = async (req, res) => {
     van.markModified("tripHistory");
     await van.save();
 
-    res.status(200).json({ message: "Van checked out", entry: van });
+   return res.status(200).json({ message: "Van checked out", entry: van });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -311,7 +311,7 @@ export const markArrived = async (req, res) => {
     const factoryId = user.factory._id;
     const now = new Date();
 
-    // 🚨 SECURITY CHECK
+    //  SECURITY CHECK
     if (String(van.currentTrip.toLocation) !== String(factoryId)) {
       return res.status(403).json({ message: "Not your destination van" });
     }
@@ -338,9 +338,9 @@ export const markArrived = async (req, res) => {
     van.markModified("currentTrip");
     await van.save();
 
-    res.status(200).json({ message: "Van arrived at destination", entry: van });
+    return res.status(200).json({ message: "Van arrived at destination", entry: van });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -352,9 +352,9 @@ export const getVanByVehicleNumber = async (req, res) => {
       .populate("currentTrip.fromLocation currentTrip.toLocation", "name location");
 
     if (!van) return res.status(404).json({ exists: false });
-    res.status(200).json({ exists: true, van });
+    return res.status(200).json({ exists: true, van });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    return  res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -367,9 +367,9 @@ export const getVanHistory = async (req, res) => {
       .populate("currentTrip.fromLocation currentTrip.toLocation", "name location");
 
     if (!van) return res.status(404).json({ message: "Van not found" });
-    res.status(200).json({ van });
+   return res.status(200).json({ van });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+   return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -378,9 +378,9 @@ export const updateEntry = async (req, res) => {
   try {
     const entry = await vanModel.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!entry) return res.status(404).json({ message: "Entry not found" });
-    res.status(200).json({ message: "Entry updated", entry });
+    return res.status(200).json({ message: "Entry updated", entry });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    return res.status(400).json({ message: error.message });
   }
 };
 
@@ -388,9 +388,9 @@ export const deleteEntry = async (req, res) => {
   try {
     const entry = await vanModel.findByIdAndDelete(req.params.id);
     if (!entry) return res.status(404).json({ message: "Entry not found" });
-    res.status(200).json({ message: "Entry deleted" });
+    return res.status(200).json({ message: "Entry deleted" });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    return res.status(400).json({ message: error.message });
   }
 };
 

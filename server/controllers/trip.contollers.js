@@ -19,10 +19,10 @@ export const getActiveTrip = async (req, res) => {
     })
     .populate("sourceFactoryId destinationFactoryId");
 
-    res.json(trip || null);
+    return res.json(trip || null);
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -39,10 +39,10 @@ export const getTripHistory = async (req, res) => {
     .sort({ createdAt: -1 })
     .populate("sourceFactoryId destinationFactoryId");
 
-    res.json(trips);
+    return res.json(trips);
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -59,10 +59,10 @@ export const getFactoryTrips = async (req, res) => {
     .sort({ createdAt: -1 })
     .populate("vehicleId");
 
-    res.json(trips);
+    return res.json(trips);
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -90,10 +90,10 @@ export const cancelTrip = async (req, res) => {
       }
     );
 
-    res.json({ success: true });
+    return res.json({ success: true });
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -105,7 +105,7 @@ export const getIncomingTrips = async (req, res) => {
     status: "in_transit"
   }).populate("vehicleId");
 
-  res.json(trips);
+  return res.json(trips);
 };
 
 export const createTrip = async (req, res) => {
@@ -122,10 +122,10 @@ export const createTrip = async (req, res) => {
        destinationFactoryId: destinationFactoryId || null,
        createdBy: createdBy || "system"
     });
-    res.json({trip, success: true});
+    return res.json({trip, success: true});
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -247,11 +247,11 @@ export const externalVehicleRegister = async (req, res) => {
       });
     }
 
-    res.status(201).json({ success: true, trip: newTrip });
+   return res.status(201).json({ success: true, trip: newTrip });
 
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -319,11 +319,11 @@ export const internalVehicleRegister = async (req, res) => {
       });
     }
 
-    res.status(201).json({ success: true, trip: newTrip });
+    return res.status(201).json({ success: true, trip: newTrip });
 
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -423,11 +423,11 @@ export const getVehicleTrips = async (req, res) => {
       { $sort: { createdAt: -1 } }
     ]);
 
-    res.json(trips);
+   return res.json(trips);
 
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -464,14 +464,14 @@ export const checkinVehicle = async (req, res) => {
       { new: true }
     );
 
-    res.json({
+   return res.json({
       success: true,
       trip: updatedTrip,
       message: "Vehicle checked in successfully"
     });
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -515,14 +515,14 @@ export const unloadTrip = async (req, res) => {
       { new: true }
     );
 
-    res.json({
+    return res.json({
       success: true,
       trip: updatedTrip,
       message: "Vehicle unloaded successfully"
     });
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -564,7 +564,7 @@ export const completeTrip = async (req, res) => {
       { new: true }
     );
 
-    res.json({
+    return res.json({
       success: true,
       trip: updatedTrip,
       message: "Trip closed successfully"
@@ -572,7 +572,7 @@ export const completeTrip = async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -604,14 +604,14 @@ export const checkoutVehicle = async (req, res) => {
       },
       { new: true }
     );
-    res.json({
+    return res.json({
       success: true,
       trip: updatedTrip,
       message: "Vehicle checked out successfully"
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -645,7 +645,7 @@ export const checkoutAndExitVehicle = async (req, res) => {
       },
       { new: true }
     );
-    res.json({
+    return res.json({
       success: true,
       trip: updatedTrip,
       message: "Vehicle checked out and trip closed successfully"
@@ -653,7 +653,7 @@ export const checkoutAndExitVehicle = async (req, res) => {
   }
     catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -686,14 +686,14 @@ export const markArrived = async (req, res) => {
       },
       { new: true }
     );
-    res.json({
+   return res.json({
       success: true,
       trip: updatedTrip,
       message: "Vehicle marked as arrived successfully"
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -724,14 +724,14 @@ export const markInternalTransferComplete = async (req, res) => {
       },
       { new: true }
     );
-    res.json({
+    return res.json({
       success: true,
       trip: updatedTrip,
       message: "Trip marked as closed successfully"
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -762,13 +762,13 @@ export const markLoadCompleteAtDestination = async (req, res) => {
       },
       { new: true }
     );
-    res.json({
+    return res.json({
       success: true,
       trip: updatedTrip,
       message: "Trip load marked as complete successfully"
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };

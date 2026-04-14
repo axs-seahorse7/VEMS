@@ -45,10 +45,10 @@ export const checkoutVehicle = async (req, res) => {
       }
     );
 
-    res.json({ success: true, trip });
+    return res.json({ success: true, trip });
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -111,12 +111,12 @@ export const checkinVehicle = async (req, res) => {
     );
 
 
-    res.json({ success: true });
+    return res.json({ success: true });
 
   } catch (err) {
 
     console.error(err);
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -129,10 +129,10 @@ export const getIncomingVehicles = async (req, res) => {
       status: "in_transit"
     }).populate("vehicleId");
 
-    res.json(trips);
+    return res.json(trips);
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -146,10 +146,10 @@ export const getVehicleStatus = async (req, res) => {
     const state = await VehicleState.findOne({ vehicleId: vehicle._id })
       .populate("currentFactoryId currentTripId");
 
-    res.json(state);
+    return res.json(state);
 
   } catch (err) {
-    res.status(404).json({ error: err.message });
+    return res.status(404).json({ error: err.message });
   }
 };
 
@@ -225,10 +225,10 @@ export const externalEntry = async (req, res) => {
     trip.status = "arrived";
     await trip.save();
 
-    res.json({ success: true, trip });
+    return res.json({ success: true, trip });
 
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 };
 
@@ -300,7 +300,7 @@ export const getDashboardData = async (req, res) => {
 
 
     // ⚡ RESPONSE
-    res.json({
+    return res.json({
       waiting,   // NEW
       inside,
       incoming,
@@ -309,6 +309,6 @@ export const getDashboardData = async (req, res) => {
 
   } catch (err) {
     console.error("Dashboard error:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };

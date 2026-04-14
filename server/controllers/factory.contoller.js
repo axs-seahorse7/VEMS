@@ -13,20 +13,20 @@ export const createFactory = async (req, res) => {
             email
         });
         await newFactory.save();
-        res.status(201).json({ message: "Factory created successfully", success: true, factory: newFactory });
+       return res.status(201).json({ message: "Factory created successfully", success: true, factory: newFactory });
     } catch (error) {
         console.error("Error creating factory:", error);
-        res.status(400).json({ message: error.message });
+       return res.status(400).json({ message: error.message });
     }
 };
 
 export const getFactories = async (req, res) => {
     try {
         const factories = await factoryModel.find();
-        res.status(200).json({ factories });
+        return res.status(200).json({ factories });
     } catch (error) {
         console.error("Error getting factories:", error);
-        res.status(500).json({ message: "Server error" });
+        return res.status(500).json({ message: "Server error" });
     }
 };
 
@@ -38,10 +38,10 @@ export const updateFactory = async (req, res) => {
         if (!updatedFactory) {
             return res.status(404).json({ message: "Factory not found" });
         }
-        res.status(200).json({ message: "Factory updated successfully", success: true, factory: updatedFactory });
+        return res.status(200).json({ message: "Factory updated successfully", success: true, factory: updatedFactory });
     } catch (error) {
         console.error("Error updating factory:", error);
-        res.status(400).json({ message: error.message });
+        return res.status(400).json({ message: error.message });
     }
 };
 
@@ -52,9 +52,9 @@ export const getFactoryById = async (req, res) => {
         if (!factory) {
             return res.status(404).json({ message: "Factory not found" });
         }
-        res.status(200).json({ factory });
+        return res.status(200).json({ factory });
     } catch (error) {
         console.error("Error getting factory by ID:", error);
-        res.status(500).json({ message: "Server error" });
+        return res.status(500).json({ message: "Server error" });
     }
 };

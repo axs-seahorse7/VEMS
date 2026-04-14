@@ -15,9 +15,9 @@ export const getAllVehicles = async (req, res) => {
       .populate("ownerFactoryId", "name location")
       .sort({ createdAt: -1 });
 
-    res.status(200).json(vehicles);
+   return res.status(200).json(vehicles);
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch vehicles", error: err.message });
+    return res.status(500).json({ message: "Failed to fetch vehicles", error: err.message });
   }
 };
 
@@ -29,10 +29,10 @@ export const getVehicleById = async (req, res) => {
       "name location contactNumber"
     );
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
-    res.status(200).json(vehicle);
+    return res.status(200).json(vehicle);
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ message: "Failed to fetch vehicle", error: err.message });
+    return res.status(500).json({ message: "Failed to fetch vehicle", error: err.message });
   }
 };
 
@@ -43,10 +43,10 @@ export const getVehicleByNumber = async (req, res) => {
       "name location contactNumber"
     );
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
-    res.status(200).json(vehicle);
+    return res.status(200).json(vehicle);
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ message: "Failed to fetch vehicle", error: err.message });
+    return res.status(500).json({ message: "Failed to fetch vehicle", error: err.message });
   }
 };
 
@@ -71,12 +71,12 @@ export const createVehicle = async (req, res) => {
     });
 
     const populated = await vehicle.populate("ownerFactoryId", "name location");
-    res.status(201).json({ message: "Vehicle registered successfully.", vehicle: populated });
+    return res.status(201).json({ message: "Vehicle registered successfully.", vehicle: populated });
   } catch (err) {
     if (err.code === 11000) {
       return res.status(409).json({ message: "Vehicle number already exists." });
     }
-    res.status(500).json({ message: "Failed to create vehicle", error: err.message });
+    return res.status(500).json({ message: "Failed to create vehicle", error: err.message });
   }
 };
 
@@ -113,9 +113,9 @@ export const updateVehicle = async (req, res) => {
     await vehicle.save();
     const populated = await vehicle.populate("ownerFactoryId", "name location");
 
-    res.status(200).json({ message: "Vehicle updated successfully.", vehicle: populated });
+    return res.status(200).json({ message: "Vehicle updated successfully.", vehicle: populated });
   } catch (err) {
-    res.status(500).json({ message: "Failed to update vehicle", error: err.message });
+    return res.status(500).json({ message: "Failed to update vehicle", error: err.message });
   }
 };
 
@@ -124,9 +124,9 @@ export const deleteVehicle = async (req, res) => {
   try {
     const vehicle = await Vehicle.findByIdAndDelete(req.params.id);
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
-    res.status(200).json({ message: "Vehicle deleted successfully." });
+    return res.status(200).json({ message: "Vehicle deleted successfully." });
   } catch (err) {
-    res.status(500).json({ message: "Failed to delete vehicle", error: err.message });
+    return res.status(500).json({ message: "Failed to delete vehicle", error: err.message });
   }
 };
 
@@ -139,11 +139,11 @@ export const toggleVehicleStatus = async (req, res) => {
     vehicle.isActive = !vehicle.isActive;
     await vehicle.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       message: `Vehicle marked as ${vehicle.isActive ? "active" : "inactive"}.`,
       isActive: vehicle.isActive,
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to toggle status", error: err.message });
+    return res.status(500).json({ message: "Failed to toggle status", error: err.message });
   }
 };

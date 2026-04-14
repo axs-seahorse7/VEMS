@@ -29,8 +29,9 @@ export const createAdmin = async () => {
     });
 
     console.log("✅ Admin user created:", adminEmail);
-
+    return resizeBy.status(201).json({ message: "Admin user created successfully" });
   } catch (error) {
     console.error(" Error creating admin:", error.message);
+    return res.status(500).json({ message: "Failed to create admin", error: error.message });
   }
 };
