@@ -101,8 +101,7 @@ export default function VehicleCard({ vehicle, onClick }) {
   const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED";
   const waitingHrs   = hoursWaiting(vehicle?.createdAt);
   const isOverdue    = isWaiting && waitingHrs >= 4;
-  console.log("vehicle trip state:", vehicle?.tripState);
-  console.log("vehicle in waiting:", isWaiting, waitingHrs);
+  
   // ── Shake toggle: fires every 30 s, active for ~1 s ─────────────────────
   const [shaking, setShaking] = useState(false);
 
@@ -142,7 +141,7 @@ export default function VehicleCard({ vehicle, onClick }) {
     </span>
   ) : (
     <span>
-      External <i class="ri-arrow-right-long-line"></i> {vehicle.destinationFactory?.name || "Unknown"}
+      External <i className="ri-arrow-right-long-line"></i> {vehicle.destinationFactory?.name || "Unknown"}
     </span>
   );
 

@@ -247,10 +247,8 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
 export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userRole }) {
   if (!vehicle) return null;
-  console.log("Opening Modal for Vehicle:", vehicle);
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
-  console.log("User Factory ID:", userFactoryId);
 
   const location    = vehicle.location;
   const trip        = vehicle;

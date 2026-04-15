@@ -705,9 +705,8 @@ export default function VehicleDashboard() {
   );
 
  const FGVehicles = allVehicles.filter((v) =>
-  Array.isArray(v.materials) &&
-  v.materials
-    .filter((m) => m && m.material)
+  Array.isArray(v.materials) && v.materials
+    .filter((m) => m && (m.material || m.material?.name))
     .some((m) =>
       typeof m.material === "string"
         ? m.material === "FG"
@@ -716,9 +715,8 @@ export default function VehicleDashboard() {
 );
 
 const RMVehicles = allVehicles.filter((v) =>
-  Array.isArray(v.materials) &&
-  v.materials
-    .filter((m) => m && m.material)
+  Array.isArray(v.materials) && v.materials
+    .filter((m) => m && (m.material || m.material?.name))
     .some((m) =>
       typeof m.material === "string"
         ? m.material === "RM"
@@ -726,12 +724,23 @@ const RMVehicles = allVehicles.filter((v) =>
     )
 );
 
-const pickupCount = pickupVehicles.length;
+// const matrialType = allVehicles.filter((v) => v );
+// matrialType.map((v) => {
+//   if(Array.isArray(v.materials)){
+//     v.materials.map((m) => {
+//       if(m && (m.material || m.material?.name)){
+//         console.log("Material Name:",  m.material , m.name);
+//       }
+//     })
+//   }});
+  
+
+
+  const pickupCount = pickupVehicles.length;
   const deliveryCount = deliveryVehicles.length;
   const fgCount = FGVehicles.length;
   const rmCount = RMVehicles.length;
-  console.log("FG Vehicles:", FGVehicles);
-  console.log("RM Vehicles:", RMVehicles);
+  
 
   // ── Counts ───────────────────────────────────────────────────────────────────
   const segCounts = {
@@ -856,7 +865,7 @@ const pickupCount = pickupVehicles.length;
         </div>
 
         {/* Live Button */}
-        {/* <LiveButton /> */}
+        <LiveButton />
 
         {/* Right: Actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>

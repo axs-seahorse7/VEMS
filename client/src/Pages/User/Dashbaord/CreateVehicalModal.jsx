@@ -583,8 +583,9 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const MATERIAL_TYPES = [{ v: "RM", l: "RM – Raw Material" }, { v: "FG", l: "FG – Finished Goods" }, { v: "Scrap", l: "Scrap" }, { v: "NewMachines", l: "New Machines" }, { v: "Others", l: "Others" }];
   const PURPOSE_OPTS   = [{ v: "Pickup", l: "Pickup" }, { v: "Delivery", l: "Delivery" }];
   const PASS_TYPE_OPTS = [{ v: "Incoming", l: "Incoming" }, { v: "Outgoing", l: "Outgoing" }];
-  const factoryOpts    = factories.map(f => ({ v: f._id, l: `${f.name} – ${f.location}` }));
-
+  const factoryOpts = factories.filter(f => f._id !== user.factory?._id)
+  .map(f => ({v: f._id, l: `${f.name} – ${f.location}`}));  
+  
   // ── Field builders ─────────────────────────────────────────────────────────
   const inp = (key, label, value, onChange, type = "text", placeHolder, req = false) =>{ 
     const ruleKey = {
@@ -714,8 +715,6 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     value: s.v,
     label: s.l,
   }));
-
-  console.log(SUPPLIERS.length, supplierOptions.length);
 
   return (
     <Modal open={open} onClose={handleClose} title="New Vehicle Entry">

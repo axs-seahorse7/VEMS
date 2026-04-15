@@ -4,7 +4,7 @@ export const setupInterceptors = () => {
   // Request
   api.interceptors.request.use(
     (config) => {
-      console.log("🚀", config.method?.toUpperCase(), config.url);
+      // console.log("🚀", config.method?.toUpperCase(), config.url);
       return config;
     },
     (error) => Promise.reject(error)
