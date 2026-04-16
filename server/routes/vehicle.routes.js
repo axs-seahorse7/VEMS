@@ -6,7 +6,8 @@ import {
   updateVehicle,
   deleteVehicle,
   toggleVehicleStatus,
-  getVehicleByNumber
+  getVehicleByNumber,
+  lookupDriver,
 } from "../controllers/vehicles.contollers.js";
 
 const router = express.Router();
@@ -18,5 +19,6 @@ router.put("/vehicles/:id", updateVehicle);
 router.delete("/vehicles/:id", deleteVehicle);
 router.patch("/vehicles/:id/toggle-status", toggleVehicleStatus);
 router.get("/vehicles/number/:vehicleNumber", getVehicleByNumber);
+router.get("/lookup", lookupDriver);
 
 export default router;

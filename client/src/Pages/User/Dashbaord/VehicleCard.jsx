@@ -34,6 +34,7 @@ const STATE_BORDER = {
   inside:  { bar: "linear-gradient(90deg, #10b981, #059669, #10b981)", glow: "#10b981" },
   enroute: { bar: "linear-gradient(90deg, #3b82f6, #2563eb, #3b82f6)", glow: "#3b82f6" },
   closed:  { bar: "linear-gradient(90deg, #94a3b8, #64748b, #94a3b8)", glow: "#94a3b8" },
+  canceled:{ bar: "linear-gradient(90deg, #ef4444, #dc2626, #ef4444)", glow: "#ef4444" },
   unknown: { bar: "linear-gradient(90deg, #e5e7eb, #d1d5db, #e5e7eb)", glow: "#d1d5db" },
 };
 
@@ -98,7 +99,7 @@ export default function VehicleCard({ vehicle, onClick }) {
 
   // ── Overdue logic ────────────────────────────────────────────────────────
   // A card is "overdue" when: still waiting outside AND has been waiting > 4 hrs
-  const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED";
+  const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
   const waitingHrs   = hoursWaiting(vehicle?.createdAt);
   const isOverdue    = isWaiting && waitingHrs >= 4;
   
@@ -123,10 +124,10 @@ export default function VehicleCard({ vehicle, onClick }) {
   // ── State key for border bar ─────────────────────────────────────────────
   const stageKey = (() => {
     if (vehicle?.tripState === "CLOSED") return "closed";
-    if (vehicle?.tripState === "CANCELED") return "canceled";
+    if (vehicle?.tripState === "CANCELLED") return "canceled";
     if (location === "inside_factory") return "inside";
     if (location === "enroute") return "enroute";
-    if (location === "outside_factory") return "waiting";
+    if (location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "waiting";
     return "unknown";
   })();
 
@@ -233,7 +234,7 @@ export default function VehicleCard({ vehicle, onClick }) {
         {/* ── State-based top accent bar ── */}
         <div
           className="state-bar"
-          style={{ background: borderMeta.bar }}
+          style={{ background: borderMeta?.bar }}
           title={`Vehicle is ${stageKey}`}
         />
 
@@ -346,7 +347,7 @@ export default function VehicleCard({ vehicle, onClick }) {
 
           {/* ── Row 3: Info rows ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" color={theme.label} label="Driver" value={vehicleData?.driverName || "—"} />
+            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" color={theme.label} label="Driver" value={vehicle?.driver?.driverName || "—"} />
             <InfoRow
               icon="ri-truck-fill" iconColor="#ea580c"
               label="Purpose"

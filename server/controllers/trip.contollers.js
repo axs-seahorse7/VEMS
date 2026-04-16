@@ -3,6 +3,7 @@ import VehicleState from "../db/models/Vehicle-Model/vehicleState.model.js";
 import Trip from "../db/models/Vehicle-Model/trip.model.js";
 import GateLog from "../db/models/Vehicle-Model/gate.model.js";
 import User from "../db/models/User-Model/user.model.js";
+import Driver from "../db/models/Driver-model/driver.model.js";
 
 
 
@@ -129,209 +130,330 @@ export const createTrip = async (req, res) => {
   }
 };
 
-// export const unloadTrip = async (req, res) => {
-//   try {
-//     const { tripId } = req.params;
-
-//     const trip = await Trip.findById(tripId);
-//     if (!trip) throw new Error("Trip not found");
-
-//     if (trip.status !== "arrived") {
-//       throw new Error("Only arrived trips can be unloaded");
-//     }
-
-//     if (trip.purpose !== "Delivery") {
-//       throw new Error("Unload allowed only for delivery trips");
-//     }
-
-//     const vehicle = await Vehicle.findById(trip.vehicleId);
-//     if (!vehicle) throw new Error("Vehicle not found");
-
-//     const factoryId = trip.destinationFactoryId;
-
-//     // 1. Log operation (NOT checkout)
-//     await GateLog.create({
-//       vehicleId: vehicle._id,
-//       factoryId,
-//       tripId: trip._id,
-//       action: "unload" //  FIXED
-//     });
-
-//     // 2. Update trip
-//     trip.loadStatus = "unloaded";
-//     trip.status = "completed";
-//     trip.completedAt = new Date();
-//     await trip.save();
-
-//     // 3. Update state (vehicle STILL inside)
-//     await VehicleState.findOneAndUpdate(
-//       { vehicleId: vehicle._id },
-//       {
-//         status: "inside_factory",   //  FIXED
-//         currentFactoryId: factoryId,
-//         currentTripId: null         // trip finished
-//       }
-//     );
-
-//     res.json({ success: true });
-
-//   } catch (err) {
-//     console.error(err);
-//     res.status(400).json({ error: err.message });
-//   }
-// };
 
 
 
 
+
+
+// NEW ENDPOINTS BELOW (for internal use by factory staff) - NOT FINALIZED, STILL IN DEV
+
+const assignDriverToTrip = async ({ driverId, tripId, vehicleId }) => {
+  await Driver.findByIdAndUpdate(driverId, {
+    $inc: {
+      "stats.totalTrips": 1
+    },
+    $push: {
+      "stats.routeHistory": {
+        tripId,
+        tripDate: new Date()
+      }
+    },
+    $set: {
+      activeTripId: tripId,
+      assignedVehicle: vehicleId
+    }
+  });
+
+  await Vehicle.findByIdAndUpdate(vehicleId, {
+    driverId
+  });
+};
 
 export const externalVehicleRegister = async (req, res) => {
   try {
-    const { vehicleNumber } = req.body;
-    console.log(req.body);
-    const isInternalShifting = req.body.isInternalShifting;
-    const user = await User.findById(req.userId).populate("factory");
-    if (!vehicleNumber) {
-      return res.status(400).json({ message: "vehicleNumber is required." });
+    const {
+      vehicleNumber,
+      driverIdNumber,
+      driverName,
+      driverContact,
+      driverIdType,
+      licenseNumber,
+      isInternalShifting
+    } = req.body;
+
+    if (!vehicleNumber || !driverIdNumber) {
+      return res.status(400).json({
+        message: "vehicleNumber and driverIdNumber are required"
+      });
     }
 
-    let vehicle = await Vehicle.findOne({ vehicleNumber: vehicleNumber });
+    // ========================
+    // 1. USER
+    // ========================
+    const user = await User.findById(req.userId).populate("factory");
 
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ========================
+    // 2. VEHICLE (GET OR CREATE)
+    // ========================
+    let vehicle = await Vehicle.findOne({ vehicleNumber });
+
+    if (!vehicle) {
+      vehicle = await Vehicle.create({
+        vehicleNumber,
+        type: "external"
+      });
+    }
+
+    // ========================
+    // 3. DRIVER (GET OR CREATE)
+    // ========================
+    let driver = await Driver.findOne({$or: [{ driverIdNumber },{ licenseNumber }] });
+
+    if (driver && driver.activeTripId) {
+      return res.status(400).json({
+        message: "Driver already on a trip"
+      });
+    }
+
+    if (!driver) {
+      driver = await Driver.create({
+        driverName,
+        driverContact,
+        driverIdType,
+        driverIdNumber,
+        licenseNumber
+      });
+    }
+
+    // ========================
+    // 4. VEHICLE CHECK
+    // ========================
     const existingTrip = await Trip.findOne({
-      vehicleId: vehicle?._id,
+      vehicleId: vehicle._id,
       tripState: { $in: ["ACTIVE", "COMPLETED", "PENDING"] }
     });
 
-    if(existingTrip){
-      return res.status(400).json({ message: "Vehicle already on a trip." });
+    if (existingTrip) {
+      return res.status(400).json({
+        message: "Vehicle already on a trip"
+      });
     }
 
-    if (!vehicle){
-      const newVehicle = await Vehicle.create({ 
-        ...req.body,
-        vehicleNumber, 
-        type: "external",
-      });
-
-      vehicle = newVehicle;
-      }
+    // ========================
+    // 5. CREATE TRIP
+    // ========================
     let newTrip = null;
 
-      if(vehicle){
-       newTrip = await Trip.create({
+    if(vehicle && driver){
+      newTrip= await Trip.create({
         vehicleId: vehicle._id,
-        type: isInternalShifting ? "internal_transfer" : "external_delivery",
+        driverId: driver._id,
+        type: isInternalShifting? "internal_transfer": "external_delivery",
         phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
-        location: isInternalShifting ? "inside_factory" : "outside_factory",
-        sourceFactoryId: isInternalShifting ? user.factory._id : null,
-        destinationFactoryId: isInternalShifting ? req.body.destinationFactoryId : req.body.sourceFactoryId,
+        location: isInternalShifting? "inside_factory": "outside_factory",
+        sourceFactoryId: isInternalShifting? user.factory._id: null,
+        destinationFactoryId: isInternalShifting? req.body.destinationFactoryId: req.body.sourceFactoryId,
         purpose: req.body.purpose || "Delivery",
         status: isInternalShifting ? "ORIGIN" : "ARRIVED",
         loadStatus: "pending",
         startedAt: new Date(),
-        completedAt: null,
-        materials: [{
-          name: req.body.materialType,
-          material: req.body.material || req.body.materialType,
-          quantity: req.body.quantity,
-          invoiceNo: req.body.invoiceNo,
-          unit: req.body.unit,
-          invoiceAmmount: req.body.invoiceAmount,
-          seal: req.body.seal || "N/A",
-          customer: req.body.customer,
-          supplier: req.body.supplier || "N/A"
-        }],
-        tripHistory: [{
-          status: isInternalShifting ? "ORIGIN" : "ARRIVED",
-          location: isInternalShifting ? "inside_factory" : "outside_factory",
-          phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
-          action: "begin",
-          timestamp: new Date()
-        }]
+        materials: [
+          {
+            name: req.body.materialType,
+            material: req.body.material || req.body.materialType,
+            quantity: req.body.quantity,
+            invoiceNo: req.body.invoiceNo,
+            unit: req.body.unit,
+            invoiceAmount: req.body.invoiceAmount,
+            seal: req.body.seal || "N/A",
+            customer: req.body.customer,
+            supplier: req.body.supplier || "N/A"
+          }
+        ],
 
+        tripHistory: [
+          {
+            status: isInternalShifting ? "ORIGIN" : "ARRIVED",
+            location: isInternalShifting
+              ? "inside_factory"
+              : "outside_factory",
+            phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
+            action: "begin",
+            timestamp: new Date()
+          }
+        ]
       });
+    
     }
 
-   return res.status(201).json({ success: true, trip: newTrip });
+    // ========================
+    // 6. ASSIGN RELATIONS
+    // ========================
+    await assignDriverToTrip({
+      driverId: driver._id,
+      tripId: newTrip._id,
+      vehicleId: vehicle._id
+    });
+
+    // ========================
+    // 7. RESPONSE
+    // ========================
+    return res.status(201).json({
+      success: true,
+      trip: newTrip
+    });
 
   } catch (err) {
     console.error(err);
-    return res.status(400).json({ error: err.message });
+    return res.status(500).json({
+      error: err.message
+    });
   }
 };
 
 export const internalVehicleRegister = async (req, res) => {
   try {
-    const { vehicleNumber } = req.body;
-    const user = await User.findById(req.userId);
-    console.log(req.body);
-    if (!vehicleNumber) {
-      return res.status(400).json({ message: "vehicleNumber is required." });
+    const {
+      vehicleNumber,
+      driverIdNumber,
+      driverName,
+      driverContact,
+      driverIdType,
+      licenseNumber,
+      destinationFactoryId,
+      purpose
+    } = req.body;
+
+    // ========================
+    // 1. VALIDATION
+    // ========================
+    if (!vehicleNumber || !driverIdNumber) {
+      return res.status(400).json({
+        message: "vehicleNumber and driverIdNumber are required"
+      });
     }
 
-    let vehicle = await Vehicle.findOne({ vehicleNumber: vehicleNumber });
-    if (!vehicle){
-      const newVehicle = await Vehicle.create({
+    // ========================
+    // 2. USER
+    // ========================
+    const user = await User.findById(req.userId).populate("factory");
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    // ========================
+    // 3. VEHICLE (GET OR CREATE)
+    // ========================
+    let vehicle = await Vehicle.findOne({ vehicleNumber });
+
+    if (!vehicle) {
+      vehicle = await Vehicle.create({
         ...req.body,
-        vehicleNumber, 
-        type: "internal",
+        vehicleNumber,
+        type: "internal"
       });
+    }
 
-      vehicle = newVehicle;
-      }
-
-      const existingTrip = await Trip.findOne({
-        vehicleId: vehicle._id,
-        tripState: { $in: ["ACTIVE", "COMPLETED", "PENDING"] }
+    // ========================
+    // 4. DRIVER (GET OR CREATE)
+    // ========================
+    let driver = await Driver.findOne({$or: [{ driverIdNumber },{ licenseNumber }] });
+    
+    if (driver && driver.activeTripId ) {
+      return res.status(400).json({
+        message: "Driver already on a trip use a different driver or wait until current trip is completed"
       });
+    }
 
-      if (existingTrip) {
-        return res.status(400).json({ message: "Vehicle already on a trip." });
-      }
 
+    if (!driver ) {
+      driver = await Driver.create({
+        driverName,
+        driverContact,
+        driverIdType,
+        driverIdNumber,
+        licenseNumber
+      });
+    }
+
+    // ========================
+    // 5. VEHICLE CHECK
+    // ========================
+    const existingTrip = await Trip.findOne({
+      vehicleId: vehicle._id,
+      tripState: { $in: ["ACTIVE", "COMPLETED", "PENDING"] }
+    });
+
+    if (existingTrip) {
+      return res.status(400).json({
+        message: "Vehicle already on a trip"
+      });
+    }
+
+    // ========================
+    // 6. CREATE TRIP
+    // ========================
     let newTrip = null;
 
-      if(vehicle){
-       newTrip = await Trip.create({
+    if(vehicle && driver){
+      newTrip = await Trip.create({
         vehicleId: vehicle._id,
+        driverId: driver._id,
         type: "internal_transfer",
         phase: "ORIGIN",
         location: "inside_factory",
-        sourceFactoryId: user.factory || null,
-        destinationFactoryId: req.body.destinationFactoryId || null,
-        purpose: req.body.purpose || "Delivery",
+        sourceFactoryId: user.factory?._id || null,
+        destinationFactoryId: destinationFactoryId || null,
+        purpose: purpose || "Delivery",
         status: "ORIGIN",
         loadStatus: "pending",
         startedAt: new Date(),
-        completedAt:null,
-        materials: [{
-          name:req.body.materialType,
-          material: req.body.material || req.body.materialType ,
-          quantity: req.body.quantity,
-          invoiceNo: req.body.invoiceNo,
-          unit: req.body.unit,
-          invoiceAmmount: req.body.invoiceAmount,
-          seal: req.body.seal || "N/A",
-          customer: req.body.customer,
-          supplier: req.body.supplier || "N/A",
+        completedAt: null,
+        materials: [
+          {
+            name: req.body.materialType,
+            material: req.body.material || req.body.materialType,
+            quantity: req.body.quantity,
+            invoiceNo: req.body.invoiceNo,
+            unit: req.body.unit,
+            invoiceAmount: req.body.invoiceAmount,
+            seal: req.body.seal || "N/A",
+            customer: req.body.customer,
+            supplier: req.body.supplier || "N/A"
+          }
+        ],
 
-        }],
-        tripHistory: [{
-          status: "ORIGIN",
-          phase: "ORIGIN",
-          location: "inside_factory",
-          action: "begin",
-          timestamp: new Date()
-        }]
-
+        tripHistory: [
+          {
+            status: "ORIGIN",
+            phase: "ORIGIN",
+            location: "inside_factory",
+            action: "begin",
+            timestamp: new Date()
+          }
+        ]
       });
-    }
+  }
+    // ========================
+    // 7. ASSIGN RELATIONS
+    // ========================
+    await assignDriverToTrip({
+      driverId: driver._id,
+      tripId: newTrip._id,
+      vehicleId: vehicle._id
+    });
 
-    return res.status(201).json({ success: true, trip: newTrip });
+    // ========================
+    // 8. RESPONSE
+    // ========================
+    return res.status(201).json({
+      success: true,
+      trip: newTrip
+    });
 
   } catch (err) {
     console.error(err);
-    return res.status(400).json({ error: err.message });
+    return res.status(500).json({
+      error: err.message
+    });
   }
 };
 
@@ -355,9 +477,9 @@ export const getVehicleTrips = async (req, res) => {
         },
         {
           $or: [
-            { tripState: { $ne: "CLOSED" } },
+            { tripState: { $nin: ["CLOSED", "CANCELLED"] } },
             {
-              tripState: "CLOSED",
+              tripState: { $in: ["CLOSED", "CANCELLED"] },
               createdAt: { $gte: last36Hours }
             }
           ]
@@ -379,6 +501,21 @@ export const getVehicleTrips = async (req, res) => {
         }
       },
       { $unwind: "$vehicle" },
+
+      {
+        $lookup: {
+          from: "drivers",
+          localField: "driverId",
+          foreignField: "_id",
+          as: "driver"
+        }
+      },
+      {
+        $unwind: {
+          path: "$driver",
+          preserveNullAndEmptyArrays: true
+        }
+      },
 
       //  Restriction
       {
@@ -426,6 +563,7 @@ export const getVehicleTrips = async (req, res) => {
       {
         $project: {
           vehicle: 1,
+          driver: 1,
           type: 1,
           phase: 1,
           location: 1,
@@ -639,13 +777,32 @@ export const checkoutVehicle = async (req, res) => {
 export const checkoutAndExitVehicle = async (req, res) => {
   try {
     const { tripId } = req.params;
+
     const trip = await Trip.findById(tripId);
 
-    if (!trip) throw new Error("Trip not found");
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // ========================
+    // 1. VALIDATION
+    // ========================
+    if (trip.tripState === "CLOSED") {
+      return res.status(400).json({
+        message: "Trip already closed"
+      });
+    }
 
     if (trip.location !== "inside_factory") {
-      throw new Error("Vehicle must be in transit to checkout and exit");
+      return res.status(400).json({
+        message: "Vehicle must be inside factory to checkout"
+      });
     }
+
+    // ========================
+    // 2. CLOSE TRIP
+    // ========================
+    const now = new Date();
 
     const updatedTrip = await Trip.findByIdAndUpdate(
       tripId,
@@ -653,28 +810,64 @@ export const checkoutAndExitVehicle = async (req, res) => {
         location: "outside_factory",
         status: "DESTINATION",
         tripState: "CLOSED",
-        completedAt: new Date(),
+        completedAt: now,
         $push: {
           tripHistory: {
-            status: trip.status,
+            status: "DESTINATION",
             location: "outside_factory",
             phase: "DESTINATION",
             action: "closed",
-            timestamp: new Date()
+            timestamp: now
           }
         }
       },
       { new: true }
     );
+
+    // ========================
+    // 3. RELEASE DRIVER + UPDATE STATS
+    // ========================
+    if (trip.driverId) {
+      const duration =
+        updatedTrip.completedAt && updatedTrip.startedAt
+          ? Math.floor(
+              (updatedTrip.completedAt - updatedTrip.startedAt) / 1000
+            )
+          : 0;
+
+      await Driver.findByIdAndUpdate(trip.driverId, {
+        $inc: {
+          "stats.totalTime": duration
+          // distance → only if you track it
+        },
+        $set: {
+          activeTripId: null,
+          assignedVehicle: null
+        }
+      });
+    }
+
+    // ========================
+    // 4. RELEASE VEHICLE
+    // ========================
+    if (trip.vehicleId) {
+      await Vehicle.findByIdAndUpdate(trip.vehicleId, {
+        driverId: null
+      });
+    }
+
+    // ========================
+    // 5. RESPONSE
+    // ========================
     return res.json({
       success: true,
       trip: updatedTrip,
       message: "Vehicle checked out and trip closed successfully"
     });
-  }
-    catch (err) {
+
+  } catch (err) {
     console.error(err);
-    return res.status(400).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -721,38 +914,102 @@ export const markArrived = async (req, res) => {
 export const markInternalTransferComplete = async (req, res) => {
   try {
     const { tripId } = req.params;
+
     const trip = await Trip.findById(tripId);
 
-    if (!trip) throw new Error("Trip not found");
-    
-    if (trip.location !== "inside_factory") {
-      throw new Error("Vehicle must be inside factory to mark trip complete");
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
     }
+
+    // ========================
+    // 1. VALIDATION
+    // ========================
+    if (trip.tripState === "CLOSED") {
+      return res.status(400).json({
+        message: "Trip already completed"
+      });
+    }
+
+    if (trip.tripState === "CANCELLED") {
+      return res.status(400).json({
+        message: "Cancelled trip cannot be completed"
+      });
+    }
+
+    if (trip.location !== "inside_factory") {
+      return res.status(400).json({
+        message: "Vehicle must be inside factory to complete trip"
+      });
+    }
+
+    const now = new Date();
+
+    // ========================
+    // 2. CLOSE TRIP
+    // ========================
     const updatedTrip = await Trip.findByIdAndUpdate(
       tripId,
       {
         tripState: "CLOSED",
-        completedAt: new Date(),
+        status: "DESTINATION",
+        completedAt: now,
         $push: {
           tripHistory: {
-            status: trip.status,
+            status: "DESTINATION",
             location: trip.location,
             phase: "DESTINATION",
             action: "closed",
-            timestamp: new Date()
+            timestamp: now
           }
         }
       },
       { new: true }
     );
+
+    // ========================
+    // 3. UPDATE DRIVER STATS + RELEASE
+    // ========================
+    if (trip.driverId) {
+      const duration =
+        updatedTrip.completedAt && updatedTrip.startedAt
+          ? Math.floor(
+              (updatedTrip.completedAt - updatedTrip.startedAt) / 1000
+            )
+          : 0;
+
+      await Driver.findByIdAndUpdate(trip.driverId, {
+        $inc: {
+          "stats.totalTime": duration
+          // add distance if available
+        },
+        $set: {
+          activeTripId: null,
+          assignedVehicle: null
+        }
+      });
+    }
+
+    // ========================
+    // 4. RELEASE VEHICLE
+    // ========================
+    if (trip.vehicleId) {
+      await Vehicle.findByIdAndUpdate(trip.vehicleId, {
+        driverId: null
+      });
+    }
+
+    // ========================
+    // 5. RESPONSE
+    // ========================
     return res.json({
       success: true,
       trip: updatedTrip,
       message: "Trip marked as closed successfully"
     });
+
   } catch (err) {
     console.error(err);
-    return res.status(400).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -797,37 +1054,83 @@ export const markLoadCompleteAtDestination = async (req, res) => {
 export const cancelTrip = async (req, res) => {
   try {
     const { tripId } = req.params;
+
     const trip = await Trip.findById(tripId);
 
-    if (!trip) throw new Error("Trip not found");
-    
-    if (trip.location !== "inside_factory") {
-      throw new Error("Vehicle must be inside factory to cancel trip");
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
     }
+
+    // ========================
+    // 1. VALIDATION
+    // ========================
+    if (trip.tripState === "CANCELLED") {
+      return res.status(400).json({
+        message: "Trip already cancelled"
+      });
+    }
+
+    if (trip.tripState === "CLOSED") {
+      return res.status(400).json({
+        message: "Cannot cancel a completed trip"
+      });
+    }
+
+    const now = new Date();
+
+    // ========================
+    // 2. CANCEL TRIP
+    // ========================
     const updatedTrip = await Trip.findByIdAndUpdate(
       tripId,
       {
         tripState: "CANCELLED",
-        completedAt: new Date(),
+        completedAt: now,
         $push: {
           tripHistory: {
-            status: trip.status,
+            status: "CANCELLED",
             location: trip.location,
-            phase: "DESTINATION",
+            phase: trip.phase, 
             action: "cancelled",
-            timestamp: new Date()
+            timestamp: now
           }
         }
       },
       { new: true }
     );
+
+    // ========================
+    // 3. RELEASE DRIVER
+    // ========================
+    if (trip.driverId) {
+      await Driver.findByIdAndUpdate(trip.driverId, {
+        $set: {
+          activeTripId: null,
+          assignedVehicle: null
+        }
+      });
+    }
+
+    // ========================
+    // 4. RELEASE VEHICLE
+    // ========================
+    if (trip.vehicleId) {
+      await Vehicle.findByIdAndUpdate(trip.vehicleId, {
+        driverId: null
+      });
+    }
+
+    // ========================
+    // 5. RESPONSE
+    // ========================
     return res.json({
       success: true,
       trip: updatedTrip,
       message: "Trip cancelled successfully"
     });
+
   } catch (err) {
     console.error(err);
-    return res.status(400).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };

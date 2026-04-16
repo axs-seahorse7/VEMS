@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../../../../services/API/Api/api";
-import { message, Select  } from "antd";
-import { Factory, Truck } from "lucide-react";
+import { message, Select } from "antd";
+import { Factory, Truck, User, Car, ClipboardList, ChevronDown, ChevronUp } from "lucide-react";
 const { Option } = Select;
 
 // ─── LocalStorage Helpers ─────────────────────────────────────────────────────
 const LS_INTERNAL = "veh_modal_internal_draft";
 const LS_EXTERNAL = "veh_modal_external_draft";
 const LS_TAB      = "veh_modal_active_tab";
+
 const CUSTOMER = [
   { v: "Abs Electroplaters", l: "Abs Electroplaters", type: "customer" },
   { v: "Acerpure India Pvt Ltd", l: "Acerpure India Pvt Ltd", type: "customer" },
@@ -123,7 +124,6 @@ const SUPPLIERS = [
   { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
   { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" },
   { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
-  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
   { v: "MADAN ELECTRO", l: "MADAN ELECTRO" },
   { v: "KV BOXCORP", l: "KV BOXCORP" },
   { v: "Suyog eng", l: "Suyog eng" },
@@ -131,7 +131,6 @@ const SUPPLIERS = [
   { v: "SAMARTH", l: "SAMARTH" },
   { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
   { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" },
-
   { v: "Macdermid alpha", l: "Macdermid alpha" },
   { v: "SHRI JI FOAM", l: "SHRI JI FOAM" },
   { v: "Metacool", l: "Metacool" },
@@ -167,14 +166,13 @@ const SUPPLIERS = [
   { v: "MAULI POLYMER", l: "MAULI POLYMER" },
   { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
   { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" }
-]
+];
 
 const lsGet = (key, fallback) => {
   try {
     const v = localStorage.getItem(key);
     if (!v) return fallback;
     const parsed = JSON.parse(v);
-    // Merge with fallback so new fields added later don't go missing
     return { ...fallback, ...parsed };
   } catch {
     return fallback;
@@ -184,20 +182,42 @@ const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val
 const lsDel = (...keys) => keys.forEach(k => { try { localStorage.removeItem(k); } catch {} });
 
 // ─── Default Shapes ───────────────────────────────────────────────────────────
-const DEFAULT_COMMON = {
+// Driver layer — independent of vehicle
+const DEFAULT_DRIVER = {
   driverName: "", driverContact: "", driverIdType: "Aadhar",
-  driverIdNumber: "", vehicleNumber: "", transporterName: "",
-  typeOfVehicle: "truck", PUCExpiry: "",
+  driverIdNumber: "", licenseNumber: "",
 };
+
+// Vehicle layer — independent of driver
+const DEFAULT_VEHICLE = {
+  vehicleNumber: "", typeOfVehicle: "truck",
+  transporterName: "", PUCExpiry: "",
+};
+
+// Trip layer — shared trip/material details
+const DEFAULT_TRIP_COMMON = {
+  purpose: "", materialType: "",
+};
+const DEFAULT_TRIP_INTERNAL = {
+  ...DEFAULT_TRIP_COMMON,
+  destinationFactoryId: "",
+};
+const DEFAULT_TRIP_EXTERNAL = {
+  ...DEFAULT_TRIP_COMMON,
+  supplier: "", material: "", quantity: "", invoiceNo: "",
+  invoiceAmount: "", customer: "", isInternalShifting: false,
+  destinationFactoryId: "", passType: "Incoming",
+};
+
 const DEFAULT_INTERNAL = {
-  ...DEFAULT_COMMON,
-  destinationFactoryId: "", purpose: "", materialType: "",
+  ...DEFAULT_DRIVER,
+  ...DEFAULT_VEHICLE,
+  ...DEFAULT_TRIP_INTERNAL,
 };
 const DEFAULT_EXTERNAL = {
-  ...DEFAULT_COMMON,
-  purpose: "", materialType: "", supplier: "", material: "",
-  quantity: "", invoiceNo: "", invoiceAmount: "", customer: "",
-  isInternalShifting: false, destinationFactoryId: "", passType: "Incoming",
+  ...DEFAULT_DRIVER,
+  ...DEFAULT_VEHICLE,
+  ...DEFAULT_TRIP_EXTERNAL,
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -211,7 +231,6 @@ const Icon = {
 };
 
 // ─── Modal Shell ──────────────────────────────────────────────────────────────
-
 function Modal({ open, onClose, children, title, width = 780 }) {
   if (!open) return null;
   return (
@@ -221,6 +240,7 @@ function Modal({ open, onClose, children, title, width = 780 }) {
         @keyframes vehIn    { from{opacity:0;transform:scale(.97) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
         @keyframes vehFade  { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
         @keyframes tabSlide { from{opacity:0;transform:translateX(6px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes layerOpen { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
         .veh-btn-p { transition:all .15s; }
         .veh-btn-p:hover:not(:disabled) { filter:brightness(1.08); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.18); }
         .veh-btn-c { transition:background .15s; }
@@ -228,6 +248,7 @@ function Modal({ open, onClose, children, title, width = 780 }) {
         .veh-inp:focus { border-color:#6366f1!important; box-shadow:0 0 0 3px rgba(99,102,241,.12)!important; outline:none; }
         .veh-sec { animation:tabSlide .18s ease; }
         .veh-badge { animation:vehFade .25s ease; }
+        .layer-body { animation:layerOpen .18s ease; }
         .tab-pill { transition:all .22s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden; }
         .tab-pill::before { content:''; position:absolute; inset:0; opacity:0; transition:opacity .22s; }
         .tab-pill.active::before { opacity:1; }
@@ -302,55 +323,26 @@ function TabBar({ active, setActive, autoSwitched, hasDraft }) {
             className={`tab-pill${isActive ? " active" : ""}`}
             onClick={() => setActive(t.key)}
             style={{
-              flex: 1,
-              border: isActive ? `1.5px solid ${t.activeBorder}` : "1.5px solid #e5e7eb",
-              background: isActive ? t.activeBg : "#fafafa",
-              borderRadius: 10,
-              padding: "9px 12px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
+              flex: 1, border: isActive ? `1.5px solid ${t.activeBorder}` : "1.5px solid #e5e7eb",
+              background: isActive ? t.activeBg : "#fafafa", borderRadius: 10, padding: "9px 12px",
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
               transition: "all .22s cubic-bezier(.4,0,.2,1)",
-              boxShadow: isActive ? `0 2px 12px ${t.activeBorder}55` : "none",
-              position: "relative",
+              boxShadow: isActive ? `0 2px 12px ${t.activeBorder}55` : "none", position: "relative",
             }}
           >
-            {/* Icon bubble */}
-            <div style={{
-              width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-              background: isActive ? t.iconBg : "#f3f4f6",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: isActive ? t.iconColor : "#9ca3af",
-              transition: "all .22s",
-              boxShadow: isActive ? `0 0 0 3px ${t.iconColor}18` : "none",
-            }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: isActive ? t.iconBg : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", color: isActive ? t.iconColor : "#9ca3af", transition: "all .22s", boxShadow: isActive ? `0 0 0 3px ${t.iconColor}18` : "none" }}>
               {t.icon}
             </div>
-
-            {/* Text */}
             <div style={{ textAlign: "left", minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 800, color: isActive ? t.activeColor : "#6b7280", letterSpacing: -.1, transition: "color .22s" }}>
-                {t.label}
-              </div>
-              <div style={{ fontSize: 9.5, color: isActive ? t.activeColor + "aa" : "#9ca3af", fontWeight: 500, transition: "color .22s" }}>
-                {t.sub}
-              </div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: isActive ? t.activeColor : "#6b7280", letterSpacing: -.1, transition: "color .22s" }}>{t.label}</div>
+              <div style={{ fontSize: 9.5, color: isActive ? t.activeColor + "aa" : "#9ca3af", fontWeight: 500, transition: "color .22s" }}>{t.sub}</div>
             </div>
-
-            {/* Draft dot */}
             {hasDraft[t.key] && (
               <div style={{ position: "absolute", top: 7, right: 9, width: 6, height: 6, borderRadius: "50%", background: "#6366f1", boxShadow: "0 0 0 2px #fff" }} title="Draft saved" />
             )}
-
-            {/* AUTO badge */}
             {autoSwitched === t.key && (
-              <span className="veh-badge" style={{ position: "absolute", top: -4, right: -4, background: "#6366f1", color: "#fff", fontSize: 7.5, fontWeight: 800, borderRadius: 6, padding: "1px 5px", letterSpacing: .4 }}>
-                AUTO
-              </span>
+              <span className="veh-badge" style={{ position: "absolute", top: -4, right: -4, background: "#6366f1", color: "#fff", fontSize: 7.5, fontWeight: 800, borderRadius: 6, padding: "1px 5px", letterSpacing: .4 }}>AUTO</span>
             )}
-
-            {/* Active indicator bar */}
             {isActive && (
               <div style={{ position: "absolute", bottom: 0, left: "10%", width: "80%", height: 2, borderRadius: "2px 2px 0 0", background: t.gradient }} />
             )}
@@ -361,22 +353,50 @@ function TabBar({ active, setActive, autoSwitched, hasDraft }) {
   );
 }
 
+// ─── Collapsible Layer ────────────────────────────────────────────────────────
+function Layer({ icon, title, subtitle, color, bg, border, found, foundMsg, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div style={{ border: `1.5px solid ${found ? "#6ee7b7" : border}`, borderRadius: 10, marginBottom: 8, overflow: "hidden", transition: "border-color .2s" }}>
+      {/* Layer Header */}
+      <button
+        onClick={() => setOpen(p => !p)}
+        style={{ width: "100%", background: found ? "linear-gradient(135deg,#ecfdf5,#d1fae5)" : bg, border: "none", padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 9, transition: "background .2s" }}
+      >
+        <div style={{ width: 26, height: 26, borderRadius: 7, background: found ? "#6ee7b7" : color + "22", display: "flex", alignItems: "center", justifyContent: "center", color: found ? "#065f46" : color, flexShrink: 0 }}>
+          {icon}
+        </div>
+        <div style={{ textAlign: "left", flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: found ? "#065f46" : "#374151" }}>{title}</div>
+          <div style={{ fontSize: 9, color: found ? "#059669" : "#9ca3af", fontWeight: 500 }}>
+            {found ? foundMsg : subtitle}
+          </div>
+        </div>
+        {found && (
+          <span style={{ fontSize: 9, background: "#059669", color: "#fff", borderRadius: 5, padding: "1px 6px", fontWeight: 700, marginRight: 4 }}>AUTO-FILLED</span>
+        )}
+        <span style={{ color: "#9ca3af", display: "flex", alignItems: "center" }}>
+          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </span>
+      </button>
+
+      {/* Layer Body */}
+      {open && (
+        <div className="layer-body" style={{ padding: "10px 12px 10px", background: "#fff" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Section Label ────────────────────────────────────────────────────────────
 function SL({ label, color = "#6366f1" }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, marginTop: 2 }}>
       <span style={{ fontSize: 9, fontWeight: 800, color, textTransform: "uppercase", letterSpacing: .8, whiteSpace: "nowrap" }}>{label}</span>
       <div style={{ flex: 1, height: 1, background: `${color}30` }} />
-    </div>
-  );
-}
-
-// ─── Lookup Banner ────────────────────────────────────────────────────────────
-function LookupBanner({ found, vehicleNumber }) {
-  if (!vehicleNumber || !found) return null;
-  return (
-    <div style={{ background: "linear-gradient(135deg,#ecfdf5,#d1fae5)", border: "1px solid #6ee7b7", borderRadius: 7, padding: "5px 11px", marginBottom: 8, fontSize: 10, color: "#065f46", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
-      ✅ Vehicle found — details auto-filled.
     </div>
   );
 }
@@ -402,16 +422,16 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const [externalForm, _setExternal]    = useState(() => lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
   const [errors, setErrors]             = useState({});
   const [submitting, setSubmitting]     = useState(false);
-  const [vehicleLookup, setVL]          = useState({ loading: false, found: false });
   const [autoSwitched, setAutoSwitched] = useState(null);
-  const [draftSaved, setDraftSaved]    = useState(false);
+  const [draftSaved, setDraftSaved]     = useState(false);
+  const [hasDraft, setHasDraft]         = useState({ internal: false, external: false });
 
-  // Track whether each tab has a non-empty draft
-  const [hasDraft, setHasDraft] = useState({ internal: false, external: false });
+  // ── Independent lookup states ──
+  const [driverLookup, setDL] = useState({ loading: false, found: false, foundBy: null });
+  const [vehicleLookup, setVL] = useState({ loading: false, found: false });
 
   const draftTimer = useRef(null);
 
-  // ── Check if a form has any meaningful content ────────────────────────────
   const checkDraft = useCallback((intForm, extForm) => {
     const hasData = (form, defaults) =>
       Object.keys(defaults).some(k => {
@@ -424,7 +444,6 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     });
   }, []);
 
-  // ── Wrapped setters: persist to localStorage immediately on every change ──
   const setInternalForm = useCallback(updater => {
     _setInternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -451,10 +470,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     draftTimer.current = setTimeout(() => setDraftSaved(false), 2000);
   };
 
-  // Persist active tab
   useEffect(() => { lsSet(LS_TAB, activeTab); }, [activeTab]);
 
-  // On open: re-hydrate from localStorage and check for existing drafts
   useEffect(() => {
     if (!open) return;
     const savedInternal = lsGet(LS_INTERNAL, DEFAULT_INTERNAL);
@@ -476,7 +493,41 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
       .finally(() => setFF(false));
   }, [open]);
 
-  // ── Vehicle Lookup ─────────────────────────────────────────────────────────
+  // ── Driver Lookup — by contact OR idNumber ─────────────────────────────────
+  // Called whenever driverContact or driverIdNumber changes
+  const lookupDriver = useCallback(
+    debounce(async (value, field, currentTab) => {
+      // contact: need 10 digits; idNumber: need 4+ chars
+      if (field === "driverContact" && value.length < 10) return;
+      if (field === "driverIdNumber" && value.length < 4) return;
+
+      setDL({ loading: true, found: false, foundBy: null });
+      try {
+        const res = await api.get(`/lookup`, { params: { [field]: value } });
+        const d = res.data?.driver || res.data;
+        if (d) {
+          const patch = {
+            driverName:      d.driverName    || "",
+            driverContact:   d.driverContact || "",
+            driverIdType:    d.driverIdType  || "Aadhar",
+            driverIdNumber:  d.driverIdNumber || "",
+            licenseNumber:   d.licenseNumber || "",
+          };
+          if (currentTab === "internal") setInternalForm(p => ({ ...p, ...patch }));
+          else                           setExternalForm(p => ({ ...p, ...patch }));
+          setDL({ loading: false, found: true, foundBy: field });
+        } else {
+          setDL({ loading: false, found: false, foundBy: null });
+        }
+      } catch {
+        setDL({ loading: false, found: false, foundBy: null });
+      }
+    }, 700),
+    [setInternalForm, setExternalForm]
+  );
+
+  // ── Vehicle Lookup — by vehicleNumber only ─────────────────────────────────
+  // Only fills vehicle fields: vehicleNumber, typeOfVehicle, transporterName, PUCExpiry
   const lookupVehicle = useCallback(
     debounce(async (vehicleNumber, currentTab) => {
       if (!vehicleNumber || vehicleNumber.length < 4) return;
@@ -486,11 +537,11 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
         const v = res.data?.vehicle || res.data;
         if (v) {
           const patch = {
-            driverName: v.driverName || "", driverContact: v.driverContact || "",
-            driverIdType: v.driverIdType || "Aadhar", driverIdNumber: v.driverIdNumber || "",
-            transporterName: v.transporterName || "", typeOfVehicle: v.typeOfVehicle || "truck",
-            PUCExpiry: v.PUCExpiry ? v.PUCExpiry.split("T")[0] : "",
+            typeOfVehicle:   v.typeOfVehicle   || "truck",
+            transporterName: v.transporterName || "",
+            PUCExpiry:       v.PUCExpiry ? v.PUCExpiry.split("T")[0] : "",
           };
+          // Auto-switch tab if vehicle type differs
           if (v.type && v.type !== currentTab) {
             setActiveTab(v.type);
             setAutoSwitched(v.type);
@@ -513,9 +564,21 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   );
 
   // ── Field handlers ─────────────────────────────────────────────────────────
-  const setInternal = (k, v) => { setInternalForm(p => ({ ...p, [k]: v })); if (k === "vehicleNumber") lookupVehicle(v, "internal"); clearErr(k); };
-  const setExternal = (k, v) => { setExternalForm(p => ({ ...p, [k]: v })); if (k === "vehicleNumber") lookupVehicle(v, "external"); clearErr(k); };
-  const clearErr    = k => setErrors(p => ({ ...p, [k]: "" }));
+  const setInternal = (k, v) => {
+    setInternalForm(p => ({ ...p, [k]: v }));
+    if (k === "vehicleNumber")  lookupVehicle(v, "internal");
+    if (k === "driverContact")  lookupDriver(v, "driverContact", "internal");
+    if (k === "driverIdNumber") lookupDriver(v, "driverIdNumber", "internal");
+    clearErr(k);
+  };
+  const setExternal = (k, v) => {
+    setExternalForm(p => ({ ...p, [k]: v }));
+    if (k === "vehicleNumber")  lookupVehicle(v, "external");
+    if (k === "driverContact")  lookupDriver(v, "driverContact", "external");
+    if (k === "driverIdNumber") lookupDriver(v, "driverIdNumber", "external");
+    clearErr(k);
+  };
+  const clearErr = k => setErrors(p => ({ ...p, [k]: "" }));
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const validateInternal = () => {
@@ -560,13 +623,12 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     finally { setSubmitting(false); }
   };
 
-  // ── Close: clears drafts ───────────────────────────────────────────────────
   const handleClose = () => {
     onClose();
     _setInternal(DEFAULT_INTERNAL); lsSet(LS_INTERNAL, DEFAULT_INTERNAL);
     _setExternal(DEFAULT_EXTERNAL); lsSet(LS_EXTERNAL, DEFAULT_EXTERNAL);
     lsDel(LS_TAB);
-    setErrors({}); setVL({ loading: false, found: false }); setAutoSwitched(null);
+    setErrors({}); setVL({ loading: false, found: false }); setDL({ loading: false, found: false, foundBy: null }); setAutoSwitched(null);
     setHasDraft({ internal: false, external: false });
   };
 
@@ -583,116 +645,73 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const MATERIAL_TYPES = [{ v: "RM", l: "RM – Raw Material" }, { v: "FG", l: "FG – Finished Goods" }, { v: "Scrap", l: "Scrap" }, { v: "NewMachines", l: "New Machines" }, { v: "Others", l: "Others" }];
   const PURPOSE_OPTS   = [{ v: "Pickup", l: "Pickup" }, { v: "Delivery", l: "Delivery" }];
   const PASS_TYPE_OPTS = [{ v: "Incoming", l: "Incoming" }, { v: "Outgoing", l: "Outgoing" }];
-  const factoryOpts = factories.filter(f => f._id !== user.factory?._id)
-  .map(f => ({v: f._id, l: `${f.name} – ${f.location}`}));  
-  
-  // ── Field builders ─────────────────────────────────────────────────────────
-  const inp = (key, label, value, onChange, type = "text", placeHolder, req = false) =>{ 
-    const ruleKey = {
-      driverContact: {maxLength: 10},
-    }
-    const placeholderRule = {
-      driverContact: " _ _ _ _ _ _ _ _ _ _ ",
-      driverName: "Enter Driver Name",
-      driverIdNumber: "Enter ID Number",
-      transporterName: "Enter Transporter Name",
-      vehicleNumber: "e.g. MH12AB1234",
-    }
+  const factoryOpts    = factories.filter(f => f._id !== user.factory?._id).map(f => ({ v: f._id, l: `${f.name} – ${f.location}` }));
 
+  // ── Field builders ─────────────────────────────────────────────────────────
+  const inp = (key, label, value, onChange, type = "text", placeHolder, req = false) => {
+    const ruleKey = { driverContact: { maxLength: 10 } };
+    const placeholderRule = {
+      driverContact:   " _ _ _ _ _ _ _ _ _ _ ",
+      driverName:      "Enter Driver Name",
+      driverIdNumber:  "Enter ID Number",
+      transporterName: "Enter Transporter Name",
+      vehicleNumber:   "e.g. MH12AB1234",
+      licenseNumber:   "Enter Licence No.",
+    };
     const fieldRule = ruleKey[key] || {};
 
-   return (
-    <div style={{ ...col }}>
-      <label style={LBL}>
-        {label}
-        {req && <span style={{ color: "#6366f1", marginLeft: 2 }}>*</span>}
-      </label>
+    // Which fields show the driver lookup spinner
+    const isDriverLookupField  = key === "driverContact" || key === "driverIdNumber";
+    const isVehicleLookupField = key === "vehicleNumber";
+    const showSpinner = (isDriverLookupField && driverLookup.loading) || (isVehicleLookupField && vehicleLookup.loading);
+    const showSearch  = (isDriverLookupField || isVehicleLookupField) && !showSpinner;
 
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        border: errors[key] ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb",
-        borderRadius: 6,
-        overflow: "hidden"
-      }}>
-        
-        {/* Prefix */}
-        {key === "driverContact" && (
-          <span style={{
-            padding: "0px 8px",
-            background: "#f3f4f6",
-            borderRight: "1px solid #e5e7eb",
-            fontSize: 13,
-            color: "#374151",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-          }}>
-            +91
-          </span>
-        )}
-
-        {/* Input */}
-        <input
-          type={key === "driverContact" ? "text" : type}
-          inputMode={key === "driverContact" ? "numeric" : "text"}
-          value={value}
-          maxLength={fieldRule.maxLength || undefined}
-          onChange={e => {
-            let val = e.target.value;
-
-            if (key === "driverContact") {
-              val = val.replace(/\D/g, "").slice(0, 10);
-            } else {
-              val = val.toUpperCase();
-            }
-
-            onChange(key, val);
-            clearErr(key);
-          }}
-          placeholder={placeholderRule[key] || placeHolder}
-          className=""
-          style={{
-            ...IB,
-            border: "none",
-            flex: 1
-          }}
-        />
+    return (
+      <div style={{ ...col }}>
+        <label style={LBL}>
+          {label}
+          {req && <span style={{ color: "#6366f1", marginLeft: 2 }}>*</span>}
+        </label>
+        <div style={{ display: "flex", alignItems: "center", border: errors[key] ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb", borderRadius: 6, overflow: "hidden", position: "relative" }}>
+          {key === "driverContact" && (
+            <span style={{ padding: "0px 8px", background: "#f3f4f6", borderRight: "1px solid #e5e7eb", fontSize: 13, color: "#374151", height: "100%", display: "flex", alignItems: "center" }}>+91</span>
+          )}
+          <input
+            type={key === "driverContact" ? "text" : type}
+            inputMode={key === "driverContact" ? "numeric" : "text"}
+            value={value}
+            maxLength={fieldRule.maxLength || undefined}
+            onChange={e => {
+              let val = e.target.value;
+              if (key === "driverContact") val = val.replace(/\D/g, "").slice(0, 10);
+              else val = val.toUpperCase();
+              onChange(key, val);
+              clearErr(key);
+            }}
+            placeholder={placeholderRule[key] || placeHolder}
+            style={{ ...IB, border: "none", flex: 1, paddingRight: (isDriverLookupField || isVehicleLookupField) ? 28 : undefined }}
+          />
+          {(showSpinner || showSearch) && (
+            <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: showSpinner ? "#6366f1" : "#9ca3af" }}>
+              {showSpinner ? Icon.spinner : Icon.search}
+            </span>
+          )}
+        </div>
+        {errors[key] && <span style={ERR}>{errors[key]}</span>}
       </div>
-
-      {errors[key] && <span style={ERR}>{errors[key]}</span>}
-    </div>
-  )};
+    );
+  };
 
   const sel = (key, label, value, onChange, options, req = false) => (
     <div style={col}>
       <label style={LBL}>{label}{req && <span style={{ color: "#6366f1", marginLeft: 2 }}>*</span>}</label>
-      <select value={value}
-        onChange={e => { onChange(key, e.target.value); clearErr(key); }}
-        className="veh-inp"
+      <select value={value} onChange={e => { onChange(key, e.target.value); clearErr(key); }} className="veh-inp"
         style={{ ...IB, border: errors[key] ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb", cursor: "pointer" }}
       >
         <option value="" hidden>Select…</option>
         {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
       </select>
       {errors[key] && <span style={ERR}>{errors[key]}</span>}
-    </div>
-  );
-
-  const vnField = (form, onChange) => (
-    <div style={col}>
-      <label style={LBL}>Vehicle Number<span style={{ color: "#6366f1", marginLeft: 2 }}>*</span></label>
-      <div style={{ position: "relative" }}>
-        <input type="text" value={form.vehicleNumber}
-          onChange={e => { onChange("vehicleNumber", e.target.value.toUpperCase()); }}
-          placeholder="e.g. MH12AB1234" className="veh-inp"
-          style={{ ...IB, border: errors.vehicleNumber ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb", paddingRight: 28, textTransform: "uppercase" }}
-        />
-        <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: vehicleLookup.loading ? "#6366f1" : "#9ca3af" }}>
-          {vehicleLookup.loading ? Icon.spinner : Icon.search}
-        </span>
-      </div>
-      {errors.vehicleNumber && <span style={ERR}>{errors.vehicleNumber}</span>}
     </div>
   );
 
@@ -711,10 +730,67 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </div>
   );
 
-  const supplierOptions = SUPPLIERS.map((s) => ({
-    value: s.v,
-    label: s.l,
-  }));
+  const supplierOptions = SUPPLIERS.map(s => ({ value: s.v, label: s.l }));
+
+  // ── Driver Layer (shared render) ─────────────────────────────────────────
+  const renderDriverLayer = (form, onChange) => (
+    <Layer
+      icon={<User size={13} />}
+      title="Driver Details"
+      subtitle="Lookup by phone or ID — or enter manually"
+      color="#6366f1"
+      bg="linear-gradient(135deg,#eef2ff,#f5f3ff)"
+      border="#e0e7ff"
+      found={driverLookup.found}
+      foundMsg={`Driver found via ${driverLookup.foundBy === "driverContact" ? "phone number" : "ID number"} — fields auto-filled`}
+      defaultOpen={true}
+    >
+      <div style={g3}>
+        {inp("driverContact",  "Phone Number",  form.driverContact,  onChange, "text",   undefined, false)}
+        {inp("driverIdNumber", "ID Number",     form.driverIdNumber, onChange, "text",   undefined, false)}
+        {inp("licenseNumber",  "Licence No.",   form.licenseNumber,  onChange, "text",   undefined, false)}
+      </div>
+      <div style={g2}>
+        {inp("driverName",   "Driver Name", form.driverName,   onChange, "text", undefined, true)}
+        {sel("driverIdType", "ID Type",     form.driverIdType, onChange, ID_TYPES)}
+      </div>
+      {!driverLookup.found && (form.driverContact.length === 10 || form.driverIdNumber.length >= 4) && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 6, padding: "5px 10px", fontSize: 10, color: "#92400e", fontWeight: 500 }}>
+          ⚠️ Driver not found — a new driver record will be created on submit.
+        </div>
+      )}
+    </Layer>
+  );
+
+  // ── Vehicle Layer (shared render) ────────────────────────────────────────
+  const renderVehicleLayer = (form, onChange) => (
+    <Layer
+      icon={<Car size={13} />}
+      title="Vehicle Details"
+      subtitle="Lookup by vehicle number — or enter manually"
+      color="#0891b2"
+      bg="linear-gradient(135deg,#ecfeff,#cffafe)"
+      border="#a5f3fc"
+      found={vehicleLookup.found}
+      foundMsg="Vehicle found — details auto-filled"
+      defaultOpen={true}
+    >
+      <div style={g3}>
+        {inp("vehicleNumber",   "Vehicle Number", form.vehicleNumber,   onChange, "text", undefined, true)}
+        {sel("typeOfVehicle",   "Vehicle Type",   form.typeOfVehicle,   onChange, VEHICLE_TYPES)}
+        {inp("transporterName", "Transporter",    form.transporterName, onChange)}
+      </div>
+      <div style={g2}>
+        {inp("PUCExpiry", "PUC Expiry", form.PUCExpiry, onChange, "date")}
+        <div /> {/* spacer */}
+      </div>
+      {!vehicleLookup.found && form.vehicleNumber.length >= 4 && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 6, padding: "5px 10px", fontSize: 10, color: "#92400e", fontWeight: 500 }}>
+          ⚠️ Vehicle not found — a new vehicle record will be created on submit.
+        </div>
+      )}
+    </Layer>
+  );
 
   return (
     <Modal open={open} onClose={handleClose} title="New Vehicle Entry">
@@ -726,31 +802,32 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           <div style={{ background: "linear-gradient(135deg,#eef2ff,#e0e7ff)", borderRadius: 8, padding: "6px 11px", marginBottom: 9, fontSize: 10, color: "#4338ca", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
             <Factory size={12} /> Internal vehicles default to <code style={{ background: "rgba(99,102,241,.12)", padding: "0 5px", borderRadius: 3, marginLeft: 2 }}>inside_factory</code> status.
           </div>
-          <LookupBanner found={vehicleLookup.found} vehicleNumber={internalForm.vehicleNumber} />
 
-          <SL label="Driver & Vehicle" />
-          <div style={g3}>
-            {vnField(internalForm, setInternal)}
-            {inp("driverName", "Driver Name",                   internalForm.driverName, setInternal, "text", true)}
-            {inp("driverContact", "Contact",                    internalForm.driverContact, setInternal, "text", "+91 _ _ _ _ _ _ _ _ _ _ ")}
-          </div>
-          <div style={g3}>
-            {sel("driverIdType", "ID Type",                     internalForm.driverIdType, setInternal, ID_TYPES)}
-            {inp("driverIdNumber", "ID Number",                 internalForm.driverIdNumber, setInternal)}
-            {inp("transporterName", "Transporter",              internalForm.transporterName, setInternal)}
-          </div>
-          <div style={g2}>
-            {sel("typeOfVehicle", "Vehicle Type",               internalForm.typeOfVehicle, setInternal, VEHICLE_TYPES)}
-            {inp("PUCExpiry", "PUC Expiry",                     internalForm.PUCExpiry, setInternal, "date")}
-          </div>
+          {/* Layer 1 — Driver */}
+          {renderDriverLayer(internalForm, setInternal)}
 
-          <SL label="Trip Details" color="#4f46e5" />
-          <div style={g3}>
-            {sel("destinationFactoryId", "Destination Factory", internalForm.destinationFactoryId, setInternal,
-              fetchingFactories ? [{ v: "", l: "Loading…" }] :  factoryOpts, true)}
-            {sel("purpose", "Purpose",                          internalForm.purpose, setInternal, PURPOSE_OPTS, true)}
-            {sel("materialType", "Material Type",               internalForm.materialType, setInternal, MATERIAL_TYPES, true)}
-          </div>
+          {/* Layer 2 — Vehicle */}
+          {renderVehicleLayer(internalForm, setInternal)}
+
+          {/* Layer 3 — Trip Details */}
+          <Layer
+            icon={<ClipboardList size={13} />}
+            title="Trip Details"
+            subtitle="Destination, purpose and material info"
+            color="#7c3aed"
+            bg="linear-gradient(135deg,#faf5ff,#ede9fe)"
+            border="#e9d5ff"
+            found={false}
+            foundMsg=""
+            defaultOpen={true}
+          >
+            <div style={g3}>
+              {sel("destinationFactoryId", "Destination Factory", internalForm.destinationFactoryId, setInternal,
+                fetchingFactories ? [{ v: "", l: "Loading…" }] : factoryOpts, true)}
+              {sel("purpose",      "Purpose",       internalForm.purpose,      setInternal, PURPOSE_OPTS,   true)}
+              {sel("materialType", "Material Type", internalForm.materialType, setInternal, MATERIAL_TYPES, true)}
+            </div>
+          </Layer>
 
           {submitRow("Create Internal Entry", handleSubmitInternal, "linear-gradient(135deg,#6366f1,#4f46e5)")}
         </div>
@@ -762,84 +839,65 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           <div style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", borderRadius: 8, padding: "6px 11px", marginBottom: 9, fontSize: 10, color: "#92400e", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
             <Truck size={12} /> External vehicles await <strong style={{ marginLeft: 2 }}>gate check-in</strong>. Material type reveals extra fields.
           </div>
-          <LookupBanner found={vehicleLookup.found} vehicleNumber={externalForm.vehicleNumber} />
 
-          {/* ── Premium Internal Shifting Toggle ── */}
-          <div style={{ background: "linear-gradient(135deg,#f8faff,#eef2ff)", border: "1.5px solid #e0e7ff", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 1px 4px rgba(99,102,241,.07)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: externalForm.isInternalShifting ? "#ede9fe" : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .2s" }}>
-                <Factory size={14} color={externalForm.isInternalShifting ? "#6366f1" : "#9ca3af"} />
+          {/* Layer 1 — Driver */}
+          {renderDriverLayer(externalForm, setExternal)}
+
+          {/* Layer 2 — Vehicle */}
+          {renderVehicleLayer(externalForm, setExternal)}
+
+          {/* Layer 3 — Trip Details */}
+          <Layer
+            icon={<ClipboardList size={13} />}
+            title="Trip Details"
+            subtitle="Purpose, material, internal shifting config"
+            color="#d97706"
+            bg="linear-gradient(135deg,#fffbeb,#fef3c7)"
+            border="#fcd34d"
+            found={false}
+            foundMsg=""
+            defaultOpen={true}
+          >
+            {/* Internal Shifting Toggle */}
+            <div style={{ background: "linear-gradient(135deg,#f8faff,#eef2ff)", border: "1.5px solid #e0e7ff", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 1px 4px rgba(99,102,241,.07)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: externalForm.isInternalShifting ? "#ede9fe" : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .2s" }}>
+                  <Factory size={14} color={externalForm.isInternalShifting ? "#6366f1" : "#9ca3af"} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 11.5, color: "#374151" }}>Internal Shifting</div>
+                  <div style={{ fontSize: 9.5, color: "#9ca3af", fontWeight: 400 }}>Plant to Plant transfer</div>
+                </div>
               </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 11.5, color: "#374151" }}>Internal Shifting</div>
-                <div style={{ fontSize: 9.5, color: "#9ca3af", fontWeight: 400 }}>Plant to Plant transfer</div>
+              <div
+                onClick={() => setExternalForm(p => ({ ...p, isInternalShifting: !p.isInternalShifting }))}
+                style={{ width: 44, height: 24, borderRadius: 12, background: externalForm.isInternalShifting ? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e5e7eb", position: "relative", cursor: "pointer", transition: "background .25s", boxShadow: externalForm.isInternalShifting ? "0 0 0 3px rgba(99,102,241,.2)" : "none", flexShrink: 0 }}
+              >
+                <div style={{ position: "absolute", width: 18, height: 18, background: "#fff", borderRadius: "50%", top: 3, left: externalForm.isInternalShifting ? 23 : 3, transition: "left .25s cubic-bezier(.4,0,.2,1)", boxShadow: "0 1px 4px rgba(0,0,0,.25)" }} />
               </div>
             </div>
 
-            {/* Premium toggle switch */}
-            <div
-              onClick={() => setExternalForm(p => ({ ...p, isInternalShifting: !p.isInternalShifting }))}
-              style={{
-                width: 44,  height: 24, borderRadius: 12,
-                background: externalForm.isInternalShifting? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e5e7eb",
-                position:   "relative", cursor: "pointer",
-                transition: "background .25s",
-                boxShadow:  externalForm.isInternalShifting ? "0 0 0 3px rgba(99,102,241,.2)" : "none",
-                flexShrink: 0,
-              }}
-            >
-              <div style={{
-                position:     "absolute",
-                width: 18,    height: 18,
-                background:   "#fff",
-                borderRadius: "50%",
-                top: 3,
-                left: externalForm.isInternalShifting ? 23 : 3,
-                transition: "left .25s cubic-bezier(.4,0,.2,1)",
-                boxShadow: "0 1px 4px rgba(0,0,0,.25)",
-              }} />
+            {externalForm.isInternalShifting && (
+              <div style={{ ...g2, animation: "vehFade .18s ease", marginBottom: 9 }}>
+                {sel("passType", "Pass Type", externalForm.passType, setExternal, PASS_TYPE_OPTS, true)}
+                {sel("destinationFactoryId", "Destination Factory", externalForm.destinationFactoryId, setExternal,
+                  fetchingFactories ? [{ v: "", l: "Loading…" }] : factoryOpts, true)}
+              </div>
+            )}
+
+            <div style={g2}>
+              {sel("purpose",      "Purpose",       externalForm.purpose,      setExternal, PURPOSE_OPTS,   true)}
+              {sel("materialType", "Material Type", externalForm.materialType, setExternal, MATERIAL_TYPES, true)}
             </div>
-          </div>
 
-          {externalForm.isInternalShifting && (
-            <div style={{ ...g2, animation: "vehFade .18s ease", marginBottom: 9 }}>
-              {sel("passType", "Pass Type",         externalForm.passType, setExternal, PASS_TYPE_OPTS, true)}
-              {sel("destinationFactoryId", "Destination Factory", externalForm.destinationFactoryId, setExternal,
-                fetchingFactories ? [{ v: "", l: "Loading…" }] : factoryOpts, true)}
-            </div>
-          )}
-
-          <SL label="Driver & Vehicle" />
-          <div style={g3}>
-            {vnField(externalForm, setExternal)}
-            {inp("driverName", "Driver Name",                 externalForm.driverName, setExternal, "text", true)}
-            {inp("driverContact", "Contact",                  externalForm.driverContact, setExternal, "text")}
-          </div>
-          <div style={g3}>
-            {sel("driverIdType", "ID Type",                   externalForm.driverIdType, setExternal, ID_TYPES)}
-            {inp("driverIdNumber", "ID Number",               externalForm.driverIdNumber, setExternal)}
-            {inp("transporterName", "Transporter",            externalForm.transporterName, setExternal)}
-          </div>
-          <div style={g2}>
-            {sel("typeOfVehicle", "Vehicle Type",             externalForm.typeOfVehicle, setExternal, VEHICLE_TYPES)}
-            {inp("PUCExpiry", "PUC Expiry",                   externalForm.PUCExpiry, setExternal, "date")}
-          </div>
-
-          <SL label="Trip Details" color="#d97706" />
-          <div style={g2}>
-            {sel("purpose", "Purpose",                        externalForm.purpose, setExternal, PURPOSE_OPTS, true)}
-            {sel("materialType", "Material Type",             externalForm.materialType, setExternal, MATERIAL_TYPES, true)}
-          </div>
-
-          {externalForm.materialType === "RM" && (
-            <div style={{ animation: "vehFade .18s ease" }}>
-              <SL label="Raw Material Details" color="#059669" />
-              <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
-                <div style={g3}>
-                  <div className="flex flex-col" >
-                    <label className="text-[11px]">Supplier</label>
+            {externalForm.materialType === "RM" && (
+              <div style={{ animation: "vehFade .18s ease" }}>
+                <SL label="Raw Material Details" color="#059669" />
+                <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
+                  <div style={g3}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <label style={LBL}>Supplier</label>
                       <Select
-                        label="Supplier"
                         mode="tags"
                         showSearch
                         style={{ width: "100%", height: 32 }}
@@ -847,46 +905,47 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
                         value={externalForm.supplier ? [externalForm.supplier] : []}
                         onChange={(value) => setExternal("supplier", value[0])}
                         options={supplierOptions}
-                      />                  
+                      />
+                    </div>
+                    {inp("material", "Material Name",         externalForm.material,      setExternal)}
+                    {inp("quantity", "Quantity",               externalForm.quantity,      setExternal, "number")}
                   </div>
-                    {inp("material", "Material Name",         externalForm.material, setExternal)}
-                  {inp("quantity", "Quantity",                externalForm.quantity, setExternal, "number")}
-                </div>
-                <div style={g2}>
-                  {inp("invoiceNo", "Invoice No.",            externalForm.invoiceNo, setExternal)}
-                  {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal, "number")}
+                  <div style={g2}>
+                    {inp("invoiceNo",     "Invoice No.",            externalForm.invoiceNo,      setExternal)}
+                    {inp("invoiceAmount", "Invoice Amount (₹)",     externalForm.invoiceAmount,  setExternal, "number")}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {externalForm.materialType === "FG" && (
-            <div style={{ animation: "vehFade .18s ease" }}>
-              <SL label="Finished Goods Details" color="#2563eb" />
-              <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
-                <div style={g2}>
-                  {sel("customer", "Customer",                externalForm.customer, setExternal, CUSTOMER, [{v: CUSTOMER.name, l: CUSTOMER.name}])}
-                  {inp("invoiceNo", "Invoice No.",            externalForm.invoiceNo, setExternal)}
-                </div>
-                <div style={g2}>
-                  {inp("quantity", "Quantity",                externalForm.quantity, setExternal, "number")}
-                  {inp("invoiceAmount", "Invoice Amount (₹)", externalForm.invoiceAmount, setExternal, "number")}
+            {externalForm.materialType === "FG" && (
+              <div style={{ animation: "vehFade .18s ease" }}>
+                <SL label="Finished Goods Details" color="#2563eb" />
+                <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
+                  <div style={g2}>
+                    {sel("customer",  "Customer",          externalForm.customer,      setExternal, CUSTOMER)}
+                    {inp("invoiceNo", "Invoice No.",        externalForm.invoiceNo,     setExternal)}
+                  </div>
+                  <div style={g2}>
+                    {inp("quantity",      "Quantity",              externalForm.quantity,     setExternal, "number")}
+                    {inp("invoiceAmount", "Invoice Amount (₹)",    externalForm.invoiceAmount, setExternal, "number")}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {["Scrap", "NewMachines", "Others"].includes(externalForm.materialType) && (
-            <div style={{ animation: "vehFade .18s ease" }}>
-              <SL label="Additional Details" color="#7c3aed" />
-              <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
-                <div style={g2}>
-                  {inp("material", "Material / Description", externalForm.material, setExternal)}
-                  {inp("quantity", "Quantity",               externalForm.quantity, setExternal, "number")}
+            {["Scrap", "NewMachines", "Others"].includes(externalForm.materialType) && (
+              <div style={{ animation: "vehFade .18s ease" }}>
+                <SL label="Additional Details" color="#7c3aed" />
+                <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
+                  <div style={g2}>
+                    {inp("material", "Material / Description", externalForm.material,  setExternal)}
+                    {inp("quantity", "Quantity",               externalForm.quantity,  setExternal, "number")}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </Layer>
 
           {submitRow("Create External Entry", handleSubmitExternal, "linear-gradient(135deg,#f59e0b,#d97706)")}
         </div>

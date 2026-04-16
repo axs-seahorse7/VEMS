@@ -27,7 +27,7 @@ const getPhase = (vehicle, userFactoryId) => {
 
 const getWorkflowStage = (vehicle) => {
   const location = getVehicleLocation(vehicle);
-  if (location === "waiting_outside") return "waiting";
+  if (location === "waiting_outside" ) return "waiting";
   if (location === "inside_factory") return "inside";
   if (location === "in_transit") return "enroute";
   return "unknown";
@@ -185,7 +185,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
     cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1,
   });
 
-  if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "DESTINATION" && vehicle.tripState !== "CLOSED" ) {
+  if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "DESTINATION" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") {
     return (
       <div style={{ display: "flex", gap: 8 }}>
           <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/checkin/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Allow Entry (Checkin)</button>
@@ -212,22 +212,22 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
           </div>
     )
   }
-  if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "ORIGIN" && userFactoryId === trip.destinationFactory._id && vehicle.tripState !== "CLOSED") {
+  if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "ORIGIN" && userFactoryId === trip.destinationFactory._id && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") {
     return <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/arrive/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Mark Arrived</button>
   }
-  if (userRole === "atGate" && location === "inside_factory" && phase === "ORIGIN"  && userFactoryId === trip.sourceFactory._id  && vehicle.tripState !== "CLOSED"  ) { 
+  if (userRole === "atGate" && location === "inside_factory" && phase === "ORIGIN"  && userFactoryId === trip.sourceFactory._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") { 
     return <button style={btnStyle("#6366f1")} onClick={() => doAction(() => api.post(`/trip/checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactory._id, purpose: trip?.purpose || "pickup" }))}>→ Dispatch Vehicle (Checkout)</button>
   }
-  if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip.sourceFactory._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" ) {
+  if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip.sourceFactory._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" && vehicle.tripState !== "CANCELLED") {
     return <button style={btnStyle("#D75656")} onClick={() => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactory._id, purpose: trip?.purpose || "pickup" }))}>Checkout & Exit</button>
   }
-  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Delivery" && trip?.loadStatus !== "unloaded" && (trip.type === "external_delivery" || trip.type === "internal_transfer") && vehicle.destinationFactory._id === userFactoryId && vehicle.tripState !== "CLOSED") {
+  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Delivery" && trip?.loadStatus !== "unloaded" && (trip.type === "external_delivery" || trip.type === "internal_transfer") && vehicle.destinationFactory._id === userFactoryId && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") {
     return <button style={btnStyle("#f59e0b")} onClick={() => doAction(() => api.post(`/trip/unload/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>↓ Mark Unloaded</button>
   }
-  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded") {
+  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") {
     return <button style={btnStyle("#8b5cf6")} onClick={() => doAction(() => api.post(`/trip/load-complete/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Mark Load Complete</button>
   }
-  if (userRole === "storeSite" && location === "inside_factory"  && trip?.loadStatus !== "pending" && vehicle?.tripState !== "CLOSED" && vehicle.tripState !== "COMPLETE") {
+  if (userRole === "storeSite" && location === "inside_factory"  && trip?.loadStatus !== "pending" && vehicle?.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED" && vehicle.tripState !== "COMPLETE") {
     return (
       <div style={{ display: "flex", gap: 8 }}>
         <button style={btnStyle("#8b5cf6")} 
@@ -239,7 +239,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       </div>
     );
   }
-  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded" && vehicle.tripState !== "CLOSED") {
+  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") {
     return <button style={btnStyle("#ec4899")} onClick={() => doAction(() => api.post(`/dispatch/load/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, tripId: trip?._id, factoryId: userFactoryId }))}>↑ Final Load Check</button>
   }
   return null;
@@ -296,10 +296,10 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
       {/* Info grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,  }}>
         <Section title="Driver">
-          <Row label="Name"             value={vehicleData?.driverName} />
-          <Row label="Contact"          value={vehicleData?.driverContact} />
-          <Row label="ID Type"          value={vehicleData?.driverIdType} />
-          <Row label="ID Number"        value={vehicleData?.driverIdNumber} />
+          <Row label="Name"             value={vehicle?.driver?.driverName} />
+          <Row label="Contact"          value={vehicle?.driver?.driverContact} />
+          <Row label="ID Type"          value={vehicle?.driver?.driverIdType} />
+          <Row label="ID Number"        value={vehicle?.driver?.driverIdNumber} />
         </Section>
         <Section title="Vehicle">
           <Row label="Number"           value={vehicleData?.vehicleNumber} accent />

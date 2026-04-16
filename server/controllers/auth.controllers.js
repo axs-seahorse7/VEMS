@@ -98,7 +98,7 @@ export const verifyOtp = async (req, res) => {
 
     // Check existence
     if (!record) {
-      return res.status(400).json({ success: false, message: "No OTP found. Please login again." });
+      return res.status(400).json({ success: false, message: " OTP not Matched. Please login again." });
     }
 
     // Check expiry
@@ -159,6 +159,7 @@ export const resendOtp = async (req, res) => {
     // User must have attempted login already
     const existing = otpStore.get(email);
     if (!existing) {
+      console.warn(`Resend OTP requested for email with no existing OTP: ${email}`);
       return res.status(400).json({ success: false, message: "Session expired. Please login again." });
     }
 

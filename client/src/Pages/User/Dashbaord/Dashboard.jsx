@@ -653,8 +653,8 @@ export default function VehicleDashboard() {
     );
 
   // ── Open trips ──────────────────────────────────────────────────────────────
-  const filteredData = data?.filter((v) => v.tripState !== "CLOSED") || [];
-  const closedTrips = data?.filter((v) => v.tripState === "CLOSED") || [];
+  const filteredData = data?.filter((v) => v.tripState !== "CLOSED" && v.tripState !== "CANCELLED") || [];
+  const closedTrips = data?.filter((v) => v.tripState === "CLOSED" || v.tripState === "CANCELLED") || [];
   const upcomingVehicles = filteredData.filter(
     (v) =>
       v.destinationFactory?._id === userFactoryId &&
@@ -664,12 +664,12 @@ export default function VehicleDashboard() {
   const waitingVehicles = filteredData.filter(
     (v) =>
       v.destinationFactory?._id === userFactoryId &&
-      v.location === "outside_factory"
+      v.location === "outside_factory" && v.tripState !== "CLOSED"  && v.phase === "CANCELLED"
   );
 
   const insideVehicles = (data || []).filter(
     (v) =>
-      v.location === "inside_factory" && v.tripState !== "CLOSED" &&
+      v.location === "inside_factory" && v.tripState !== "CLOSED" && v.tripState !== "CANCELLED" &&
       ((v.phase === "ORIGIN" &&
         v.sourceFactory?._id?.toString() === userFactoryId?.toString()) ||
         (v.phase === "DESTINATION" &&
@@ -724,18 +724,6 @@ const RMVehicles = allVehicles.filter((v) =>
         : m.material?.name === "RM"
     )
 );
-
-// const matrialType = allVehicles.filter((v) => v );
-// matrialType.map((v) => {
-//   if(Array.isArray(v.materials)){
-//     v.materials.map((m) => {
-//       if(m && (m.material || m.material?.name)){
-//         console.log("Material Name:",  m.material , m.name);
-//       }
-//     })
-//   }});
-  
-
 
   const pickupCount = pickupVehicles.length;
   const deliveryCount = deliveryVehicles.length;

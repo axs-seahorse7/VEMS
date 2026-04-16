@@ -76,6 +76,13 @@ const TripSchema = new mongoose.Schema({
     index: true
   },
 
+  driverId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Driver",
+    default: null,
+    index: true
+  },
+
   purpose: String,
 
   loadStatus: {

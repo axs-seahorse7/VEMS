@@ -1,5 +1,5 @@
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
-
+import Driver from "../db/models/Driver-model/driver.model.js";
 // GET /vehicles
 export const getAllVehicles = async (req, res) => {
   try {
@@ -145,5 +145,35 @@ export const toggleVehicleStatus = async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ message: "Failed to toggle status", error: err.message });
+  }
+};
+
+
+export const lookupDriver = async (req, res) => {
+  try {
+    const { driverContact, driverIdNumber } = req.query;
+ 
+    if (!driverContact && !driverIdNumber) {
+      return res.status(400).json({ message: "Provide driverContact or driverIdNumber" });
+    }
+ 
+    // Build query: try the supplied field first, OR both if somehow both arrive
+    const query = {};
+    if (driverContact)  query.driverContact  = driverContact.trim();
+    if (driverIdNumber) query.driverIdNumber = driverIdNumber.trim().toUpperCase();
+ 
+    // $or so either field can match
+    const driver = await Driver.findOne({ $or: Object.entries(query).map(([k, v]) => ({ [k]: v })) })
+      .select("driverName driverContact driverIdType driverIdNumber licenseNumber assignedVehicle activeTripId")
+      .lean();
+ 
+    if (!driver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+ 
+    return res.status(200).json({ driver });
+  } catch (err) {
+    console.error("[lookupDriver]", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };

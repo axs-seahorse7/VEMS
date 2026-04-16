@@ -30,6 +30,8 @@ const VehicleSchema = new mongoose.Schema({
   
   driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver", default: null },
 
+
+  // not in use, but keeping for future reference
   driverName: String,
   driverContact: String,
   transporterName: String,
