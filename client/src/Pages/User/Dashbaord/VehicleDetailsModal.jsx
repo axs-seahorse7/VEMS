@@ -163,7 +163,6 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   const [loading, setLoading] = useState(false);
   const location = vehicle.location;
   const trip = vehicle;
-  console.log("WorkflowActions rendered with vehicle:", vehicle);
   const phase = vehicle.phase;
 
   const doAction = async (fn) => {
