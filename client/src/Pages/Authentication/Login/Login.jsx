@@ -1,51 +1,197 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../../../services/API/Api/api";
+import { message } from "antd";
+
+const ease = [0.22, 1, 0.36, 1];
 
 const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 20 },
+  initial: { opacity: 0, y: 24 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] },
+  transition: { duration: 0.52, delay, ease },
 });
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+const slideVariants = {
+  enterFromRight: { opacity: 0, x: 48 },
+  center:         { opacity: 1, x: 0 },
+  exitToLeft:     { opacity: 0, x: -48 },
+};
 
+/* ─────────── OTP Input ─────────── */
+function OtpInput({ value, onChange, disabled }) {
+  const refs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
+  const digits = value.split("").concat(Array(6).fill("")).slice(0, 6);
+
+  const handleKey = (i, e) => {
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      const next = [...digits];
+      if (next[i]) { next[i] = ""; onChange(next.join("")); }
+      else if (i > 0) { next[i - 1] = ""; onChange(next.join("")); refs[i - 1].current?.focus(); }
+    } else if (e.key === "ArrowLeft" && i > 0) refs[i - 1].current?.focus();
+    else if (e.key === "ArrowRight" && i < 5) refs[i + 1].current?.focus();
+  };
+
+  const handleChange = (i, e) => {
+    const ch = e.target.value.replace(/\D/g, "").slice(-1);
+    const next = [...digits];
+    next[i] = ch;
+    onChange(next.join(""));
+    if (ch && i < 5) refs[i + 1].current?.focus();
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    onChange(pasted.padEnd(6, "").slice(0, 6));
+    refs[Math.min(pasted.length, 5)].current?.focus();
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 10 }}>
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={refs[i]}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={d}
+          disabled={disabled}
+          onChange={(e) => handleChange(i, e)}
+          onKeyDown={(e) => handleKey(i, e)}
+          onPaste={handlePaste}
+          onFocus={(e) => e.target.select()}
+          style={{
+            width: 48, height: 58,
+            textAlign: "center",
+            fontSize: 22, fontWeight: 700,
+            fontFamily: "'DM Serif Display', serif",
+            background: "#fff",
+            border: d ? "2px solid #1c1a16" : "1.5px solid #e6e2db",
+            borderRadius: 12,
+            outline: "none",
+            color: "#1c1a16",
+            transition: "border-color .15s, box-shadow .15s",
+            boxShadow: d ? "0 0 0 3px rgba(28,26,22,.07)" : "none",
+            cursor: disabled ? "not-allowed" : "text",
+            opacity: disabled ? 0.6 : 1,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ─────────── Main ─────────── */
+export default function LoginPage() {
+  /* Step 1 state */
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw]     = useState(false);
+
+  /* Step 2 state */
+  const [otp, setOtp]           = useState("");
+  const [timer, setTimer]       = useState(60);
+  const [canResend, setCanResend] = useState(false);
+
+  /* Shared */
+  const [step, setStep]         = useState(1); // 1 | 2
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [maskedEmail, setMaskedEmail] = useState("");
+
+  /* Countdown timer for resend */
+  useEffect(() => {
+    if (step !== 2) return;
+    setTimer(60); setCanResend(false);
+    const id = setInterval(() => {
+      setTimer(t => {
+        if (t <= 1) { clearInterval(id); setCanResend(true); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [step]);
+
+  const maskEmail = (e) => {
+    const [u, d] = e.split("@");
+    return u.slice(0, 2) + "••••" + "@" + d;
+  };
+
+  /* Step 1 → request OTP */
   const handleLogin = async () => {
     setError("");
-    if (!email) return setError("Email is required.");
+    if (!email)    return setError("Email is required.");
     if (!password) return setError("Password is required.");
     setLoading(true);
     try {
-      const response = await api.post("/auth/login",{ email, password });
-      if(response.data.success){
-          if (response.data.user.isSystemAdmin) {
-            window.location.href = "/admin";
-            localStorage.setItem("user", JSON.stringify(response.data.user));
-          } else {
-            window.location.href = "/dashboard";
-            localStorage.setItem("user", JSON.stringify(response.data.user));
-          }
-      } else {
-        setError(response.data.message || "Login failed. Please try again.");
-      }
+      const response = await api.post("/auth/login", { email, password });
+      if (response.data.success) {
+        setMaskedEmail(maskEmail(email));
+        setStep(2);
+      } 
+      console.log(response.data);
     } catch (error) {
-      console.error("Login error:", error);
+      message.error(error.response?.data?.message || "Network error. Please try again.");
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  /* Step 2 → verify OTP */
+  const handleVerifyOtp = async () => {
+    setError("");
+    if (otp.replace(/\s/g,"").length < 6) return setError("Please enter the full 6-digit code.");
+    setLoading(true);
+    try {
+      const response = await api.post("/auth/verify-otp", { email, otp });
+      if (response.data.success) {
+        localStorage.setItem("user", JSON.stringify(response.data.user));
+        window.location.href = response.data.user.isSystemAdmin ? "/admin" : "/dashboard";
+      } else {
+        setError(response.data.message || "Invalid code. Please try again.");
+      }
+    } catch (error) {
+      message.error( error.response?.data?.message || "Network error. Please try again.");
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* Resend OTP */
+  const handleResend = async () => {
+    if (!canResend) return;
+    setError(""); setOtp("");
+    try {
+      await api.post("/auth/resend-otp", { email });
+      setTimer(60); setCanResend(false);
+      const id = setInterval(() => {
+        setTimer(t => {
+          if (t <= 1) { clearInterval(id); setCanResend(true); return 0; }
+          return t - 1;
+        });
+      }, 1000);
+    } catch {
+      setError("Could not resend code. Please try again.");
+    }
+  };
+
+  /* ── OTP auto-submit when all 6 digits filled ── */
+  useEffect(() => {
+    if (step === 2 && otp.length === 6 && !loading) {
+      handleVerifyOtp();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otp]);
+
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'DM Sans', sans-serif; }
 
         .root {
@@ -55,7 +201,7 @@ export default function LoginPage() {
           background: #f5f3ef;
         }
 
-        /* LEFT */
+        /* ── LEFT ── */
         .left {
           position: relative;
           background: #1c1a16;
@@ -97,34 +243,25 @@ export default function LoginPage() {
           font-family: 'DM Serif Display', serif;
           font-size: 20px; color: rgba(255,255,255,0.88);
         }
-
         .left-body { position: relative; z-index: 1; }
         .left-headline {
           font-family: 'DM Serif Display', serif;
           font-size: 46px; line-height: 1.12;
           color: rgba(255,255,255,0.9);
-          margin-bottom: 18px;
-          letter-spacing: -0.8px;
+          margin-bottom: 18px; letter-spacing: -0.8px;
         }
         .left-headline em { font-style: italic; color: #eab350; }
-        .left-desc {
-          font-size: 14.5px; color: rgba(255,255,255,0.38);
-          line-height: 1.7; max-width: 300px;
-        }
-
+        .left-desc { font-size: 14.5px; color: rgba(255,255,255,0.38); line-height: 1.7; max-width: 300px; }
         .left-stats { display: flex; gap: 0; position: relative; z-index: 1; }
         .stat { display: flex; flex-direction: column; gap: 5px; padding-right: 28px; }
         .stat + .stat { padding-left: 28px; border-left: 1px solid rgba(255,255,255,0.1); }
-        .stat-n {
-          font-family: 'DM Serif Display', serif;
-          font-size: 30px; color: rgba(255,255,255,0.85);
-        }
+        .stat-n { font-family: 'DM Serif Display', serif; font-size: 30px; color: rgba(255,255,255,0.85); }
         .stat-l { font-size: 11.5px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.7px; }
 
-        /* RIGHT */
+        /* ── RIGHT ── */
         .right {
           display: flex; align-items: center; justify-content: center;
-          padding: 48px 40px; background: #f5f3ef;
+          padding: 48px 40px; background: #fff;
         }
         .form-wrap { width: 100%; max-width: 390px; }
 
@@ -132,20 +269,13 @@ export default function LoginPage() {
         .signup-txt { font-size: 13.5px; color: #999; text-decoration: none; }
         .signup-txt strong { color: #1c1a16; font-weight: 600; border-bottom: 1.5px solid currentColor; padding-bottom: 1px; }
 
-        .f-title {
-          font-family: 'DM Serif Display', serif;
-          font-size: 38px; color: #1c1a16;
-          margin-bottom: 6px; letter-spacing: -0.6px;
-        }
+        .f-title { font-family: 'DM Serif Display', serif; font-size: 38px; color: #1c1a16; margin-bottom: 6px; letter-spacing: -0.6px; }
         .f-sub { font-size: 14px; color: #aaa; margin-bottom: 38px; line-height: 1.5; }
+        .f-sub strong { color: #555; font-weight: 600; }
 
         .fields { display: flex; flex-direction: column; gap: 18px; }
-
         .field { display: flex; flex-direction: column; gap: 7px; }
-        .f-label {
-          font-size: 11px; font-weight: 600;
-          letter-spacing: 0.9px; text-transform: uppercase; color: #aaa;
-        }
+        .f-label { font-size: 11px; font-weight: 600; letter-spacing: 0.9px; text-transform: uppercase; color: #aaa; }
         .f-label-row { display: flex; justify-content: space-between; align-items: center; }
         .forgot { font-size: 12px; color: #bbb; text-decoration: none; transition: color .15s; }
         .forgot:hover { color: #1c1a16; }
@@ -153,24 +283,18 @@ export default function LoginPage() {
         .inp-wrap { position: relative; }
         .inp {
           width: 100%; padding: 13px 16px;
-          background: #fff;
-          border: 1.5px solid #e6e2db;
-          border-radius: 11px;
-          font-size: 15px; font-family: 'DM Sans', sans-serif;
+          background: #fff; border: 1.5px solid #e6e2db;
+          border-radius: 11px; font-size: 15px; font-family: 'DM Sans', sans-serif;
           color: #1c1a16; outline: none;
           transition: border-color .2s, box-shadow .2s;
         }
         .inp::placeholder { color: #ccc; }
-        .inp:focus {
-          border-color: #1c1a16;
-          box-shadow: 0 0 0 3px rgba(28,26,22,.07);
-        }
+        .inp:focus { border-color: #1c1a16; box-shadow: 0 0 0 3px rgba(28,26,22,.07); }
         .inp.pr { padding-right: 46px; }
 
         .eye {
           position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
-          background: none; border: none; cursor: pointer;
-          color: #ccc; display: flex; padding: 0; transition: color .15s;
+          background: none; border: none; cursor: pointer; color: #ccc; display: flex; padding: 0; transition: color .15s;
         }
         .eye:hover { color: #666; }
 
@@ -178,8 +302,7 @@ export default function LoginPage() {
           display: flex; align-items: center; gap: 8px;
           padding: 11px 13px;
           background: #fff5f5; border: 1px solid #fecaca;
-          border-radius: 9px; font-size: 13px; color: #dc2626;
-          margin-top: 6px;
+          border-radius: 9px; font-size: 13px; color: #dc2626; margin-top: 6px;
         }
 
         .btn {
@@ -192,24 +315,50 @@ export default function LoginPage() {
           box-shadow: 0 4px 18px rgba(28,26,22,.2);
           transition: background .2s, box-shadow .2s, transform .1s;
         }
-        .btn:hover:not(:disabled) {
-          background: #2e2b25;
-          box-shadow: 0 6px 26px rgba(28,26,22,.26);
-        }
+        .btn:hover:not(:disabled) { background: #2e2b25; box-shadow: 0 6px 26px rgba(28,26,22,.26); }
         .btn:active:not(:disabled) { transform: scale(0.99); }
         .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+        .btn-ghost {
+          width: 100%; padding: 13px;
+          background: transparent; border: 1.5px solid #e6e2db; border-radius: 11px;
+          color: #888; font-size: 14px; font-weight: 500;
+          font-family: 'DM Sans', sans-serif; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; gap: 7px;
+          margin-top: 12px; transition: border-color .15s, color .15s;
+        }
+        .btn-ghost:hover { border-color: #bbb; color: #444; }
+
+        /* Step indicator */
+        .step-indicator { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+        .step-dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          transition: background .3s, transform .3s;
+        }
+        .step-dot.active { background: #1c1a16; transform: scale(1.2); }
+        .step-dot.done { background: #eab350; }
+        .step-dot.idle { background: #e0ddd8; }
+        .step-line { flex: 1; height: 1px; background: #e6e2db; }
+        .step-label { font-size: 11.5px; color: #bbb; letter-spacing: 0.5px; }
+
+        /* Resend row */
+        .resend-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 22px; }
+        .resend-txt { font-size: 13px; color: #aaa; }
+        .resend-btn { font-size: 13px; font-weight: 600; background: none; border: none; font-family: 'DM Sans',sans-serif; cursor: pointer; transition: color .15s; }
+        .resend-btn.active { color: #1c1a16; text-decoration: underline; }
+        .resend-btn.inactive { color: #ccc; cursor: default; }
+
+        /* OTP success hint */
+        .otp-hint { font-size: 12px; color: #bbb; margin-top: 10px; text-align: center; }
 
         .or-row { display: flex; align-items: center; gap: 12px; margin: 26px 0; }
         .or-line { flex: 1; height: 1px; background: #e6e2db; }
         .or-txt { font-size: 12px; color: #bbb; }
-
         .socials { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .soc-btn {
           display: flex; align-items: center; justify-content: center; gap: 7px;
-          padding: 12px; background: #fff;
-          border: 1.5px solid #e6e2db; border-radius: 10px;
-          font-size: 13.5px; font-weight: 500;
-          font-family: 'DM Sans', sans-serif; color: #444;
+          padding: 12px; background: #fff; border: 1.5px solid #e6e2db; border-radius: 10px;
+          font-size: 13.5px; font-weight: 500; font-family: 'DM Sans', sans-serif; color: #444;
           cursor: pointer; transition: border-color .15s, box-shadow .15s;
         }
         .soc-btn:hover { border-color: #ccc; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
@@ -223,136 +372,226 @@ export default function LoginPage() {
         }
       `}</style>
 
-      <div className="flex items-center justify-center min-h-screen bg-gray-100 ">
-
-        {/* ── Right ── */}
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
         <div className="right rounded-2xl shadow-lg border border-gray-200">
           <div className="form-wrap">
 
-            <motion.div className="top-row" {...fadeUp(0.1)}>
-              <a href="/register" className="signup-txt">
-                New here? <strong>Create account</strong>
-              </a>
+            {/* Top row */}
+            <motion.div className="top-row" {...fadeUp(0.05)}>
+              {step === 1 ? (
+                <div className="flex w-full justify-between items-center" >
+                  <div className="w-30 h-30" >
+                    <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="" />
+                  </div>
+                  <span  className="signup-txt">
+                    Welcome to <p className="text-gray-800">VEMS</p>
+                  </span>
+                </div>
+              ) : (
+                <button
+                  className="signup-txt"
+                  style={{ background: "none", border: "none", cursor: "pointer" }}
+                  onClick={() => { setStep(1); setOtp(""); setError(""); }}
+                >
+                  ← <strong>Back to login</strong>
+                </button>
+              )}
             </motion.div>
 
-            <motion.h1 className="f-title" {...fadeUp(0.15)}>Sign in</motion.h1>
-            <motion.p className="f-sub" {...fadeUp(0.2)}>
-              Enter your credentials to access your workspace.
-            </motion.p>
+            {/* Step indicator */}
+            <motion.div className="step-indicator" {...fadeUp(0.1)}>
+              <div className={`step-dot ${step === 1 ? "active" : "done"}`} />
+              <div className="step-line" />
+              <div className={`step-dot ${step === 2 ? "active" : "idle"}`} />
+              <span className="step-label">{step === 1 ? "Credentials" : "Verification"}</span>
+            </motion.div>
 
-            <motion.div {...fadeUp(0.25)}>
-              <div className="fields">
+            {/* Animated step panels */}
+            <AnimatePresence mode="wait">
+              {step === 1 ? (
+                <motion.div
+                  key="step1"
+                  variants={slideVariants}
+                  initial="enterFromRight"
+                  animate="center"
+                  exit="exitToLeft"
+                  transition={{ duration: 0.38, ease }}
+                >
+                  <h1 className="f-title">Sign in</h1>
+                  <p className="f-sub">Enter your credentials to access your workspace.</p>
 
-                {/* Email */}
-                <div className="field">
-                  <label className="f-label">Email address</label>
-                  <input
-                    className="inp"
-                    type="email"
-                    placeholder="you@company.com"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                    onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  />
-                </div>
+                  <div className="fields">
+                    {/* Email */}
+                    <div className="field">
+                      <label className="f-label">Email address</label>
+                      <input
+                        className="inp"
+                        type="email"
+                        placeholder="you@company.com"
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                      />
+                    </div>
 
-                {/* Password */}
-                <div className="field">
-                  <div className="f-label-row">
-                    <label className="f-label">Password</label>
-                    <a href="/forgot-password" className="forgot">Forgot password?</a>
+                    {/* Password */}
+                    <div className="field">
+                      <div className="f-label-row">
+                        <label className="f-label">Password</label>
+                        <a href="/forgot-password" className="forgot">Forgot password?</a>
+                      </div>
+                      <div className="inp-wrap">
+                        <input
+                          className="inp pr"
+                          type={showPw ? "text" : "password"}
+                          placeholder="••••••••••"
+                          value={password}
+                          onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                        />
+                        <button className="eye" type="button" onClick={() => setShowPw(!showPw)}>
+                          {showPw ? (
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                              <line x1="1" y1="1" x2="23" y2="23"/>
+                            </svg>
+                          ) : (
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="inp-wrap">
-                    <input
-                      className="inp pr"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••••"
-                      value={password}
-                      onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                      onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                    />
-                    <button className="eye" type="button" onClick={() => setShowPassword(!showPassword)}>
-                      {showPassword ? (
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-                          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-                          <line x1="1" y1="1" x2="23" y2="23"/>
+
+                  {/* Error */}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div className="err" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
-                      ) : (
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                          <circle cx="12" cy="12" r="3"/>
+                        {error}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.button className="btn" onClick={handleLogin} disabled={loading} whileTap={{ scale: 0.985 }}>
+                    {loading ? (
+                      <>
+                        <svg className="spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
                         </svg>
-                      )}
+                        Sending code…
+                      </>
+                    ) : (
+                      <>
+                        Continue
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                      </>
+                    )}
+                  </motion.button>
+
+                </motion.div>
+
+              ) : (
+                /* ── STEP 2: OTP ── */
+                <motion.div
+                  key="step2"
+                  variants={slideVariants}
+                  initial="enterFromRight"
+                  animate="center"
+                  exit="exitToLeft"
+                  transition={{ duration: 0.38, ease }}
+                >
+                  {/* Shield icon */}
+                  <motion.div
+                    initial={{ scale: 0.7, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.4, ease }}
+                    style={{
+                      width: 52, height: 52,
+                      background: "linear-gradient(135deg, #eab350, #d4883a)",
+                      borderRadius: 14,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginBottom: 20,
+                      boxShadow: "0 6px 20px rgba(234,179,80,0.3)",
+                    }}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      <path d="M9 12l2 2 4-4"/>
+                    </svg>
+                  </motion.div>
+
+                  <h1 className="f-title">Check your email</h1>
+                  <p className="f-sub">
+                    We sent a 6-digit code to <strong>{maskedEmail}</strong>. Enter it below to continue.
+                  </p>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <label className="f-label" style={{ display: "block", marginBottom: 14 }}>Verification code</label>
+                    <OtpInput value={otp} onChange={(v) => { setOtp(v); setError(""); }} disabled={loading} />
+                  </div>
+
+                  <p className="otp-hint">
+                    {otp.length === 6 ? "✓ Verifying automatically…" : `${6 - otp.length} digit${6 - otp.length !== 1 ? "s" : ""} remaining`}
+                  </p>
+
+                  {/* Error */}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div className="err" style={{ marginTop: 14 }} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        {error}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.button
+                    className="btn"
+                    onClick={handleVerifyOtp}
+                    disabled={loading || otp.length < 6}
+                    whileTap={{ scale: 0.985 }}
+                  >
+                    {loading ? (
+                      <>
+                        <svg className="spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+                        </svg>
+                        Verifying…
+                      </>
+                    ) : (
+                      <>
+                        Verify & Sign in
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                      </>
+                    )}
+                  </motion.button>
+
+                  {/* Resend */}
+                  <div className="resend-row">
+                    <span className="resend-txt">Didn't receive it?</span>
+                    <button
+                      className={`resend-btn ${canResend ? "active" : "inactive"}`}
+                      onClick={handleResend}
+                      disabled={!canResend}
+                    >
+                      {canResend ? "Resend code" : `Resend in ${timer}s`}
                     </button>
                   </div>
-                </div>
-              </div>
-
-              {/* Error */}
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    className="err"
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* CTA */}
-              <motion.button
-                className="btn"
-                onClick={handleLogin}
-                disabled={loading}
-                whileTap={{ scale: 0.985 }}
-              >
-                {loading ? (
-                  <>
-                    <svg className="spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
-                    </svg>
-                    Signing in…
-                  </>
-                ) : (
-                  <>
-                    Continue
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M5 12h14M12 5l7 7-7 7"/>
-                    </svg>
-                  </>
-                )}
-              </motion.button>
-
-              {/* Social */}
-              <div className="or-row">
-                <div className="or-line" /><span className="or-txt">or continue with</span><div className="or-line" />
-              </div>
-
-              <div className="socials">
-                <button className="soc-btn">
-                  <svg width="15" height="15" viewBox="0 0 24 24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                  Google
-                </button>
-                <button className="soc-btn">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#1c1a16">
-                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-                  </svg>
-                  GitHub
-                </button>
-              </div>
-            </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
           </div>
         </div>

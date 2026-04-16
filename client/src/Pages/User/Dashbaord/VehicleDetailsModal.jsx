@@ -163,6 +163,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   const [loading, setLoading] = useState(false);
   const location = vehicle.location;
   const trip = vehicle;
+  console.log("WorkflowActions rendered with vehicle:", vehicle);
   const phase = vehicle.phase;
 
   const doAction = async (fn) => {
@@ -214,13 +215,13 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   if (userRole === "atGate" && (location === "outside_factory" || location === "enroute") && phase === "ORIGIN" && userFactoryId === trip.destinationFactory._id && vehicle.tripState !== "CLOSED") {
     return <button style={btnStyle("#10b981")} onClick={() => doAction(() => api.post(`/trip/arrive/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>✓ Mark Arrived</button>
   }
-  if (userRole === "atGate" && location === "inside_factory" && phase === "ORIGIN"  && userFactoryId !== trip.sourceFactoryId  && vehicle.tripState !== "CLOSED"  ) {
-    return <button style={btnStyle("#6366f1")} onClick={() => doAction(() => api.post(`/trip/checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactoryId, purpose: trip?.purpose || "pickup" }))}>→ Dispatch Vehicle (Checkout)</button>
+  if (userRole === "atGate" && location === "inside_factory" && phase === "ORIGIN"  && userFactoryId === trip.sourceFactory._id  && vehicle.tripState !== "CLOSED"  ) { 
+    return <button style={btnStyle("#6366f1")} onClick={() => doAction(() => api.post(`/trip/checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactory._id, purpose: trip?.purpose || "pickup" }))}>→ Dispatch Vehicle (Checkout)</button>
   }
-  if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip.sourceFactoryId  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" ) {
-    return <button style={btnStyle("#D75656")} onClick={() => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactoryId, purpose: trip?.purpose || "pickup" }))}>Checkout & Exit</button>
+  if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip.sourceFactory._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" ) {
+    return <button style={btnStyle("#D75656")} onClick={() => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactory._id, purpose: trip?.purpose || "pickup" }))}>Checkout & Exit</button>
   }
-  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Delivery" && trip?.loadStatus !== "unloaded" && (trip.type === "external_delivery" || trip.type === "internal_transfer")) {
+  if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Delivery" && trip?.loadStatus !== "unloaded" && (trip.type === "external_delivery" || trip.type === "internal_transfer") && vehicle.destinationFactory._id === userFactoryId && vehicle.tripState !== "CLOSED") {
     return <button style={btnStyle("#f59e0b")} onClick={() => doAction(() => api.post(`/trip/unload/${trip?._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, factoryId: userFactoryId }))}>↓ Mark Unloaded</button>
   }
   if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Pickup" && trip.type === "internal_transfer" && trip?.loadStatus !== "loaded") {
@@ -249,7 +250,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
   if (!vehicle) return null;
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
-
+  console.log("VehicleDetailsModal rendered with vehicle:", vehicle);
   const location    = vehicle.location;
   const trip        = vehicle;
   const vehicleData = vehicle.vehicle;

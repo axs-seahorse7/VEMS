@@ -27,6 +27,8 @@ const VehicleSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  
+  driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver", default: null },
 
   driverName: String,
   driverContact: String,

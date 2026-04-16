@@ -6,6 +6,7 @@ import VehicleDetailModal from "./VehicleDetailsModal.jsx";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
 import VehicleCard from "./VehicleCard.jsx";
 import LiveButton from "../../../components/buttons/LiveButtons.jsx";
+import { TruckElectric } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -1210,9 +1211,13 @@ const RMVehicles = allVehicles.filter((v) =>
                 background: "#fff",
                 borderRadius: 12,
                 border: "1.5px dashed #e5e7eb",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
               }}
             >
-              <div style={{ fontSize: 28, marginBottom: 8 }}>🚛</div>
+              <div style={{ fontSize: 28, marginBottom: 8, margin: "0 auto" }}> <TruckElectric color="gray" size={40} /></div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>
                 No vehicles found
               </div>
@@ -1251,8 +1256,8 @@ const RMVehicles = allVehicles.filter((v) =>
             rowClassName={() => "vehicle-table-row"}
             locale={{
               emptyText: (
-                <div style={{ padding: "40px 0", color: "#9ca3af" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>🚛</div>
+                <div style={{ padding: "40px 0", border: "1.5px dashed #e5e7eb", color: "#9ca3af", justifyContent: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8, margin: "0 auto" }}> <TruckElectric color="blue" size={40} /></div>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>No vehicles found</div>
                 </div>
               ),
