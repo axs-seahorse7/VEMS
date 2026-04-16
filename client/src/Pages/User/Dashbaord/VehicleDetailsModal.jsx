@@ -250,7 +250,6 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
   if (!vehicle) return null;
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
-  console.log("VehicleDetailsModal rendered with vehicle:", vehicle);
   const location    = vehicle.location;
   const trip        = vehicle;
   const vehicleData = vehicle.vehicle;

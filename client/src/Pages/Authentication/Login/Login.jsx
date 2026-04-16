@@ -131,7 +131,6 @@ export default function LoginPage() {
         setMaskedEmail(maskEmail(email));
         setStep(2);
       } 
-      console.log(response.data);
     } catch (error) {
       message.error(error.response?.data?.message || "Network error. Please try again.");
       setError("Network error. Please try again.");
