@@ -575,7 +575,8 @@ export const getVehicleTrips = async (req, res) => {
           tripHistory: 1,
           materials: 1,
           destinationFactory: 1,
-          createdAt: 1
+          createdAt: 1,
+          completedAt:1
         }
       },
 

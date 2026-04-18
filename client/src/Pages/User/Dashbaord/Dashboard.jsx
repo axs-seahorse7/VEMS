@@ -664,7 +664,7 @@ export default function VehicleDashboard() {
   const waitingVehicles = filteredData.filter(
     (v) =>
       v.destinationFactory?._id === userFactoryId &&
-      v.location === "outside_factory" && v.tripState !== "CLOSED"  && v.phase === "CANCELLED"
+      v.location === "outside_factory" &&  (v.tripState !== "CLOSED"  || v.tripState !== "CANCELLED")
   );
 
   const insideVehicles = (data || []).filter(

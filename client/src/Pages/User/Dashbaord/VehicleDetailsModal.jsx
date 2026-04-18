@@ -217,7 +217,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   if (userRole === "atGate" && location === "inside_factory" && phase === "ORIGIN"  && userFactoryId === trip.sourceFactory._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") { 
     return <button style={btnStyle("#6366f1")} onClick={() => doAction(() => api.post(`/trip/checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactory._id, purpose: trip?.purpose || "pickup" }))}>→ Dispatch Vehicle (Checkout)</button>
   }
-  if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip.sourceFactory._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" && vehicle.tripState !== "CANCELLED") {
+  if (userRole === "atGate" && location === "inside_factory" && phase === "DESTINATION" && userFactoryId !== trip?.sourceFactory?._id  && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "ACTIVE" && vehicle.tripState !== "CANCELLED") {
     return <button style={btnStyle("#D75656")} onClick={() => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, { vehicleNumber: vehicle.vehicle?.vehicleNumber, sourceFactoryId: userFactoryId, destinationFactoryId: trip?.destinationFactory._id, purpose: trip?.purpose || "pickup" }))}>Checkout & Exit</button>
   }
   if ((userRole === "storeSite" || userRole === "dispatchSite") && location === "inside_factory" && trip?.purpose === "Delivery" && trip?.loadStatus !== "unloaded" && (trip.type === "external_delivery" || trip.type === "internal_transfer") && vehicle.destinationFactory._id === userFactoryId && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") {
@@ -256,7 +256,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
   const phase       = vehicle.phase;
   const stage       = getWorkflowStage(vehicle);
   const tripHistory = Array.isArray(vehicle.tripHistory) ? vehicle.tripHistory : [];
-
+  console.log("vehicle:", vehicle)
   const Row = ({ label, value, warn, accent }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid #f9fafb" }}>
       <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, flexShrink: 0, minWidth: 110 }}>{label}</span>

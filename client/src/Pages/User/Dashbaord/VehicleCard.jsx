@@ -323,24 +323,31 @@ export default function VehicleCard({ vehicle, onClick }) {
           </div>
 
           {/* ── Row 2: Status badges ── */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ background: "#f3f4f6", color: "#374151", fontSize: 9.5, fontWeight: 600, borderRadius: 4, border: "1px solid #e5e7eb", padding: "1px 6px", whiteSpace: "nowrap" }}>
-              {vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle}
-            </span>
+          <div style={{ display: "flex", gap: 4, marginBottom: 7, flexWrap: "wrap", alignItems: "center", justifyContent:"space-between" }}>
+            <section>
+              <span style={{ background: "#f3f4f6", color: "#374151", fontSize: 9.5, fontWeight: 600, borderRadius: 4, border: "1px solid #e5e7eb", padding: "1px 6px", whiteSpace: "nowrap" }}>
+                {vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle}
+              </span>
 
-            <CBadge stage={stageKey} />
+              <CBadge stage={stageKey} />
+              {vehicle.completedAt && (<Tag color={vehicle.tripState === "CANCELLED"? "red": vehicle.tripState === "CLOSED" ? "green" : "blue"} style={{fontWeight:600, fontSize:11}} >{ fmtTime(vehicle.completedAt) }</Tag>)}
+
+            </section>
+
 
             {(user.factoryId === vehicle.sourceFactoryId ||
               user.factoryId === vehicle.destinationFactory?._id) && (
-              <span 
+              <Tag 
                 style={{
-                  fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
-                  background: theme.labelBg, color: theme.label,
-                  textTransform: "uppercase", letterSpacing: .4,
-              }}>
-                  {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
-              </span>
+                  fontSize: 9, fontWeight: 700, letterSpacing:0.5
+                 }}
+                variant="border"
+                color={user.factory._id === vehicle.destinationFactory?._id ? "green" : "blue"}
+                >
+                {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
+              </Tag>
             )}
+
           </div>
 
           <Divider style={{ margin: "5px 0" }} />

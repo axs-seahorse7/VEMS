@@ -3,9 +3,12 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
+import { createAdmin } from "../seed/createAdmin.js";
 
 import connectDB from "../db/config/db.config.js";
 await connectDB(); // Initialize DB connection
+
+// createAdmin();
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
