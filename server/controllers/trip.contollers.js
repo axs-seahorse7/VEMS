@@ -169,8 +169,11 @@ export const externalVehicleRegister = async (req, res) => {
       driverContact,
       driverIdType,
       licenseNumber,
-      isInternalShifting
+      isInternalShifting,
+      typeOfVehicle,
     } = req.body;
+
+    console.log("Received external vehicle register request:", req.body);
 
     if (!vehicleNumber || !driverIdNumber) {
       return res.status(400).json({
@@ -195,7 +198,8 @@ export const externalVehicleRegister = async (req, res) => {
     if (!vehicle) {
       vehicle = await Vehicle.create({
         vehicleNumber,
-        type: "external"
+        type: "external",
+        ...req.body
       });
     }
 
@@ -216,7 +220,8 @@ export const externalVehicleRegister = async (req, res) => {
         driverContact,
         driverIdType,
         driverIdNumber,
-        licenseNumber
+        licenseNumber,
+        typeOfVehicle
       });
     }
 
