@@ -256,7 +256,6 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
   const phase       = vehicle.phase;
   const stage       = getWorkflowStage(vehicle);
   const tripHistory = Array.isArray(vehicle.tripHistory) ? vehicle.tripHistory : [];
-  console.log("vehicle:", vehicle)
   const Row = ({ label, value, warn, accent }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid #f9fafb" }}>
       <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, flexShrink: 0, minWidth: 110 }}>{label}</span>
@@ -324,7 +323,9 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
           trip?.materials[0].customer === "" && (
               <Row label="Customer"     value={trip?.materials[0]?.customer || "N/A"} />
           )}
-          <Row label="Supplier"         value={trip?.materials[0]?.supplier || "N/A"} />
+          {trip?.materials[0]?.supplier && trip?.materials[0]?.supplier !== "" && (
+            <Row label="Supplier"         value={trip?.materials[0]?.supplier || "N/A"} />
+          )}
         </Section>
 
         <Section title="Invoice Details">
