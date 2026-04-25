@@ -173,8 +173,6 @@ export const externalVehicleRegister = async (req, res) => {
       typeOfVehicle,
     } = req.body;
 
-    console.log("Received external vehicle register request:", req.body);
-
     if (!vehicleNumber || !driverIdNumber) {
       return res.status(400).json({
         message: "vehicleNumber and driverIdNumber are required"
@@ -274,10 +272,9 @@ export const externalVehicleRegister = async (req, res) => {
         tripHistory: [
           {
             status: isInternalShifting ? "ORIGIN" : "ARRIVED",
-            location: isInternalShifting
-              ? "inside_factory"
-              : "outside_factory",
+            location: isInternalShifting? "inside_factory" : "outside_factory",
             phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
+            factoryId: isInternalShifting ? user.factory._id : null,
             action: "begin",
             timestamp: new Date()
           }
@@ -294,6 +291,10 @@ export const externalVehicleRegister = async (req, res) => {
       tripId: newTrip._id,
       vehicleId: vehicle._id
     });
+
+    vehicle.currentTrip = newTrip._id;
+    vehicle.currentFactoryId = isInternalShifting ? req.body.sourceFactoryId : null;
+    await vehicle.save();
 
     // ========================
     // 7. RESPONSE
@@ -430,6 +431,7 @@ export const internalVehicleRegister = async (req, res) => {
           {
             status: "ORIGIN",
             phase: "ORIGIN",
+            factoryId: user.factory?._id || null,
             location: "inside_factory",
             action: "begin",
             timestamp: new Date()
@@ -445,6 +447,12 @@ export const internalVehicleRegister = async (req, res) => {
       tripId: newTrip._id,
       vehicleId: vehicle._id
     });
+    
+    if(newTrip){
+      vehicle.currentTrip = newTrip._id;
+      vehicle.currentFactoryId = newTrip.sourceFactoryId || null;
+      await vehicle.save();
+    }
 
     // ========================
     // 8. RESPONSE
@@ -591,7 +599,7 @@ export const getVehicleTrips = async (req, res) => {
    return res.json(trips);
 
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching vehicle trips:", err);
     return res.status(400).json({ error: err.message });
   }
 };
@@ -621,6 +629,7 @@ export const checkinVehicle = async (req, res) => {
             status: trip.status,
             location: "inside_factory",
             phase: "DESTINATION",
+            factoryId: trip.destinationFactoryId || null,
             action: "checkin",
             timestamp: new Date()
           }
@@ -628,6 +637,12 @@ export const checkinVehicle = async (req, res) => {
       },
       { new: true }
     );
+
+    const vehicle = await Vehicle.findById(trip.vehicleId);
+    if (vehicle) {
+      vehicle.currentFactoryId = trip.destinationFactoryId || null;
+      await vehicle.save();
+    }
 
    return res.json({
       success: true,
@@ -761,6 +776,7 @@ export const checkoutVehicle = async (req, res) => {
           tripHistory: {
             status: trip.status,
             location: "enroute",
+            factoryId: trip.sourceFactoryId || null,
             phase: "DESTINATION",
             action: "checkout",
             timestamp: new Date()
@@ -821,6 +837,7 @@ export const checkoutAndExitVehicle = async (req, res) => {
           tripHistory: {
             status: "DESTINATION",
             location: "outside_factory",
+            factoryId: trip.destinationFactoryId || null,
             phase: "DESTINATION",
             action: "closed",
             timestamp: now
@@ -858,7 +875,8 @@ export const checkoutAndExitVehicle = async (req, res) => {
     // ========================
     if (trip.vehicleId) {
       await Vehicle.findByIdAndUpdate(trip.vehicleId, {
-        driverId: null
+        driverId: null,
+        currentTrip: null
       });
     }
 
@@ -899,6 +917,8 @@ export const markArrived = async (req, res) => {
           tripHistory: {
             status: trip.status,
             location: "outside_factory",
+            factoryId: trip.destinationFactoryId || null,
+            phase: "DESTINATION",
             action: "arrive",
             timestamp: new Date()
           }
@@ -990,7 +1010,8 @@ export const markInternalTransferComplete = async (req, res) => {
         },
         $set: {
           activeTripId: null,
-          assignedVehicle: null
+          assignedVehicle: null,
+          
         }
       });
     }
@@ -1000,7 +1021,8 @@ export const markInternalTransferComplete = async (req, res) => {
     // ========================
     if (trip.vehicleId) {
       await Vehicle.findByIdAndUpdate(trip.vehicleId, {
-        driverId: null
+        driverId: null,
+        currentTrip: null
       });
     }
 
@@ -1122,7 +1144,8 @@ export const cancelTrip = async (req, res) => {
     // ========================
     if (trip.vehicleId) {
       await Vehicle.findByIdAndUpdate(trip.vehicleId, {
-        driverId: null
+        driverId: null,
+        currentTrip: null
       });
     }
 
@@ -1138,5 +1161,207 @@ export const cancelTrip = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message });
+  }
+};
+
+
+
+export const getClosedTrips = async (req, res) => {
+  try {
+    const { vehicleNumber, driverContact, from, to } = req.query;
+
+    const user = await User.findById(req.userId).select("factory");
+    if (!user || !user.factory) {
+      return res.status(404).json({ message: "User or factory not found" });
+    }
+
+    const factoryId = user.factory;
+
+    /* ── Date range ─────────────────────────────────────────── */
+    let fromDate, toDate;
+
+    if (from || to) {
+      fromDate = from ? new Date(from) : null;
+      toDate   = to   ? new Date(to)   : null;
+      if (toDate) toDate.setHours(23, 59, 59, 999);
+    } else {
+      // Default: last 36 hours
+      toDate   = new Date();
+      fromDate = new Date(toDate.getTime() - 36 * 60 * 60 * 1000);
+    }
+
+    const dateFilter = {};
+    if (fromDate) dateFilter.$gte = fromDate;
+    if (toDate)   dateFilter.$lte = toDate;
+
+    /* ── Pipeline ───────────────────────────────────────────── */
+    const pipeline = [
+      {
+        $match: {
+          tripState: "CLOSED",
+          ...(Object.keys(dateFilter).length && { updatedAt: dateFilter }),
+          $or: [
+            { sourceFactoryId: factoryId },
+            { destinationFactoryId: factoryId },
+          ],
+        },
+      },
+
+      // 🔗 Join vehicle — pull all fields needed for Excel
+      {
+        $lookup: {
+          from: "vehicles",
+          localField: "vehicleId",
+          foreignField: "_id",
+          as: "vehicle",
+        },
+      },
+      { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: false } },
+
+      // 🔗 Join driver — pull full identity fields
+      {
+        $lookup: {
+          from: "drivers",
+          localField: "driverId",
+          foreignField: "_id",
+          as: "driver",
+        },
+      },
+      { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
+
+      // 🔍 Dynamic search filters
+      {
+        $match: {
+          ...(vehicleNumber && {
+            "vehicle.vehicleNumber": { $regex: vehicleNumber, $options: "i" },
+          }),
+          ...(driverContact && {
+            "driver.driverContact": { $regex: driverContact, $options: "i" },
+          }),
+        },
+      },
+
+      // 🔗 Join source factory
+      {
+        $lookup: {
+          from: "factories",
+          localField: "sourceFactoryId",
+          foreignField: "_id",
+          as: "sourceFactory",
+        },
+      },
+      { $unwind: { path: "$sourceFactory", preserveNullAndEmptyArrays: true } },
+
+      // 🔗 Join destination factory
+      {
+        $lookup: {
+          from: "factories",
+          localField: "destinationFactoryId",
+          foreignField: "_id",
+          as: "destinationFactory",
+        },
+      },
+      { $unwind: { path: "$destinationFactory", preserveNullAndEmptyArrays: true } },
+
+      // 🎯 Project only fields we need — keeps payload lean
+      {
+        $project: {
+          // Trip meta
+          _id: 1,
+          type: 1,
+          tripState: 1,
+          startedAt: 1,
+          updatedAt: 1,      // used as "Closed At"
+          materials: 1,      // embedded array — already on the Trip doc
+
+          // Vehicle fields
+          "vehicle._id": 1,
+          "vehicle.vehicleNumber": 1,
+          "vehicle.type": 1,
+          "vehicle.typeOfVehicle": 1,
+          "vehicle.PUCExpiry": 1,
+
+          // Driver fields (note: schema uses driverName / driverContact, not name/contact)
+          "driver._id": 1,
+          "driver.driverName": 1,
+          "driver.driverContact": 1,
+          "driver.driverIdType": 1,
+          "driver.driverIdNumber": 1,
+          "driver.licenseNumber": 1,
+
+          // Factories
+          "sourceFactory.name": 1,
+          "sourceFactory.location": 1,
+          "destinationFactory.name": 1,
+          "destinationFactory.location": 1,
+        },
+      },
+
+      { $sort: { updatedAt: -1 } },
+
+      // ── Stats group ──────────────────────────────────────────
+      {
+        $group: {
+          _id: null,
+          trips: { $push: "$$ROOT" },
+          uniqueVehicles:    { $addToSet: "$vehicle._id" },
+          uniqueDrivers:     { $addToSet: "$driver._id" },
+          vehicleTripCounts: { $push: { vehicleNumber: "$vehicle.vehicleNumber", vehicleId: "$vehicle._id" } },
+          driverTripCounts:  { $push: { driverContact: "$driver.driverContact", driverName: "$driver.driverName", driverId: "$driver._id" } },
+        },
+      },
+      {
+        $addFields: {
+          totalTrips:         { $size: "$trips" },
+          uniqueVehicleCount: { $size: "$uniqueVehicles" },
+          uniqueDriverCount:  { $size: "$uniqueDrivers" },
+        },
+      },
+    ];
+
+    const [result] = await Trip.aggregate(pipeline);
+
+    const emptyResponse = {
+      success: true,
+      count: 0,
+      data: [],
+      stats: { totalTrips: 0, uniqueVehicleCount: 0, uniqueDriverCount: 0, perVehicle: [], perDriver: [] },
+      dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
+    };
+
+    if (!result) return res.status(200).json(emptyResponse);
+
+    /* ── Per-vehicle / per-driver breakdowns ────────────────── */
+    const perVehicle = Object.values(
+      result.vehicleTripCounts.reduce((acc, { vehicleId, vehicleNumber }) => {
+        if (!vehicleId) return acc;
+        const key = vehicleId.toString();
+        acc[key] = acc[key] || { vehicleId: key, vehicleNumber, tripCount: 0 };
+        acc[key].tripCount++;
+        return acc;
+      }, {})
+    ).sort((a, b) => b.tripCount - a.tripCount);
+
+    const perDriver = Object.values(
+      result.driverTripCounts.reduce((acc, { driverId, driverContact, driverName }) => {
+        if (!driverId) return acc;
+        const key = driverId.toString();
+        acc[key] = acc[key] || { driverId: key, driverContact, driverName, tripCount: 0 };
+        acc[key].tripCount++;
+        return acc;
+      }, {})
+    ).sort((a, b) => b.tripCount - a.tripCount);
+
+    return res.status(200).json({
+      success: true,
+      count: result.totalTrips,
+      data: result.trips,
+      stats: { totalTrips: result.totalTrips, uniqueVehicleCount: result.uniqueVehicleCount, uniqueDriverCount: result.uniqueDriverCount, perVehicle, perDriver },
+      dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
+    });
+
+  } catch (error) {
+    console.error("Error fetching closed trips:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch closed trips", error: error.message });
   }
 };

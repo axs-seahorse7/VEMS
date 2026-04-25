@@ -173,7 +173,63 @@ export const lookupDriver = async (req, res) => {
  
     return res.status(200).json({ driver });
   } catch (err) {
-    console.error("[lookupDriver]", err);
+    console.error("Error looking up driver:", err);
     return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
+
+//routes for client side lookup of vehicle by number
+
+export const getAvailableVehicles = async (req, res) => {
+  try {
+    const { type, typeOfVehicle, page = 1, limit = 50 } = req.query;
+    
+    const filter = {
+      isActive: true,
+      type: { $in: ["internal"] },
+      $or: [
+        
+        { currentTrip: null },
+        { currentTrip: { $exists: false } }
+      ]
+    };
+ 
+    if (type) filter.type = type;
+    if (typeOfVehicle) filter.typeOfVehicle = typeOfVehicle;
+ 
+    const skip = (Number(page) - 1) * Number(limit);
+ 
+    const [vehicles, total] = await Promise.all([
+      Vehicle.find(filter)
+        .populate("driverId", "name contact")          // driver basic info
+        .populate("ownerFactoryId", "name location")
+        .populate("currentFactoryId", "name location")  // factory basic info
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Vehicle.countDocuments(filter),
+    ]);
+ 
+    return res.status(200).json({
+      success: true,
+      data: vehicles,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching available vehicles:", error);
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch available vehicles.",
+      error: error.message,
+    });
+  }
+};
+ 

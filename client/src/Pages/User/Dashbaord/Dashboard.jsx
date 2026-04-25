@@ -1,23 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../../../services/API/Api/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, message, Table, Tag as AntTag, Avatar, Popover } from "antd";
+import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented  } from "antd";
 import VehicleDetailModal from "./VehicleDetailsModal.jsx";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
 import VehicleCard from "./VehicleCard.jsx";
 import LiveButton from "../../../components/buttons/LiveButtons.jsx";
 import { TruckElectric } from "lucide-react";
+import FloatingActions from "../../../components/buttons/FloatingAction.jsx";
+import VehicleDrawer from "../../../components/Dashboard/VehicleDrawer.jsx";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN") : "—");
-const fmtTime = (d) =>
-  d
-    ? new Date(d).toLocaleTimeString("en-IN", {
+const fmtTime = (d) => d ? new Date(d).toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
-      })
-    : "—";
+      }) : "—";
 
 const getLocationLabel = (loc) => {
   switch (loc) {
@@ -274,7 +273,7 @@ function KpiCard({ label, value, color, icon, active, onClick }) {
         boxShadow: active
           ? `0 0 0 2px ${color}`
           : "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
-        minWidth: 0,
+        minWidth: 150,
         cursor: onClick ? "pointer" : "default",
         transition: "all .15s",
       }}
@@ -605,6 +604,7 @@ export default function VehicleDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const queryClient = useQueryClient();
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
   const user = (() => {
     try {
@@ -844,8 +844,10 @@ const RMVehicles = allVehicles.filter((v) =>
           </div>
         </div>
 
+         
         {/* Center: Segment Filter */}
         <div style={{ flex: 1, display: "flex", justifyContent: "center", overflow: "auto" }}>
+
           <SegmentFilter
             filter={filter}
             setFilter={setFilter}
@@ -916,44 +918,7 @@ const RMVehicles = allVehicles.filter((v) =>
           </div>
 
           {/* Grid / Table toggle */}
-          <div
-            style={{
-              display: "flex",
-              background: "#f3f4f6",
-              borderRadius: 8,
-              padding: 3,
-              gap: 2,
-            }}
-          >
-            <button
-              className={`view-toggle-btn${viewMode === "grid" ? " active" : ""}`}
-              onClick={() => setViewMode("grid")}
-              title="Grid View"
-              style={{
-                color: viewMode === "grid" ? "#6366f1" : "#6b7280",
-                width: 28,
-                height: 28,
-              }}
-            >
-              <span style={{ width: 15, height: 15, display: "flex" }}>
-                {Icon.grid}
-              </span>
-            </button>
-            <button
-              className={`view-toggle-btn${viewMode === "table" ? " active" : ""}`}
-              onClick={() => setViewMode("table")}
-              title="Table View"
-              style={{
-                color: viewMode === "table" ? "#6366f1" : "#6b7280",
-                width: 28,
-                height: 28,
-              }}
-            >
-              <span style={{ width: 15, height: 15, display: "flex" }}>
-                {Icon.table}
-              </span>
-            </button>
-          </div>
+          
 
           {/* Refresh */}
           <Button
@@ -1058,7 +1023,9 @@ const RMVehicles = allVehicles.filter((v) =>
           padding: "12px 20px 0",
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-          gap: 10,
+          gap: 20,
+          borderBottom: "1px solid #e5e7eb",
+          paddingBottom: 20,
         }}
       >
         <KpiCard
@@ -1140,7 +1107,8 @@ const RMVehicles = allVehicles.filter((v) =>
           }
         />
       </div>
-
+          
+        <FloatingActions viewMode={viewMode} setViewMode={setViewMode} setIsFilterDrawerOpen={setIsFilterDrawerOpen} />
       {/* ── Search hint + result count ── */}
       {(searchQuery || filter !== "all") && (
         <div
@@ -1268,6 +1236,8 @@ const RMVehicles = allVehicles.filter((v) =>
         onClose={() => setEntryOpen(false)}
         onRefresh={refetch}
       />
+
+      <VehicleDrawer open={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(prev => !prev)} />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { createAdmin } from "../seed/createAdmin.js";
 import connectDB from "../db/config/db.config.js";
 await connectDB(); // Initialize DB connection
 
-createAdmin();
+// createAdmin();
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes

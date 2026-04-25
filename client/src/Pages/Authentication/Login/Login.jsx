@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../../../services/API/Api/api";
 import { message } from "antd";
@@ -89,6 +90,8 @@ export default function LoginPage() {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw]     = useState(false);
+  const navigate = useNavigate();
+
 
   /* Step 2 state */
   const [otp, setOtp]           = useState("");
@@ -120,7 +123,8 @@ export default function LoginPage() {
   };
 
   /* Step 1 → request OTP */
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    e?.preventDefault(); 
     setError("");
     if (!email)    return setError("Email is required.");
     if (!password) return setError("Password is required.");
@@ -130,8 +134,12 @@ export default function LoginPage() {
       if (response.data.success) {
         setMaskedEmail(maskEmail(email));
         setStep(2);
-      } 
+      } else {
+        setError(response.data.message || "Login failed. Please check your credentials and try again.");
+        message.error(response.data.message || "Login failed. Please check your credentials and try again.");
+      }
     } catch (error) {
+      setError(error.response?.data?.message || "Login failed. Please check your credentials and try again.");
       message.error(error.response?.data?.message || "Network error. Please try again.");
       setError("Network error. Please try again.");
     } finally {
@@ -148,7 +156,8 @@ export default function LoginPage() {
       const response = await api.post("/auth/verify-otp", { email, otp });
       if (response.data.success) {
         localStorage.setItem("user", JSON.stringify(response.data.user));
-        window.location.href = response.data.user.isSystemAdmin ? "/admin" : "/dashboard";
+        navigate(response.data.user.isSystemAdmin ? "/admin" : "/dashboard");
+
       } else {
         setError(response.data.message || "Invalid code. Please try again.");
       }
@@ -429,7 +438,12 @@ export default function LoginPage() {
                         placeholder="you@company.com"
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                        onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleLogin();
+                          }
+                        }}
                       />
                     </div>
 
@@ -446,7 +460,12 @@ export default function LoginPage() {
                           placeholder="••••••••••"
                           value={password}
                           onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                          onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleLogin();
+                            }
+                          }}
                         />
                         <button className="eye" type="button" onClick={() => setShowPw(!showPw)}>
                           {showPw ? (
@@ -478,7 +497,18 @@ export default function LoginPage() {
                     )}
                   </AnimatePresence>
 
-                  <motion.button className="btn" onClick={handleLogin} disabled={loading} whileTap={{ scale: 0.985 }}>
+                  <motion.button 
+                    className="btn" 
+                    type="button" 
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleLogin();
+                      }
+                    }} 
+                    onClick={handleLogin}
+                    disabled={loading} 
+                    whileTap={{ scale: 0.985 }}>
                     {loading ? (
                       <>
                         <svg className="spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

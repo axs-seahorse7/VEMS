@@ -102,6 +102,7 @@ const TripSchema = new mongoose.Schema({
     status: String,
     location: String,
     Phase: String,
+    factoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
     action:{
       type: String,
       enum: ["begin","checkin", "checkout", "load", "unload", "cancelled", "complete", "closed"]

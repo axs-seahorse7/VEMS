@@ -27,6 +27,19 @@ const VehicleSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+
+  currentTrip: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Trip",
+    default: null
+  },
+
+  currentFactoryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Factory",
+    default: null,
+    index: true
+  },
   
   driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver", default: null },
 
