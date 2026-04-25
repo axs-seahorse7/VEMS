@@ -67,37 +67,6 @@ export const getFactoryTrips = async (req, res) => {
   }
 };
 
-// export const cancelTrip = async (req, res) => {
-//   try {
-//     const { tripId } = req.params;
-
-//     const trip = await Trip.findById(tripId);
-//     if (!trip) throw new Error("Trip not found");
-
-//     if (trip.status !== "in_transit") {
-//       throw new Error("Only active trips can be cancelled");
-//     }
-
-//     trip.status = "cancelled";
-//     await trip.save();
-
-//     // Update vehicle state
-//     await VehicleState.findOneAndUpdate(
-//       { vehicleId: trip.vehicleId },
-//       {
-//         status: "inside_factory",
-//         currentFactoryId: trip.sourceFactoryId,
-//         currentTripId: null
-//       }
-//     );
-
-//     return res.json({ success: true });
-
-//   } catch (err) {
-//     return res.status(400).json({ error: err.message });
-//   }
-// };
-
 export const getIncomingTrips = async (req, res) => {
   const { factoryId } = req.params;
 
@@ -135,8 +104,7 @@ export const createTrip = async (req, res) => {
 
 
 
-
-// NEW ENDPOINTS BELOW (for internal use by factory staff) - NOT FINALIZED, STILL IN DEV
+// NEW ENDPOINTS BELOW  
 
 const assignDriverToTrip = async ({ driverId, tripId, vehicleId }) => {
   await Driver.findByIdAndUpdate(driverId, {
@@ -172,6 +140,8 @@ export const externalVehicleRegister = async (req, res) => {
       isInternalShifting,
       typeOfVehicle,
     } = req.body;
+
+    console.log("External Vehicle Register Payload:", req.body);
 
     if (!vehicleNumber || !driverIdNumber) {
       return res.status(400).json({
@@ -249,6 +219,7 @@ export const externalVehicleRegister = async (req, res) => {
         type: isInternalShifting? "internal_transfer": "external_delivery",
         phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
         location: isInternalShifting? "inside_factory": "outside_factory",
+        externalSource: isInternalShifting? null : req.body.source, // for external source customer name will be in source, for internal shifting it will be null
         sourceFactoryId: isInternalShifting? user.factory._id: null,
         destinationFactoryId: isInternalShifting? req.body.destinationFactoryId: req.body.sourceFactoryId,
         purpose: req.body.purpose || "Delivery",
@@ -261,9 +232,9 @@ export const externalVehicleRegister = async (req, res) => {
             material: req.body.material || req.body.materialType,
             quantity: req.body.quantity,
             invoiceNo: req.body.invoiceNo,
-            unit: req.body.unit,
             invoiceAmount: req.body.invoiceAmount,
-            seal: req.body.seal || "N/A",
+            unit: req.body.unit,
+            seal: req.body.seal || "sealed",
             customer: req.body.customer,
             supplier: req.body.supplier || "N/A"
           }
@@ -274,7 +245,7 @@ export const externalVehicleRegister = async (req, res) => {
             status: isInternalShifting ? "ORIGIN" : "ARRIVED",
             location: isInternalShifting? "inside_factory" : "outside_factory",
             phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
-            factoryId: isInternalShifting ? user.factory._id : null,
+            factoryId: isInternalShifting ? req.body.sourceFactoryId: user.factory._id || null,
             action: "begin",
             timestamp: new Date()
           }
@@ -584,7 +555,9 @@ export const getVehicleTrips = async (req, res) => {
           purpose: 1,
           tripState: 1,
           loadStatus: 1,
+          externalSource: 1,
           sourceFactory: 1,
+          externalDestination: 1,
           tripHistory: 1,
           materials: 1,
           destinationFactory: 1,
@@ -1164,8 +1137,6 @@ export const cancelTrip = async (req, res) => {
   }
 };
 
-
-
 export const getClosedTrips = async (req, res) => {
   try {
     const { vehicleNumber, driverContact, from, to } = req.query;
@@ -1207,7 +1178,7 @@ export const getClosedTrips = async (req, res) => {
         },
       },
 
-      // 🔗 Join vehicle — pull all fields needed for Excel
+      //  Join vehicle — pull all fields needed for Excel
       {
         $lookup: {
           from: "vehicles",
@@ -1218,7 +1189,7 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: false } },
 
-      // 🔗 Join driver — pull full identity fields
+      //  Join driver — pull full identity fields
       {
         $lookup: {
           from: "drivers",
@@ -1229,7 +1200,7 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
 
-      // 🔍 Dynamic search filters
+      //  Dynamic search filters
       {
         $match: {
           ...(vehicleNumber && {
@@ -1241,7 +1212,7 @@ export const getClosedTrips = async (req, res) => {
         },
       },
 
-      // 🔗 Join source factory
+      //  Join source factory
       {
         $lookup: {
           from: "factories",
@@ -1252,7 +1223,7 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$sourceFactory", preserveNullAndEmptyArrays: true } },
 
-      // 🔗 Join destination factory
+      //  Join destination factory
       {
         $lookup: {
           from: "factories",
@@ -1263,7 +1234,7 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$destinationFactory", preserveNullAndEmptyArrays: true } },
 
-      // 🎯 Project only fields we need — keeps payload lean
+      //  Project only fields we need — keeps payload lean
       {
         $project: {
           // Trip meta
@@ -1363,5 +1334,79 @@ export const getClosedTrips = async (req, res) => {
   } catch (error) {
     console.error("Error fetching closed trips:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch closed trips", error: error.message });
+  }
+};
+
+export const changeRoute = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const { newDestinationFactoryId, customer, type } = req.body;
+
+    const user = await User.findById(req.userId).populate("factory");
+    if (!user?.factory) {
+      return res.status(404).json({ message: "User or factory not found" });
+    }
+
+    const trip = await Trip.findById(tripId);
+    if (!trip) throw new Error("Trip not found");
+
+    if (["CLOSED", "CANCELLED"].includes(trip.tripState)) {
+      throw new Error(`Cannot change route of a ${trip.tripState.toLowerCase()} trip`);
+    }
+
+    // ✅ Validation
+    if (type === "internal" && !newDestinationFactoryId) {
+      throw new Error("New destination factory is required");
+    }
+
+    if (type === "external" && !customer) {
+      throw new Error("Customer is required for external route");
+    }
+
+    // ✅ Prevent same destination
+    if (
+      type === "internal" &&
+      String(trip.destinationFactoryId) === String(newDestinationFactoryId)
+    ) {
+      throw new Error("Trip is already assigned to this factory");
+    }
+
+    const updatePayload = {
+      type: type === "external" ? "external_delivery" : "internal_transfer",
+      externalDestination: type === "external" ? customer : null,
+      sourceFactoryId:  user.factory._id,
+      destinationFactoryId: type === "internal" ? newDestinationFactoryId : null,
+    };
+
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      {
+        phase: "ORIGIN",
+        status:"ORIGIN",
+        ...updatePayload,
+        $push: {
+          tripHistory: {
+            status: "ROUTE_CHANGED",
+            phase: "ROUTE_UPDATE",
+            location: trip.location || null,
+            factoryId: user.factory._id,
+            action: "route_change",
+            timestamp: new Date(),
+          },
+        },
+      },
+      { new: true }
+    );
+
+    return res.json({
+      success: true,
+      trip: updatedTrip,
+      message: "Trip route updated successfully",
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ message: err.message });
   }
 };

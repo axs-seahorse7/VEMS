@@ -596,7 +596,6 @@ const vehicleColumns = [
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function VehicleDashboard() {
-  const [filter, setFilter] = useState("all");
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [entryOpen, setEntryOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -605,7 +604,7 @@ export default function VehicleDashboard() {
   const [searchOpen, setSearchOpen] = useState(false);
   const queryClient = useQueryClient();
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
-
+  
   const user = (() => {
     try {
       return JSON.parse(localStorage.getItem("user")) || {};
@@ -616,6 +615,7 @@ export default function VehicleDashboard() {
   const userFactoryId = user?.factory?._id || user?.factory;
   const userRole = user?.workLocation || "atGate";
   const factory = user?.factory?.name;
+  const [filter, setFilter] = useState(userRole === "atGate" ? "all" :  "inside");
 
   useEffect(() => {
     const t = setInterval(() => {}, 60000);

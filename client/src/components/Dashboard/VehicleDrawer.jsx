@@ -101,7 +101,7 @@ function exportClosedTripsXLSX(trips) {
         mat?.quantity      ?? "",
         mat?.unit          || "",
         mat?.invoiceNo     || "",
-        mat?.invoiceAmmount ?? "",   // note: schema spells it "invoiceAmmount"
+        mat?.invoiceAmount ?? "",   // note: schema spells it "invoiceAmmount"
         mat?.seal          || "",
         mat?.supplier      || "",
         mat?.customer      || "",
@@ -477,7 +477,7 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
             </div>
           </div>
         }
-        open={open} onClose={onClose} width={480} placement="right" destroyOnClose
+        open={open} onClose={onClose} size={480} placement="right" destroyOnClose
       >
 
         {/* ══ 1 — Segment ═══════════════════════════════════════ */}

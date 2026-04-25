@@ -100,8 +100,9 @@ export default function VehicleCard({ vehicle, onClick }) {
   // ── Overdue logic ────────────────────────────────────────────────────────
   // A card is "overdue" when: still waiting outside AND has been waiting > 4 hrs
   const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
+  const isWaitingInside    = location === "inside_factory" && vehicle.type === "external" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
   const waitingHrs   = hoursWaiting(vehicle?.createdAt);
-  const isOverdue    = isWaiting && waitingHrs >= 4;
+  const isOverdue    = isWaiting && waitingHrs >= 4 || isWaitingInside && waitingHrs >= 4;
   
   // ── Shake toggle: fires every 30 s, active for ~1 s ─────────────────────
   const [shaking, setShaking] = useState(false);
@@ -123,11 +124,11 @@ export default function VehicleCard({ vehicle, onClick }) {
 
   // ── State key for border bar ─────────────────────────────────────────────
   const stageKey = (() => {
-    if (vehicle?.tripState === "CLOSED") return "closed";
-    if (vehicle?.tripState === "CANCELLED") return "canceled";
-    if (location === "inside_factory") return "inside";
+    
+    if (location === "inside_factory" && (vehicle.tripState !== "CLOSED" || vehicle.tripState !== "CANCELLED")) return "inside";
     if (location === "enroute") return "enroute";
     if (location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "waiting";
+    if (location === "outside_factory" && (vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED")) return "Checked Out && Closed";
     return "unknown";
   })();
 
@@ -137,7 +138,7 @@ export default function VehicleCard({ vehicle, onClick }) {
   vehicle.type === "internal_transfer" ? (
     <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
       {vehicle.sourceFactory?.name || "Source"}
-      <i class="ri-arrow-right-long-line"></i>
+      <i className="ri-arrow-right-long-line"></i>
       {vehicle.destinationFactory?.name || "Dest"}
     </span>
   ) : (
@@ -324,13 +325,14 @@ export default function VehicleCard({ vehicle, onClick }) {
 
           {/* ── Row 2: Status badges ── */}
           <div style={{ display: "flex", gap: 4, marginBottom: 7, flexWrap: "wrap", alignItems: "center", justifyContent:"space-between" }}>
-            <section>
+            <section style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ background: "#f3f4f6", color: "#374151", fontSize: 9.5, fontWeight: 600, borderRadius: 4, border: "1px solid #e5e7eb", padding: "1px 6px", whiteSpace: "nowrap" }}>
                 {vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle}
               </span>
 
               <CBadge stage={stageKey} />
-              {vehicle.completedAt && (<Tag color={vehicle.tripState === "CANCELLED"? "red": vehicle.tripState === "CLOSED" ? "green" : "blue"} style={{fontWeight:600, fontSize:11}} >{ fmtTime(vehicle.completedAt) }</Tag>)}
+
+              {vehicle.tripState && (<Tag size="small" color={vehicle.tripState === "CANCELLED"? "red": vehicle.tripState === "CLOSED" ? "gray" : "green"} style={{fontWeight:600, fontSize:9}} >{ vehicle.tripState }</Tag>)}
 
             </section>
 
@@ -390,7 +392,7 @@ export default function VehicleCard({ vehicle, onClick }) {
                 )}
                 <div className="relative w-2 h-2 rounded-full bg-blue-500"></div>
               </div>
-              <span className="mt-1 text-blue-600">{vehicle?.sourceFactory?.name || "Out Source"}</span>
+              <span className="mt-1 text-blue-600">{vehicle?.sourceFactory?.name || (vehicle.externalSource?? "Out Source") }</span>
             </div>
 
             {/* GRADIENT LINE */}
@@ -420,7 +422,7 @@ export default function VehicleCard({ vehicle, onClick }) {
                 <div className={`relative w-2 h-2 rounded-full ${isAtDestination ? "bg-emerald-500" :  "bg-gray-300"}`}></div>
               </div>
               <span className={`mt-1 ${isAtDestination ? "text-emerald-600" : "text-gray-400"}`}>
-                {vehicle?.destinationFactory?.name || "DESTINATION"}
+                {vehicle?.destinationFactory?.name?? vehicle.externalDestination?? "Destination"}
               </span>
             </div>
 

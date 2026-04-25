@@ -6,7 +6,7 @@ const materialSchema = new mongoose.Schema({
   quantity: Number,
   invoiceNo: String,
   unit: String,
-  invoiceAmmount: Number,
+  invoiceAmount: Number,
   seal: String,
   customer: String,
   supplier: String,
@@ -30,7 +30,7 @@ const TripSchema = new mongoose.Schema({
 
   phase: {
     type: String,
-    enum: ["ORIGIN", "DESTINATION"],
+    enum: ["ORIGIN", "DESTINATION", "ROUTE_UPDATE"],
     default: "ORIGIN",
     index: true
   },
@@ -44,7 +44,7 @@ const TripSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ["ORIGIN", "IN_TRANSIT", "ARRIVED", "DESTINATION" ],
+    enum: ["ORIGIN", "IN_TRANSIT", "ROUTE_CHANGED", "ARRIVED", "DESTINATION" ],
     default: "ORIGIN",
     index: true
   },
@@ -55,6 +55,9 @@ const TripSchema = new mongoose.Schema({
     default: "ACTIVE",
     index: true,
   },
+
+  externalSource: String,   // for external deliveries
+  externalDestination: String, // for external deliveries
 
   sourceFactoryId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -105,7 +108,7 @@ const TripSchema = new mongoose.Schema({
     factoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
     action:{
       type: String,
-      enum: ["begin","checkin", "checkout", "load", "unload", "cancelled", "complete", "closed"]
+      enum: ["begin","checkin", "checkout", "load", "unload", "cancelled", "complete", "closed", "route_change"]
     },
     timestamp: Date
   }]

@@ -241,10 +241,12 @@ const DEFAULT_DRIVER = {
   driverName: "", driverContact: "", driverIdType: "Aadhar",
   driverIdNumber: "", licenseNumber: "",
 };
+
 const DEFAULT_VEHICLE = {
   vehicleNumber: "", typeOfVehicle: "truck",
   transporterName: "", PUCExpiry: "",
 };
+
 const DEFAULT_TRIP_COMMON = { purpose: "", materialType: "" };
 const DEFAULT_TRIP_INTERNAL = { ...DEFAULT_TRIP_COMMON, destinationFactoryId: "" };
 const DEFAULT_TRIP_EXTERNAL = {
@@ -443,6 +445,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const [driverLookup, setDL]           = useState({ loading:false, found:false, foundBy:null });
   const [vehicleLookup, setVL]          = useState({ loading:false, found:false });
   const draftTimer = useRef(null);
+  const ALL_CUSTOMERS = [...CUSTOMER, ...SUPPLIERS.sort((a,b) => a.v.localeCompare(b.v))];
 
   const checkDraft = useCallback((intForm, extForm) => {
     const hasData = (form, defaults) =>
@@ -453,16 +456,14 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     setHasDraft({ internal:hasData(intForm, DEFAULT_INTERNAL), external:hasData(extForm, DEFAULT_EXTERNAL) });
   }, []);
 
-  const setInternalForm = useCallback(updater => {
-    _setInternal(prev => {
+  const setInternalForm = useCallback(updater => {_setInternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       lsSet(LS_INTERNAL, next); flashDraft();
       checkDraft(next, lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL)); return next;
     });
   }, [checkDraft]);
 
-  const setExternalForm = useCallback(updater => {
-    _setExternal(prev => {
+  const setExternalForm = useCallback(updater => {_setExternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       lsSet(LS_EXTERNAL, next); flashDraft();
       checkDraft(lsGet(LS_INTERNAL, DEFAULT_INTERNAL), next); return next;
@@ -547,6 +548,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     if (k==="driverIdNumber") lookupDriver(v, "driverIdNumber", "internal");
     clearErr(k);
   };
+
   const setExternal = (k, v) => {
     setExternalForm(p => ({ ...p, [k]:v }));
     if (k==="vehicleNumber")  lookupVehicle(cleanVehicleNumber(v), "external");
@@ -554,6 +556,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     if (k==="driverIdNumber") lookupDriver(v, "driverIdNumber", "external");
     clearErr(k);
   };
+
   const clearErr = k => setErrors(p => ({ ...p, [k]:"" }));
 
   // ── Validation ─────────────────────────────────────────────────────────────
@@ -588,6 +591,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     const merged = { ...e, ...fmtErr };
     setErrors(merged); return !Object.keys(merged).length;
   };
+
   const validateExternal = () => {
     const e = {};
     if (!externalForm.driverName)   e.driverName = "Required";
@@ -611,6 +615,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     } catch (e) { message.error(e.response?.data?.message||"Failed"); }
     finally { setSubmitting(false); }
   };
+
   const handleSubmitExternal = async () => {
     if (!validateExternal()) return message.error("Please fix errors");
     setSubmitting(true);
@@ -885,9 +890,10 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               </div>
             )}
 
-            <div style={g2}>
-              {sel("purpose","Purpose",externalForm.purpose,setExternal,PURPOSE_OPTS,true)}
-              {sel("materialType","Material Type",externalForm.materialType,setExternal,MATERIAL_TYPES,true)}
+            <div style={g3}>
+              {sel("source","Source Factory", externalForm.source, setExternal, ALL_CUSTOMERS, true)}
+              {sel("purpose","Purpose" ,externalForm.purpose, setExternal, PURPOSE_OPTS,true)}
+              {sel("materialType","Material Type", externalForm.materialType, setExternal, MATERIAL_TYPES,true)}
             </div>
 
             {externalForm.materialType==="RM" && (
@@ -930,7 +936,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
               </div>
             )}
 
-            {["Scrap","NewMachines","Others"].includes(externalForm.materialType) && (
+            {["Scrap", "NewMachines", "Others"].includes(externalForm.materialType) && (
               <div style={{ animation:"vehFade .18s ease" }}>
                 <SL label="Additional Details" color="#7c3aed"/>
                 <div style={{ background:"#faf5ff", border:"1.5px solid #e9d5ff", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import api from "../../../../services/API/Api/api";
 import { message, Popconfirm  } from "antd";
+import ChangeRouteModal, {useChangeRouteModal} from "../../../components/Change-Route-Modal/ChangeRouteModal"; 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -162,6 +163,35 @@ function TripTimeline({ tripHistory }) {
 function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   const [loading, setLoading] = useState(false);
 
+
+const { modalProps, openChangeRouteModal } = useChangeRouteModal({
+  onConfirmInternal: async (factory, trip) => {
+  try {
+    const res = await api.post(`/trip/change-route/${trip._id}`, {
+    newDestinationFactoryId: factory._id,
+    type: "internal"
+    });
+
+    message.success(res.data?.message || `Route changed to factory: ${factory.name}`);
+  } catch (err) {
+    message.error(err.response?.data?.message || "Failed to change route");
+  }
+  },
+
+  onConfirmExternal: async (customerName, trip) => {
+  try {
+    const res = await api.post(`/trip/change-route/${trip._id}`, {
+    customer: customerName,
+    type: "external"
+    });
+
+    message.success(res.data?.message || "Route changed successfully");
+  } catch (err) {
+    message.error(err.response?.data?.message || "Failed to change route");
+  }
+  }
+});
+
   // Aliases for readability
   const { location, phase, tripState, purpose, loadStatus, type } = vehicle;
   const trip = vehicle;
@@ -247,7 +277,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
         userRole === "atGate" &&
         isInsideFactory &&
         phase === "ORIGIN" &&
-        userFactoryId === sourceId &&
+        userFactoryId === sourceId && trip.type === "internal_transfer" &&
         isNotClosedOrCancelled,
       label: "→ Dispatch Vehicle (Checkout)",
       confirmTitle: "Dispatch this vehicle to its destination?",
@@ -261,9 +291,25 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
         userRole === "atGate" &&
         isInsideFactory &&
         phase === "DESTINATION" &&
-        userFactoryId !== sourceId &&
+        trip.location === "inside_factory" &&
+        (userFactoryId !== sourceId || type === "external_delivery" ) &&
         tripState !== "CLOSED" &&
         tripState !== "ACTIVE" &&
+        tripState !== "CANCELLED",
+      label: "Checkout & Exit",
+      confirmTitle: "Check this vehicle out and allow it to exit?",
+      color: "#D75656",
+      onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
+    },
+    {
+      condition:
+        userRole === "atGate" &&
+        isInsideFactory &&
+        phase === "ORIGIN" &&
+        trip.location === "inside_factory" &&
+        userFactoryId === sourceId && type === "external_delivery"  &&
+        tripState !== "CLOSED" &&
+        tripState === "ACTIVE" &&
         tripState !== "CANCELLED",
       label: "Checkout & Exit",
       confirmTitle: "Check this vehicle out and allow it to exit?",
@@ -298,7 +344,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       label: "Change Route",
       confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
       color: "#3a64c7",
-      onConfirm: () => doAction(() => api.post(`/trip/unload/${trip._id}`, withFactory)),
+      onConfirm: () =>  openChangeRouteModal(trip),
     },
 
     // 7. storeSite/dispatchSite | inside | Pickup | internal_transfer | not loaded → Mark Load Complete
@@ -319,7 +365,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
     // 8. storeSite | inside | not pending | not CLOSED/CANCELLED/COMPLETE → Mark Trip Completed / Mark Ready to Checkout
     {
       condition:
-        userRole === "storeSite" &&
+        (userRole === "storeSite" || userRole === "dispatchSite") &&
         isInsideFactory &&
         loadStatus !== "pending" &&
         tripState !== "CLOSED" &&
@@ -389,6 +435,8 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
           </button>
         </Popconfirm>
       ))}
+
+      <ChangeRouteModal {...modalProps} />
     </div>
   );
 }
@@ -396,7 +444,6 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
 export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userRole }) {
   if (!vehicle) return null;
-  console.log("Rendering VehicleDetailModal with vehicle:", vehicle);
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
   const location    = vehicle.location;
@@ -462,8 +509,8 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
         </Section>
         <Section title="Location">
           <Row label="State"            value={location === "outside_factory" ? "Outside Factory" : location === "inside_factory" ? "Inside Factory" : "In Transit"} accent />
-          <Row label="Source Factory"   value={trip?.sourceFactory?.name || (trip.type === "external_delivery" ? "External" : "Internal")} />
-          <Row label="Destination"      value={trip?.destinationFactory?.name || "N/A"} />
+          <Row label="Source Factory"   value={trip?.sourceFactory?.name || (trip.type === "external_delivery" ? (trip.externalSource?? "External") : "Internal")} />
+          <Row label="Destination"      value={trip?.destinationFactory?.name?? trip.externalDestination?? "N/A"} />
           <Row label="Trip Start At"    value={fmtTime(trip?.createdAt) || "N/A"} />
         </Section>
         <Section title="Material Details">
@@ -481,7 +528,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
         <Section title="Invoice Details">
           <Row label="Material Type"    value={trip?.materials[0]?.name === "RM" ? "Raw Material" : trip?.materials[0]?.name === "FG" ? "Finished Goods" : trip?.materials[0]?.name || "N/A" } accent />
           <Row label="Invoice No"       value={trip?.materials[0]?.invoiceNo || "N/A"} accent />
-          <Row label="Amount"           value={trip?.materials[0]?.invoiceAmmount|| "N/A"} accent />
+          <Row label="Amount"           value={trip?.materials[0]?.invoiceAmount|| "N/A"} accent />
         </Section>
       </div>
 
@@ -493,6 +540,8 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
         <WorkflowActions vehicle={vehicle} onAction={() => { onRefresh(); onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
         <button onClick={onClose} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Close</button>
       </div>
+
+      
     </Modal>
   );
 }

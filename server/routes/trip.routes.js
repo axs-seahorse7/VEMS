@@ -3,6 +3,7 @@ import express from "express";
 import {isAuthenticated} from "../middleware/isAuth/isAuthenticated.js";
 import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, 
     completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination , cancelTrip, getClosedTrips,
+    changeRoute,
 } from "../controllers/trip.contollers.js";
 const router = express.Router();
 
@@ -28,12 +29,12 @@ router.post("/trip/internal-transfer-complete/:tripId", markInternalTransferComp
 router.post("/trip/load-complete/:tripId", markLoadCompleteAtDestination);
 router.post("/trip/unload/:tripId", unloadTrip);
 router.post("/trip/cancel/:tripId", cancelTrip);
+router.post("/trip/change-route/:tripId", changeRoute);
 
 
 
 
 router.get("/vehicle/trips", getVehicleTrips);
 router.get("/trip/closed/", getClosedTrips);
-// router.get("/trip/closed/:vehicleNumber", getClosedTrips);
 
 export default router;
