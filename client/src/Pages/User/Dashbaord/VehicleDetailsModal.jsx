@@ -164,33 +164,33 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   const [loading, setLoading] = useState(false);
 
 
-const { modalProps, openChangeRouteModal } = useChangeRouteModal({
-  onConfirmInternal: async (factory, trip) => {
-  try {
-    const res = await api.post(`/trip/change-route/${trip._id}`, {
-    newDestinationFactoryId: factory._id,
-    type: "internal"
-    });
+  const { modalProps, openChangeRouteModal } = useChangeRouteModal({
+    onConfirmInternal: async (factory, trip) => {
+    try {
+      const res = await api.post(`/trip/change-route/${trip._id}`, {
+      newDestinationFactoryId: factory._id,
+      type: "internal"
+      });
+      onAction();
+      message.success(res.data?.message || `Route changed to factory: ${factory.name}`);
+    } catch (err) {
+      message.error(err.response?.data?.message || "Failed to change route");
+    }
+    },
 
-    message.success(res.data?.message || `Route changed to factory: ${factory.name}`);
-  } catch (err) {
-    message.error(err.response?.data?.message || "Failed to change route");
-  }
-  },
-
-  onConfirmExternal: async (customerName, trip) => {
-  try {
-    const res = await api.post(`/trip/change-route/${trip._id}`, {
-    customer: customerName,
-    type: "external"
-    });
-
-    message.success(res.data?.message || "Route changed successfully");
-  } catch (err) {
-    message.error(err.response?.data?.message || "Failed to change route");
-  }
-  }
-});
+    onConfirmExternal: async (customerName, trip) => {
+    try {
+      const res = await api.post(`/trip/change-route/${trip._id}`, {
+      customer: customerName,
+      type: "external"
+      });
+      onAction();
+      message.success(res.data?.message || "Route changed successfully");
+    } catch (err) {
+      message.error(err.response?.data?.message || "Failed to change route");
+    }
+    }
+  });
 
   // Aliases for readability
   const { location, phase, tripState, purpose, loadStatus, type } = vehicle;

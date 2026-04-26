@@ -1237,7 +1237,7 @@ const RMVehicles = allVehicles.filter((v) =>
         onRefresh={refetch}
       />
 
-      <VehicleDrawer open={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(prev => !prev)} />
+      <VehicleDrawer refetch={refetch} open={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(prev => !prev)} />
     </div>
   );
 }

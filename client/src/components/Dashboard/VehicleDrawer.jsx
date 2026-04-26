@@ -347,7 +347,7 @@ function StatsBar({ stats }) {
 /* ════════════════════════════════════════════════════════════
    VehicleDrawer
 ════════════════════════════════════════════════════════════ */
-export default function VehicleDrawer({ open = false, onClose = () => {} }) {
+export default function VehicleDrawer({ open = false, onClose = () => {},  }) {
   const [segment, setSegment]     = useState("available");
   const [search, setSearch]       = useState("");
   const [dateRange, setDateRange] = useState([null, null]);
