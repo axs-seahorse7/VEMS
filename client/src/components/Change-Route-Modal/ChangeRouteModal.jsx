@@ -230,7 +230,7 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
   const [factories, setFactories] = useState([])  
   const [searchText, setSearchText] = useState("");
   const [filteredCustomers, setFilteredCustomers] = useState([...CUSTOMER, ...SUPPLIERS])   // factory obj or customer string
-
+  const user = JSON.parse(localStorage.getItem("user")) || {};
 
     const handleFilterCustomers = (value) => {
         setSearchText(value);
@@ -250,7 +250,8 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
         try {
             const fetchFactories = async () => {
                 const res = await api.get("/factories");
-                setFactories(res.data.factories);
+                const excludeUserFactory = res.data.factories.filter(f => f._id !== user.factory?._id);
+                setFactories(excludeUserFactory);
             };
             
             fetchFactories();

@@ -634,23 +634,6 @@ export default function VehicleDashboard() {
     refetchOnWindowFocus: true,
   });
 
-  if (isLoading)
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#f8f9fb",
-          fontFamily: "'DM Sans',sans-serif",
-        }}
-      >
-        <div style={{ color: "#6366f1", fontSize: 14, fontWeight: 600 }}>
-          Loading vehicles…
-        </div>
-      </div>
-    );
 
   // ── Open trips ──────────────────────────────────────────────────────────────
   const filteredData = data?.filter((v) => v.tripState !== "CLOSED" && v.tripState !== "CANCELLED") || [];
@@ -1157,8 +1140,22 @@ const RMVehicles = allVehicles.filter((v) =>
 
       {/* ── Content ── */}
       <div style={{ padding: "10px 20px 32px" }}>
-        {viewMode === "grid" ? (
-          filteredVehicles.length === 0 ? (
+        { viewMode === "grid" ?  (
+         isLoading ? (
+               <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#f8f9fb",
+                    fontFamily: "'DM Sans',sans-serif",
+                  }}
+                >
+                  <div style={{ color: "#6366f1", fontSize: 14, fontWeight: 600 }}>
+                    Loading vehicles…
+                  </div>
+                </div>
+         ) : filteredVehicles.length === 0 ? (
             <div
               style={{
                 textAlign: "center",

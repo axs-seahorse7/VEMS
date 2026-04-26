@@ -60,6 +60,7 @@ const ACTION_META = {
   unload:   { color: "#d97706", icon: "ri-stack-overflow-line",   label: "Unloaded" },
   cancel:   { color: "#dc2626", icon: "ri-close-circle-line",     label: "Cancelled"},
   complete: { color: "#059669", icon: "ri-checkbox-circle-line",  label: "Completed"},
+  route_change: { color: "#f81033", icon: "ri-signpost-fill",     label: "Route Changed"},
 };
 
 function resolveAction(entry) {
@@ -107,6 +108,7 @@ function TypeBadge({ type }) {
 
 // ─── Horizontal Trip History Timeline ────────────────────────────────────────
 function TripTimeline({ tripHistory }) {
+  // console.log("Rendering TripTimeline with history:", tripHistory);
   if (!Array.isArray(tripHistory) || tripHistory.length === 0) return null;
 
   return (
@@ -117,7 +119,7 @@ function TripTimeline({ tripHistory }) {
       </div>
 
       {/* Scrollable horizontal track */}
-      <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+      <div style={{ overflowX: "auto", paddingBottom: 4, scrollbarWidth: "thin", scrollbarColor: "#cbd5e1 transparent" }}>
         <div style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content", gap: 0 }}>
           {tripHistory.map((entry, idx) => {
             const meta = resolveAction(entry);
@@ -138,7 +140,7 @@ function TripTimeline({ tripHistory }) {
                   </span>
                   {/* Status */}
                   <span style={{ fontSize: 9, color: "black", marginTop: 2, textAlign: "center", lineHeight: 1.2, fontWeight: 500 }}>
-                    {entry.status}
+                    {entry?.factory?.name || entry.location || "—"} ({entry?.factory?.location || "N/A"}) {entry?.action === "route_change" ?  `→ ${entry?.segment?.destinationFactory?.name?? entry?.segment?.externalDestination?? "N/A"} ${entry?.segment?.destinationFactory?.location?? ""} ` : ""}
                   </span>
                   {/* Timestamp */}
                   <span style={{ fontSize: 9, color: "blue", marginTop: 2, textAlign: "center", lineHeight: 1.3, letterSpacing: .2, fontWeight: 500 }}>
@@ -332,34 +334,32 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       color: "#f59e0b",
       onConfirm: () => doAction(() => api.post(`/trip/unload/${trip._id}`, withFactory)),
     },
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        isInsideFactory &&
-        purpose === "Delivery" &&
-        loadStatus !== "unloaded" &&
-        (type === "external_delivery" || type === "internal_transfer") &&
-        destId === userFactoryId &&
-        isNotClosedOrCancelled,
-      label: "Change Route",
-      confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
-      color: "#3a64c7",
-      onConfirm: () =>  openChangeRouteModal(trip),
-    },
-
     // 7. storeSite/dispatchSite | inside | Pickup | internal_transfer | not loaded → Mark Load Complete
     {
       condition:
         (userRole === "storeSite" || userRole === "dispatchSite") &&
         isInsideFactory &&
         purpose === "Pickup" &&
-        type === "internal_transfer" &&
         loadStatus !== "loaded" &&
+        destId === userFactoryId &&
         isNotClosedOrCancelled,
       label: "↑ Mark Load Complete",
       confirmTitle: "Confirm the vehicle has been fully loaded?",
       color: "#8b5cf6",
       onConfirm: () => doAction(() => api.post(`/trip/load-complete/${trip._id}`, withTripFactory)),
+    },
+
+    {
+      condition:
+        (userRole === "storeSite" || userRole === "dispatchSite") &&
+        isInsideFactory &&
+        loadStatus === "pending" &&
+        destId === userFactoryId &&
+        isNotClosedOrCancelled,
+      label: "Change Route",
+      confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
+      color: "#3a64c7",
+      onConfirm: () =>  openChangeRouteModal(trip),
     },
 
     // 8. storeSite | inside | not pending | not CLOSED/CANCELLED/COMPLETE → Mark Trip Completed / Mark Ready to Checkout
@@ -386,20 +386,6 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       },
     },
 
-    // 9. storeSite/dispatchSite | inside | Pickup | internal_transfer | not loaded → Final Load Check
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        isInsideFactory &&
-        purpose === "Pickup" &&
-        type === "internal_transfer" &&
-        loadStatus !== "loaded" &&
-        isNotClosedOrCancelled,
-      label: "↑ Final Load Check",
-      confirmTitle: "Confirm this is the final load check for this vehicle?",
-      color: "#ec4899",
-      onConfirm: () => doAction(() => api.post(`/dispatch/load/${trip._id}`, withTripFactory)),
-    },
   ];
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -444,6 +430,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
 export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userRole }) {
   if (!vehicle) return null;
+  // console.log("Rendering VehicleDetailModal with vehicle:", vehicle);
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
   const location    = vehicle.location;
@@ -511,7 +498,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
           <Row label="State"            value={location === "outside_factory" ? "Outside Factory" : location === "inside_factory" ? "Inside Factory" : "In Transit"} accent />
           <Row label="Source Factory"   value={trip?.sourceFactory?.name || (trip.type === "external_delivery" ? (trip.externalSource?? "External") : "Internal")} />
           <Row label="Destination"      value={trip?.destinationFactory?.name?? trip.externalDestination?? "N/A"} />
-          <Row label="Trip Start At"    value={fmtTime(trip?.createdAt) || "N/A"} />
+          <Row label="Trip Start"    value={fmtTime(trip?.createdAt) || "N/A"} />
         </Section>
         <Section title="Material Details">
           <Row label="Material"         value={trip?.materials[0]?.material || "N/A"} accent />

@@ -110,7 +110,16 @@ const TripSchema = new mongoose.Schema({
       type: String,
       enum: ["begin","checkin", "checkout", "load", "unload", "cancelled", "complete", "closed", "route_change"]
     },
-    timestamp: Date
+    timestamp: Date,
+    segment: {
+      movementType: String,
+      externalSource: String,
+      externalDestination: String,
+      sourceFactoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
+      destinationFactoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
+      startedAt: Date,
+      completedAt: Date
+    }
   }]
 
 }, { timestamps: true });

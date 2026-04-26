@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { getMe } from "../../../services/API/AuthService/authService";
+import VEMSDashboardSkeleton from "../VEMSDashboardSkeleton/VEMSDashboardSkeleton";
 
 export function AdminRoute({ children }) {
   const [loading, setLoading] = useState(true);
@@ -36,7 +37,7 @@ export function UserRoute({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <VEMSDashboardSkeleton />;
 
   if (!user) return <Navigate to="/login" replace />;
 
