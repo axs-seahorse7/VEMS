@@ -583,7 +583,9 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   const validateInternal = () => {
     const e = {};
+    if (!internalForm.driverContact)           e.driverContact = "Required";
     if (!internalForm.driverName)           e.driverName = "Required";
+    if (!internalForm.driverIdNumber)           e.driverIdNumber = "Required";
     if (!internalForm.vehicleNumber)         e.vehicleNumber = "Required";
     if (!internalForm.destinationFactoryId) e.destinationFactoryId = "Required";
     if (!internalForm.purpose)              e.purpose = "Required";
@@ -595,7 +597,9 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   const validateExternal = () => {
     const e = {};
+    if (!externalForm.driverContact)   e.driverContact = "Required";
     if (!externalForm.driverName)   e.driverName = "Required";
+    if (!internalForm.driverIdNumber)           e.driverIdNumber = "Required";
     if (!externalForm.vehicleNumber) e.vehicleNumber = "Required";
     if (!externalForm.purpose)      e.purpose = "Required";
     if (!externalForm.materialType) e.materialType = "Required";
@@ -647,13 +651,24 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const ERR = { fontSize:8.5, color:"#dc2626", marginTop:1 };
   const IB  = { borderRadius:7, padding:"6px 9px", fontSize:12, outline:"none", background:"#fafafa", color:"#111", width:"100%", boxSizing:"border-box", transition:"border-color .15s,box-shadow .15s", fontFamily:"inherit", height:30 };
 
-  const VEHICLE_TYPES  = [{ v:"truck",l:"Truck"},{v:"miniTruck",l:"Mini Truck"},{v:"containerTruck",l:"Container Truck"},{v:"mixerTruck",l:"Mixer Truck"},{v:"waterTanker",l:"Water Tanker"},{v:"car",l:"Car"}];
   const ID_TYPES       = [{ v:"Aadhar",l:"Aadhar"},{v:"PAN",l:"PAN"},{v:"DL",l:"Driving Licence"}];
   const MATERIAL_TYPES = [{ v:"RM",l:"RM – Raw Material"},{v:"FG",l:"FG – Finished Goods"},{v:"Scrap",l:"Scrap"},{v:"NewMachines",l:"New Machines"},{v:"Others",l:"Others"}];
   const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"}];
   const PASS_TYPE_OPTS = [{ v:"Incoming",l:"Incoming"},{v:"Outgoing",l:"Outgoing"}];
   const factoryOpts    = factories.filter(f=>f._id!==user.factory?._id).map(f=>({v:f._id,l:`${f.name} – ${f.location}`}));
-
+  const VEHICLE_TYPES  = [
+    {v:"truck",l:"Truck"},
+    {v:"car",l:"Car"},
+    {v:"bike",l:"Bike"},
+    {v:"byHand",l:"By Hand"},
+    {v:"trackter",l:"Trackter"},
+    {v:"miniTruck",l:"Mini Truck"},
+    {v:"mixerTruck",l:"Mixer Truck"},
+    {v:"autoRikshaw",l:"Auto Rikshaw"},
+    {v:"waterTanker",l:"Water Tanker"},
+    {v:"containerTruck",l:"Container Truck"},
+  ];
+  
   // ── Field builders ─────────────────────────────────────────────────────────
   const inp = (key, label, value, onChange, type="text", placeHolder, req=false, activeIdType=null) => {
     const isDriverLookupField  = key==="driverContact"||key==="driverIdNumber";
