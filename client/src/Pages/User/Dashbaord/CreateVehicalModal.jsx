@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../../../../services/API/Api/api";
-import { message, Select } from "antd";
+import { message, Select, AutoComplete  } from "antd";
 import { Factory, Truck, User, Car, ClipboardList, ChevronDown, ChevronUp } from "lucide-react";
 const { Option } = Select;
 
@@ -29,21 +29,36 @@ const ID_FORMAT = {
       ? null : "PAN format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)",
   },
   DL: {
-    hint:        "State-RTO-Year-ID — e.g. MH-12-2019-1234567",
-    placeholder: "MH-12-2019-1234567",
-    maxRaw:      15,            // 15 alphanum chars without dashes
-    // auto-insert dashes as user types: SS-RR-YYYY-SSSSSSS
-    clean: (raw) => {
-      const c = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 15);
-      if (c.length <= 2)  return c;
-      if (c.length <= 4)  return `${c.slice(0,2)}-${c.slice(2)}`;
-      if (c.length <= 8)  return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4)}`;
+  hint: "DL formats - (e.g. MH-12-2019-1234567 or RJ02A20160004692)",
+  placeholder: "MH-12-2019-1234567 / RJ02A20160004692",
+  maxRaw: 16,
+
+  clean: (raw) => {
+    const c = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 16);
+
+    // 👇 If starts like new format → apply dash formatting
+    if (/^[A-Z]{2}\d{2}/.test(c)) {
+      if (c.length <= 2) return c;
+      if (c.length <= 4) return `${c.slice(0,2)}-${c.slice(2)}`;
+      if (c.length <= 8) return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4)}`;
       return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4,8)}-${c.slice(8)}`;
-    },
-    display:(v) => v,
-    validate:(v) => /^[A-Z]{2}-\d{2}-\d{4}-[A-Z0-9]{7}$/.test(v)
-      ? null : "DL format: SS-RR-YYYY-SSSSSSS (e.g. MH-12-2019-1234567)",
+    }
+
+    // 👇 Otherwise keep as old format (no dashes)
+    return c;
   },
+
+  display: (v) => v,
+
+  validate: (v) => {
+    const newFormat = /^[A-Z]{2}-\d{2}-\d{4}-[A-Z0-9]{7}$/;
+    const oldFormat = /^[A-Z]{2}\d{2}[A-Z]\d{4}\d{7}$/;
+
+    if (newFormat.test(v) || oldFormat.test(v)) return null;
+
+    return "Invalid DL. Use MH-12-2019-1234567 or RJ02A20160004692";
+  },
+}
 };
 
 // Vehicle number: SS NN LLL NNNN  — e.g. RJ 14 AB 1234
@@ -429,6 +444,31 @@ function VehicleFormatHint({ value }) {
   return null;
 }
 
+const SourceField = ({ value, onChange, options }) => {
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:4}}>
+    <label className="text-[10px] text-gray-500 font-semibold">Source Factory</label>
+    <AutoComplete
+      required
+      value={value || ""}
+      style={{ width: "100%", height:32 }}
+      placeholder="Source Factory"
+      options={options.map((o) => ({
+        value: o.v,   // what gets stored
+        label: o.l,   // what user sees
+      }))}
+      filterOption={(inputValue, option) =>
+        option.label.toLowerCase().includes(inputValue.toLowerCase())
+      }
+      onChange={(val) => {
+        onChange("source", val); // 👈 string only
+        clearErr("source");
+      }}
+    />
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
@@ -599,7 +639,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     const e = {};
     if (!externalForm.driverContact)   e.driverContact = "Required";
     if (!externalForm.driverName)   e.driverName = "Required";
-    if (!internalForm.driverIdNumber)           e.driverIdNumber = "Required";
+    if (!externalForm.driverIdNumber) e.driverIdNumber = "Required";
     if (!externalForm.vehicleNumber) e.vehicleNumber = "Required";
     if (!externalForm.purpose)      e.purpose = "Required";
     if (!externalForm.materialType) e.materialType = "Required";
@@ -772,6 +812,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </div>
   );
 
+ 
+
   const submitRow = (label, onClick, gradient) => (
     <div style={{ display:"flex", alignItems:"center", gap:8, paddingTop:10, borderTop:"1px solid #f0f0f0", marginTop:4, flexShrink:0 }}>
       <button className="veh-btn-p" onClick={onClick} disabled={submitting}
@@ -909,7 +951,11 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
             )}
 
             <div style={g3}>
-              {sel("source","Source Factory", externalForm.source, setExternal, ALL_CUSTOMERS, true)}
+             <SourceField
+                value={externalForm.source}
+                onChange={setExternal}
+                options={ALL_CUSTOMERS}
+              />
               {sel("purpose","Purpose" ,externalForm.purpose, setExternal, PURPOSE_OPTS,true)}
               {sel("materialType","Material Type", externalForm.materialType, setExternal, MATERIAL_TYPES,true)}
             </div>
