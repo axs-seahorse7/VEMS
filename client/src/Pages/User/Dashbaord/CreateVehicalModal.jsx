@@ -29,8 +29,8 @@ const ID_FORMAT = {
       ? null : "PAN format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)",
   },
   DL: {
-  hint: "DL formats - (e.g. MH-12-2019-1234567 or RJ02A20160004692)",
-  placeholder: "MH-12-2019-1234567 / RJ02A20160004692",
+  hint: "DL formats - (e.g. MH-12-2019-1234567)",
+  placeholder: "AB-XX-XXXX-XXXXXXX ",
   maxRaw: 16,
 
   clean: (raw) => {
@@ -51,13 +51,13 @@ const ID_FORMAT = {
   display: (v) => v,
 
   validate: (v) => {
-    const newFormat = /^[A-Z]{2}-\d{2}-\d{4}-[A-Z0-9]{7}$/;
+    const newFormat = /^[A-Z]{2}-\d{2}-\d{4}-[A-Z0-9]{7,8}$/; // 👈 allow 7–8
     const oldFormat = /^[A-Z]{2}\d{2}[A-Z]\d{4}\d{7}$/;
 
     if (newFormat.test(v) || oldFormat.test(v)) return null;
 
-    return "Invalid DL. Use MH-12-2019-1234567 or RJ02A20160004692";
-  },
+    return "Invalid DL format";
+  }
 }
 };
 
@@ -693,7 +693,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   const ID_TYPES       = [{ v:"Aadhar",l:"Aadhar"},{v:"PAN",l:"PAN"},{v:"DL",l:"Driving Licence"}];
   const MATERIAL_TYPES = [{ v:"RM",l:"RM – Raw Material"},{v:"FG",l:"FG – Finished Goods"},{v:"Scrap",l:"Scrap"},{v:"NewMachines",l:"New Machines"},{v:"Others",l:"Others"}];
-  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"}];
+  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"}, {v:"visitor", l:"Visitor"}];
   const PASS_TYPE_OPTS = [{ v:"Incoming",l:"Incoming"},{v:"Outgoing",l:"Outgoing"}];
   const factoryOpts    = factories.filter(f=>f._id!==user.factory?._id).map(f=>({v:f._id,l:`${f.name} – ${f.location}`}));
   const VEHICLE_TYPES  = [
