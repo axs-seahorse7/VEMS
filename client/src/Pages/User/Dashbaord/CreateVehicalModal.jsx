@@ -147,7 +147,8 @@ const CUSTOMER = [
   { v: "Voltbek Home Appliances Pvt Ltd", l: "Voltbek Home Appliances Pvt Ltd", type: "customer" },
   { v: "Whirlpool Of India Ltd", l: "Whirlpool Of India Ltd", type: "customer" },
   { v: "Yash Engineering", l: "Yash Engineering", type: "customer" },
-  { v: "Yashoda Industries", l: "Yashoda Industries", type: "customer" }
+  { v: "Yashoda Industries", l: "Yashoda Industries", type: "customer" },
+  { v: "Others", l: "Others", type: "customer" }
 ];
 
 const SUPPLIERS = [
@@ -222,7 +223,7 @@ const SUPPLIERS = [
   { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" },
   { v: "MAULI POLYMER", l: "MAULI POLYMER" },
   { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
-  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" }
+  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" },
 ];
 
 const lsGet = (key, fallback) => {
@@ -253,7 +254,7 @@ const DEFAULT_TRIP_EXTERNAL = {
   ...DEFAULT_TRIP_COMMON,
   supplier: "", material: "", quantity: "", invoiceNo: "",
   invoiceAmount: "", customer: "", isInternalShifting: false,
-  destinationFactoryId: "", passType: "Incoming",
+  destinationFactoryId: "", passType: "Incoming", source: "",
 };
 const DEFAULT_INTERNAL = { ...DEFAULT_DRIVER, ...DEFAULT_VEHICLE, ...DEFAULT_TRIP_INTERNAL };
 const DEFAULT_EXTERNAL = { ...DEFAULT_DRIVER, ...DEFAULT_VEHICLE, ...DEFAULT_TRIP_EXTERNAL };
@@ -445,7 +446,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const [driverLookup, setDL]           = useState({ loading:false, found:false, foundBy:null });
   const [vehicleLookup, setVL]          = useState({ loading:false, found:false });
   const draftTimer = useRef(null);
-  const ALL_CUSTOMERS = [...CUSTOMER, ...SUPPLIERS.sort((a,b) => a.v.localeCompare(b.v))];
+  const ALL_CUSTOMERS = [...CUSTOMER, ...SUPPLIERS].sort((a,b) => a.l.localeCompare(b.l));
 
   const checkDraft = useCallback((intForm, extForm) => {
     const hasData = (form, defaults) =>
@@ -598,6 +599,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     if (!externalForm.vehicleNumber) e.vehicleNumber = "Required";
     if (!externalForm.purpose)      e.purpose = "Required";
     if (!externalForm.materialType) e.materialType = "Required";
+    if(externalForm.isInternalShifting && !externalForm.supplier) e.supplier = "Required";
+    if(!externalForm.source) e.source = "Required";
     if (externalForm.isInternalShifting && !externalForm.destinationFactoryId) e.destinationFactoryId = "Required";
     const fmtErr = getFormatErrors(externalForm);
     const merged = { ...e, ...fmtErr };
@@ -606,7 +609,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmitInternal = async () => {
-    if (!validateInternal()) return message.error("Please fix errors");
+    if (!validateInternal()) return message.error("Please Fill the all required fields.");
     setSubmitting(true);
     try {
       await api.post("/new/internal-trip", { ...internalForm, vehicleNumber:cleanVehicleNumber(internalForm.vehicleNumber), sourceFactoryId:user.factory?._id, status:"inside_factory" });
@@ -617,7 +620,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   };
 
   const handleSubmitExternal = async () => {
-    if (!validateExternal()) return message.error("Please fix errors");
+    if (!validateExternal()) return message.error("Please Fill the all required fields.");
     setSubmitting(true);
     try {
       await api.post("/new/external-trip", { ...externalForm, vehicleNumber:cleanVehicleNumber(externalForm.vehicleNumber), sourceFactoryId:user.factory?._id });
