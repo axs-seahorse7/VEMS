@@ -51,10 +51,15 @@ const ID_FORMAT = {
   display: (v) => v,
 
   validate: (v) => {
-    const newFormat = /^[A-Z]{2}-\d{2}-\d{4}-[A-Z0-9]{7,8}$/; // 👈 allow 7–8
-    const oldFormat = /^[A-Z]{2}\d{2}[A-Z]\d{4}\d{7}$/;
+    // Normalize (ignore dashes for validation)
+    const raw = v.replace(/-/g, "");
 
-    if (newFormat.test(v) || oldFormat.test(v)) return null;
+    // General DL pattern:
+    // SS (2 letters) + RR (2 digits) + optional series (0–2 letters)
+    // + year/number mix (3–5 chars) + final number (6–9 digits)
+    const pattern = /^[A-Z]{2}\d{2}[A-Z0-9]{3,5}\d{6,9}$/;
+
+    if (pattern.test(raw)) return null;
 
     return "Invalid DL format";
   }
