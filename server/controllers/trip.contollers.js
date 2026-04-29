@@ -132,6 +132,7 @@ const assignDriverToTrip = async ({ driverId, tripId, vehicleId }) => {
 
 export const externalVehicleRegister = async (req, res) => {
   try {
+    console.log("HIT: externalVehicleRegister");
     const {
       vehicleNumber,
       driverIdNumber,
@@ -177,12 +178,6 @@ export const externalVehicleRegister = async (req, res) => {
     // 3. DRIVER (GET OR CREATE)
     // ========================
     let driver = await Driver.findOne({$or: [{ driverIdNumber },{ licenseNumber }] });
-
-    if (driver && driver.activeTripId) {
-      return res.status(400).json({
-        message: "Driver already on a trip"
-      });
-    }
 
     if (!driver) {
       driver = await Driver.create({
@@ -295,6 +290,7 @@ export const externalVehicleRegister = async (req, res) => {
 
 export const internalVehicleRegister = async (req, res) => {
   try {
+    console.log("HIT: internalVehicleRegister");
     const {
       vehicleNumber,
       driverIdNumber,
@@ -343,13 +339,6 @@ export const internalVehicleRegister = async (req, res) => {
     // 4. DRIVER (GET OR CREATE)
     // ========================
     let driver = await Driver.findOne({$or: [{ driverIdNumber },{ licenseNumber }] });
-    
-    if (driver && driver.activeTripId ) {
-      return res.status(400).json({
-        message: "Driver already on a trip use a different driver or wait until current trip is completed"
-      });
-    }
-
 
     if (!driver ) {
       driver = await Driver.create({

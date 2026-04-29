@@ -318,6 +318,15 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       color: "#D75656",
       onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
     },
+    {
+      condition:
+      userRole === "atGate" &&
+      trip.purpose === "visitor",
+      label: "Checkout & Exit",
+      confirmTitle: "Check this vehicle out and allow it to exit?",
+      color: "#D75656",
+      onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
+    },
 
     // 6. storeSite/dispatchSite | inside | Delivery | not unloaded | external_delivery or internal_transfer | at dest → Mark Unloaded
     {
@@ -430,7 +439,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
 export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userRole }) {
   if (!vehicle) return null;
-  // console.log("Rendering VehicleDetailModal with vehicle:", vehicle);
+  console.log("Rendering VehicleDetailModal with vehicle:", vehicle);
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
   const location    = vehicle.location;

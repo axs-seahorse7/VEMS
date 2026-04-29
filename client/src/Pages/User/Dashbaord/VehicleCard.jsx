@@ -57,16 +57,17 @@ const OVERDUE_THEME = {
 const vehicleTypeLabel = {
   truck: "Truck", miniTruck: "Mini Truck", containerTruck: "Container Truck",
   mixerTruck: "Mixer Truck", waterTanker: "Water Tanker", tractor: "Tractor",
-  car: "Car", bus: "Bus", ambulance: "Ambulance",
+  car: "Car", bus: "Bus", ambulance: "Ambulance", autoRikshaw: "Auto Rickshaw", bike: "Motorcycle", other: "Other"
 };
 
 const STAGE_META = {
   waiting: { label: "Waiting",  bg: "#fef9c3", color: "#92400e" },
   inside:  { label: "Inside",   bg: "#dcfce7", color: "#15803d" },
   enroute: { label: "Transit",  bg: "#dbeafe", color: "#1d4ed8" },
-  closed: { label: "Closed",  bg: "#D6F4ED",  color: "#3A8B95" },
-  canceled: { label: "Canceled",  bg: "#fee2e2",  color: "#dc2626" },
-  unknown: { label: "Unknown",  bg: "#f3f4f6", color: "#6b7280" },
+  closed:  { label: "Closed",   bg: "#D6F4ED", color: "#3A8B95" },
+  canceled:{ label: "Canceled", bg: "#fee2e2", color: "#dc2626" },
+  exited:  { label: "Exited",   bg: "#fee2e2", color: "#dc2626" },
+  unknown: { label: "Unknown",  bg: "#f3f4f6", color: "#131314" },
 };
 
 function CBadge({ stage }) {
@@ -100,7 +101,7 @@ export default function VehicleCard({ vehicle, onClick }) {
   // ── Overdue logic ────────────────────────────────────────────────────────
   // A card is "overdue" when: still waiting outside AND has been waiting > 4 hrs
   const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
-  const isWaitingInside    = location === "inside_factory" && vehicle.type === "external" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
+  const isWaitingInside    = location === "inside_factory" && vehicle.type === "external_delivery" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
   const waitingHrs   = hoursWaiting(vehicle?.createdAt);
   const isOverdue    = isWaiting && waitingHrs >= 4 || isWaitingInside && waitingHrs >= 4;
   
@@ -124,11 +125,10 @@ export default function VehicleCard({ vehicle, onClick }) {
 
   // ── State key for border bar ─────────────────────────────────────────────
   const stageKey = (() => {
-    
     if (location === "inside_factory" && (vehicle.tripState !== "CLOSED" || vehicle.tripState !== "CANCELLED")) return "inside";
     if (location === "enroute") return "enroute";
     if (location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "waiting";
-    if (location === "outside_factory" && (vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED")) return "Checked Out && Closed";
+    if (location === "outside_factory" && (vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED")) return "exited";
     return "unknown";
   })();
 
@@ -211,7 +211,7 @@ export default function VehicleCard({ vehicle, onClick }) {
 
       <div
         onClick={onClick}
-        className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-sm "}
+        className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-md shadow-gray-600"}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -248,7 +248,7 @@ export default function VehicleCard({ vehicle, onClick }) {
             display: "flex",
             alignItems: "center",
             gap: 3,
-            background: "linear-gradient(90deg, #ca8a04, #fcd34d)",
+            background: "linear-gradient(90deg, #ca8a04, #dc3c3c)",
             color: "#fff",
             fontSize: 8.5,
             fontWeight: 500,
@@ -258,7 +258,7 @@ export default function VehicleCard({ vehicle, onClick }) {
             boxShadow: "0 1px 6px #f59e0b55",
             zIndex: 2,
           }}>
-             {Math.floor(waitingHrs)}h waiting
+             {Math.floor(waitingHrs)}h {location === "inside_factory"? "waiting Inside" : "waiting"} 
           </div>
         )}
 

@@ -698,7 +698,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   const ID_TYPES       = [{ v:"Aadhar",l:"Aadhar"},{v:"PAN",l:"PAN"},{v:"DL",l:"Driving Licence"}];
   const MATERIAL_TYPES = [{ v:"RM",l:"RM – Raw Material"},{v:"FG",l:"FG – Finished Goods"},{v:"Scrap",l:"Scrap"},{v:"NewMachines",l:"New Machines"},{v:"Others",l:"Others"}];
-  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"}, {v:"visitor", l:"Visitor"}];
+  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"},];
   const PASS_TYPE_OPTS = [{ v:"Incoming",l:"Incoming"},{v:"Outgoing",l:"Outgoing"}];
   const factoryOpts    = factories.filter(f=>f._id!==user.factory?._id).map(f=>({v:f._id,l:`${f.name} – ${f.location}`}));
   const VEHICLE_TYPES  = [
