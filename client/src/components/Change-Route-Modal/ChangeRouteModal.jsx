@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { Modal, Popconfirm, message } from "antd";
 import {
   ArrowRightLeft,
@@ -231,33 +231,37 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
   const [searchText, setSearchText] = useState("");
   const [filteredCustomers, setFilteredCustomers] = useState([...CUSTOMER, ...SUPPLIERS])   // factory obj or customer string
   const user = JSON.parse(localStorage.getItem("user")) || {};
+  const customers = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l)); // sort alphabetically by label
 
+  
     const handleFilterCustomers = (value) => {
-        setSearchText(value);
-            const regex = new RegExp(value, "i"); // case-insensitive
-
-            const custs = customers.filter(c => regex.test(c.l));
-            setFilteredCustomers(custs);
+      setSearchText(value);
+      const regex = new RegExp(value, "i"); // case-insensitive
+      const custs = customers.filter(c => regex.test(c.l));
+      setFilteredCustomers(custs);
     };
 
     const handleClearSearch = () => {
-        setSearchText("");
-        setFilteredCustomers(customers);
+      setSearchText("");
+      setFilteredCustomers(customers);
     };
 
+    useEffect(() => {
+      handleFilterCustomers(searchText);
+    }, [searchText]);
 
     useEffect(() => {
-        try {
-            const fetchFactories = async () => {
-                const res = await api.get("/factories");
-                const excludeUserFactory = res.data.factories.filter(f => f._id !== user.factory?._id);
-                setFactories(excludeUserFactory);
-            };
-            
-            fetchFactories();
-        } catch (error) {
-            message.error("Failed to fetch factories");
-        }
+      try {
+        const fetchFactories = async () => {
+          const res = await api.get("/factories");
+          const excludeUserFactory = res.data.factories.filter(f => f._id !== user.factory?._id);
+          setFactories(excludeUserFactory);
+        };
+        
+        fetchFactories();
+      } catch (error) {
+          message.error("Failed to fetch factories");
+      }
         
     }, []);
 

@@ -134,9 +134,9 @@ export default function Home() {
                 e.currentTarget.style.transform = "scale(1)";
                 e.currentTarget.style.boxShadow = "0 6px 24px rgba(59,130,246,0.22)";
               }}
-              onClick={() => window.location.href = "/login"}
+              onClick={() => window.location.href = "/dashboard"}
             >
-              <span>Go to Login</span>
+              <span>Go to Dashboard</span>
               <span style={styles.btnArrow}>→</span>
             </button>
             

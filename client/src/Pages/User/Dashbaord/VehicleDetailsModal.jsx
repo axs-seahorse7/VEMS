@@ -2,6 +2,200 @@ import { useState } from "react";
 import api from "../../../../services/API/Api/api";
 import { message, Popconfirm  } from "antd";
 import ChangeRouteModal, {useChangeRouteModal} from "../../../components/Change-Route-Modal/ChangeRouteModal"; 
+import {
+  Modal as AntModal,
+  Input,
+  Select,
+  Row,
+  Col,
+  Button,
+  InputNumber,
+  Form ,
+} from "antd";
+
+const { Option } = Select;
+
+const CUSTOMER = [
+  { v: "Abs Electroplaters", l: "Abs Electroplaters", type: "customer" },
+  { v: "Acerpure India Pvt Ltd", l: "Acerpure India Pvt Ltd", type: "customer" },
+  { v: "Air Liquide", l: "Air Liquide", type: "customer" },
+  { v: "Amber Enterprises India Ltd", l: "Amber Enterprises India Ltd", type: "customer" },
+  { v: "Amstrad Consumer India Pvt Ltd", l: "Amstrad Consumer India Pvt Ltd", type: "customer" },
+  { v: "Assiya Paint", l: "Assiya Paint", type: "customer" },
+  { v: "Atul Plast Cr", l: "Atul Plast Cr", type: "customer" },
+  { v: "Atomberg Technologies Pvt Ltd", l: "Atomberg Technologies Pvt Ltd", type: "customer" },
+  { v: "Avadhoot Paper", l: "Avadhoot Paper", type: "customer" },
+  { v: "Belrise Industries Ltd", l: "Belrise Industries Ltd", type: "customer" },
+  { v: "Blue Star Ltd", l: "Blue Star Ltd", type: "customer" },
+  { v: "BPL Ltd", l: "BPL Ltd", type: "customer" },
+  { v: "Carrier Airconditioning & Refrigeration Ltd", l: "Carrier Airconditioning & Refrigeration Ltd", type: "customer" },
+  { v: "Carrier Midea India Pvt Ltd", l: "Carrier Midea India Pvt Ltd", type: "customer" },
+  { v: "Croma", l: "Croma", type: "customer" },
+  { v: "Enpar Steels", l: "Enpar Steels", type: "customer" },
+  { v: "Flipkart Internet Pvt Ltd", l: "Flipkart Internet Pvt Ltd", type: "customer" },
+  { v: "Godrej Enterprises Group", l: "Godrej Enterprises Group", type: "customer" },
+  { v: "Haier Appliances India Pvt Ltd", l: "Haier Appliances India Pvt Ltd", type: "customer" },
+  { v: "Hamster Air Conditioner", l: "Hamster Air Conditioner", type: "customer" },
+  { v: "Havells India Ltd", l: "Havells India Ltd", type: "customer" },
+  { v: "Hitachi", l: "Hitachi", type: "customer" },
+  { v: "Infiniti Retail Ltd", l: "Infiniti Retail Ltd", type: "customer" },
+  { v: "Jabil Circuit India Pvt Ltd", l: "Jabil Circuit India Pvt Ltd", type: "customer" },
+  { v: "Jaydeep Industries", l: "Jaydeep Industries", type: "customer" },
+  { v: "Kenstar", l: "Kenstar", type: "customer" },
+  { v: "Kinetic Green Energy And Power Solution Ltd", l: "Kinetic Green Energy And Power Solution Ltd", type: "customer" },
+  { v: "Kosh Innovations Pvt Ltd", l: "Kosh Innovations Pvt Ltd", type: "customer" },
+  { v: "LG Electronics India Pvt Ltd", l: "LG Electronics India Pvt Ltd", type: "customer" },
+  { v: "Machhar Packaging", l: "Machhar Packaging", type: "customer" },
+  { v: "Maniar Plast", l: "Maniar Plast", type: "customer" },
+  { v: "Marq Solutions", l: "Marq Solutions", type: "customer" },
+  { v: "Md Graphics Pvt Ltd", l: "Md Graphics Pvt Ltd", type: "customer" },
+  { v: "Microtask Engineering", l: "Microtask Engineering", type: "customer" },
+  { v: "Minda Vast Access Systems Pvt Ltd", l: "Minda Vast Access Systems Pvt Ltd", type: "customer" },
+  { v: "Mirc Electronics Ltd", l: "Mirc Electronics Ltd", type: "customer" },
+  { v: "Motorola Mobility India Pvt Ltd", l: "Motorola Mobility India Pvt Ltd", type: "customer" },
+  { v: "Navin Fluorine International Ltd", l: "Navin Fluorine International Ltd", type: "customer" },
+  { v: "Nidec India Ltd", l: "Nidec India Ltd", type: "customer" },
+  { v: "Onida", l: "Onida", type: "customer" },
+  { v: "Pankaj Plastics Product", l: "Pankaj Plastics Product", type: "customer" },
+  { v: "Pacoline Industries Pvt Ltd", l: "Pacoline Industries Pvt Ltd", type: "customer" },
+  { v: "Paramount Polymers Pvt Ltd", l: "Paramount Polymers Pvt Ltd", type: "customer" },
+  { v: "PG Electroplast", l: "PG Electroplast", type: "customer" },
+  { v: "PG Technoplast", l: "PG Technoplast", type: "customer" },
+  { v: "Poonam Petrochem", l: "Poonam Petrochem", type: "customer" },
+  { v: "Posco India Pune Processing Center Pvt Ltd", l: "Posco India Pune Processing Center Pvt Ltd", type: "customer" },
+  { v: "Pravin Engineering Works", l: "Pravin Engineering Works", type: "customer" },
+  { v: "Procyon Star Pvt Ltd", l: "Procyon Star Pvt Ltd", type: "customer" },
+  { v: "Qualis Engineers", l: "Qualis Engineers", type: "customer" },
+  { v: "Ravago Shah Polymers", l: "Ravago Shah Polymers", type: "customer" },
+  { v: "Realme Mobile Telecommunications India Pvt Ltd", l: "Realme Mobile Telecommunications India Pvt Ltd", type: "customer" },
+  { v: "Reliance Retail Ltd", l: "Reliance Retail Ltd", type: "customer" },
+  { v: "Renu Electronics Pvt Ltd", l: "Renu Electronics Pvt Ltd", type: "customer" },
+  { v: "Royalux Lighting Pvt Ltd", l: "Royalux Lighting Pvt Ltd", type: "customer" },
+  { v: "Sadguru Industries", l: "Sadguru Industries", type: "customer" },
+  { v: "Samarth Enterprises", l: "Samarth Enterprises", type: "customer" },
+  { v: "Sharp Business Systems India Pvt Ltd", l: "Sharp Business Systems India Pvt Ltd", type: "customer" },
+  { v: "Shree Enterprises", l: "Shree Enterprises", type: "customer" },
+  { v: "Shree Swaraj Mold", l: "Shree Swaraj Mold", type: "customer" },
+  { v: "Shreenath Plastic", l: "Shreenath Plastic", type: "customer" },
+  { v: "SP Industries", l: "SP Industries", type: "customer" },
+  { v: "SRF Limited", l: "SRF Limited", type: "customer" },
+  { v: "Starion India Pvt Ltd", l: "Starion India Pvt Ltd", type: "customer" },
+  { v: "Styrenix Performance Materials Ltd", l: "Styrenix Performance Materials Ltd", type: "customer" },
+  { v: "Sudarshan Polyblends Pvt Ltd", l: "Sudarshan Polyblends Pvt Ltd", type: "customer" },
+  { v: "Sunshine Technoplast", l: "Sunshine Technoplast", type: "customer" },
+  { v: "Supreme", l: "Supreme", type: "customer" },
+  { v: "Syrma SGS Technology Ltd", l: "Syrma SGS Technology Ltd", type: "customer" },
+  { v: "TCL", l: "TCL", type: "customer" },
+  { v: "Trinity Material Handling Solutions", l: "Trinity Material Handling Solutions", type: "customer" },
+  { v: "Tri Gases Pvt Ltd", l: "Tri Gases Pvt Ltd", type: "customer" },
+  { v: "Tushar Engineering", l: "Tushar Engineering", type: "customer" },
+  { v: "UKB Electronics Ltd", l: "UKB Electronics Ltd", type: "customer" },
+  { v: "VBROS Auto Pvt Ltd", l: "VBROS Auto Pvt Ltd", type: "customer" },
+  { v: "Victor Pushin Cords", l: "Victor Pushin Cords", type: "customer" },
+  { v: "Voltas Ltd", l: "Voltas Ltd", type: "customer" },
+  { v: "Voltbek Home Appliances Pvt Ltd", l: "Voltbek Home Appliances Pvt Ltd", type: "customer" },
+  { v: "Whirlpool Of India Ltd", l: "Whirlpool Of India Ltd", type: "customer" },
+  { v: "Yash Engineering", l: "Yash Engineering", type: "customer" },
+  { v: "Yashoda Industries", l: "Yashoda Industries", type: "customer" },
+  { v: "Others", l: "Others", type: "customer" }
+];
+
+const SUPPLIERS = [
+  { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" },
+  { v: "NGM : Next Generation Mfg", l: "NGM : Next Generation Mfg" },
+  { v: "PGTI-2/Sanjeevani", l: "PGTI-2/Sanjeevani" },
+  { v: "PG4: PG Electroplast", l: "PG4: PG Electroplast" },
+  { v: "TRIUMPH Warehouse", l: "TRIUMPH Warehouse" },
+  { v: "VIHAAN Warehouse", l: "VIHAAN Warehouse" },
+  { v: "D111 Warehouse", l: "D111 Warehouse" },
+  { v: "Pg Bhiwadi", l: "Pg Bhiwadi" },
+  { v: "STYROTECH INDUSTRIES", l: "STYROTECH INDUSTRIES" },
+  { v: "KSH DISTRIPARKS PVT.LTD", l: "KSH DISTRIPARKS PVT.LTD" },
+  { v: "MD GRAPHICS PRIVATE LIMITED", l: "MD GRAPHICS PRIVATE LIMITED" },
+  { v: "Carrier Midea", l: "Carrier Midea" },
+  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
+  { v: "SAI AUTO COMPONENTS PVT.LTD", l: "SAI AUTO COMPONENTS PVT.LTD" },
+  { v: "Hakimuddin", l: "Hakimuddin" },
+  { v: "Prijai cooltech", l: "Prijai cooltech" },
+  { v: "V G ENGINEERING ENTERPRISES", l: "V G ENGINEERING ENTERPRISES" },
+  { v: "SUMITI PACKING", l: "SUMITI PACKING" },
+  { v: "YEEMAK PVT LTD", l: "YEEMAK PVT LTD" },
+  { v: "ALIGN COMPONENTS PVT.LTD", l: "ALIGN COMPONENTS PVT.LTD" },
+  { v: "VAIBHAV AMIT IND HP GAS AGENCY.", l: "VAIBHAV AMIT IND HP GAS AGENCY." },
+  { v: "SP INDUSTRIES", l: "SP INDUSTRIES" },
+  { v: "MD Graphics", l: "MD Graphics" },
+  { v: "YASH ENGINEERING", l: "YASH ENGINEERING" },
+  { v: "ATUL PLAST", l: "ATUL PLAST" },
+  { v: "Unipack Packaging Pvt Ltd", l: "Unipack Packaging Pvt Ltd" },
+  { v: "Productive technologies", l: "Productive technologies" },
+  { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
+  { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" },
+  { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
+  { v: "MADAN ELECTRO", l: "MADAN ELECTRO" },
+  { v: "KV BOXCORP", l: "KV BOXCORP" },
+  { v: "Suyog eng", l: "Suyog eng" },
+  { v: "AVADHOOT PAPER PRO", l: "AVADHOOT PAPER PRO" },
+  { v: "SAMARTH", l: "SAMARTH" },
+  { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
+  { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" },
+  { v: "Macdermid alpha", l: "Macdermid alpha" },
+  { v: "SHRI JI FOAM", l: "SHRI JI FOAM" },
+  { v: "Metacool", l: "Metacool" },
+  { v: "OM SANTOSHI", l: "OM SANTOSHI" },
+  { v: "M/S. S.B", l: "M/S. S.B" },
+  { v: "CRAFTED SOLUTION", l: "CRAFTED SOLUTION" },
+  { v: "SKM GALVA", l: "SKM GALVA" },
+  { v: "Axalta coating", l: "Axalta coating" },
+  { v: "M/s S.B. PRECISON SPRINGS - 2025-26", l: "M/s S.B. PRECISON SPRINGS - 2025-26" },
+  { v: "METCAP TUB PVT. LTD.", l: "METCAP TUB PVT. LTD." },
+  { v: "Royal polymer", l: "Royal polymer" },
+  { v: "ANUSHKA INDUS", l: "ANUSHKA INDUS" },
+  { v: "OIENTECH INDIA PVT.LTD.", l: "OIENTECH INDIA PVT.LTD." },
+  { v: "Nahata plastikos llp", l: "Nahata plastikos llp" },
+  { v: "KINGFA", l: "KINGFA" },
+  { v: "Nidec INDIA", l: "Nidec INDIA" },
+  { v: "Steel Suppliers Ltd", l: "Steel Suppliers Ltd" },
+  { v: "Plastic Materials Co", l: "Plastic Materials Co" },
+  { v: "Empire Fastner", l: "Empire Fastner" },
+  { v: "Asian Paint", l: "Asian Paint" },
+  { v: "SHREE ENTERPRISES", l: "SHREE ENTERPRISES" },
+  { v: "MACHHAR PACKAGING", l: "MACHHAR PACKAGING" },
+  { v: "PRAVIN ENGINEERING WORKS", l: "PRAVIN ENGINEERING WORKS" },
+  { v: "ATUL PLAST-CR", l: "ATUL PLAST-CR" },
+  { v: "SPF LIMITED", l: "SPF LIMITED" },
+  { v: "SUPREME PETROCHEM LTD", l: "SUPREME PETROCHEM LTD" },
+  { v: "FRIENDS AND COMPANY UNIT-2", l: "FRIENDS AND COMPANY UNIT-2" },
+  { v: "VINDHYAWASNI INDUSTRIES", l: "VINDHYAWASNI INDUSTRIES" },
+  { v: "TUSHAR ENG.", l: "TUSHAR ENG." },
+  { v: "SHARDA INDUSTRIES", l: "SHARDA INDUSTRIES" },
+  { v: "BHARGAVI ENTERPRISES", l: "BHARGAVI ENTERPRISES" },
+  { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" },
+  { v: "MAULI POLYMER", l: "MAULI POLYMER" },
+  { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
+  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" },
+];
+
+const lsGet = (key, fallback) => {
+  try {
+    const v = localStorage.getItem(key);
+    if (!v) return fallback;
+    const parsed = JSON.parse(v);
+    return { ...fallback, ...parsed };
+  } catch { return fallback; }
+};
+const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
+const lsDel = (...keys) => keys.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+
+// ─── Default Shapes ───────────────────────────────────────────────────────────
+const DEFAULT_DRIVER = {
+  driverName: "", driverContact: "", driverIdType: "Aadhar",
+  driverIdNumber: "", licenseNumber: "",
+};
+
+const DEFAULT_VEHICLE = {
+  vehicleNumber: "", typeOfVehicle: "truck",
+  transporterName: "", PUCExpiry: "",
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -102,13 +296,13 @@ function Badge({ stage }) {
   const s = STAGE_META[stage] || STAGE_META.unknown;
   return <span style={{ background: s.bg, color: s.color, fontSize: 10.5, fontWeight: 700, borderRadius: 5, padding: "2px 7px", letterSpacing: .3, whiteSpace: "nowrap" }}>{s.label}</span>;
 }
+
 function TypeBadge({ type }) {
   return <span style={{ background: "#f3f4f6", color: "#374151", fontSize: 10.5, fontWeight: 600, borderRadius: 5, padding: "2px 7px", whiteSpace: "nowrap" }}>{vehicleTypeLabel[type] || type}</span>;
 }
 
 // ─── Horizontal Trip History Timeline ────────────────────────────────────────
 function TripTimeline({ tripHistory }) {
-  // console.log("Rendering TripTimeline with history:", tripHistory);
   if (!Array.isArray(tripHistory) || tripHistory.length === 0) return null;
 
   return (
@@ -161,10 +355,91 @@ function TripTimeline({ tripHistory }) {
   );
 }
 
+// ─── Cancel Reason Modal (add this component near the top of your file) ───────
+
+function CancelTripModal({ open, onConfirm, onCancel, loading }) {
+  const [form] = Form.useForm();
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
+      onConfirm(values.reason);
+    } catch {}
+  };
+
+  const handleCancel = () => {
+    form.resetFields();
+    onCancel();
+  };
+
+  return (
+    <AntModal
+      open={open}
+      onCancel={handleCancel}
+      onOk={handleOk}
+      confirmLoading={loading}
+      okText="Confirm Cancel"
+      cancelText="Go Back"
+      okButtonProps={{
+        danger: true,
+        style: { fontWeight: 600 },
+      }}
+      title={
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Cancel Trip</span>
+        </div>
+      }
+      centered
+      width={420}
+      maskClosable={false}
+    >
+      <p style={{ color: "#6b7280", fontSize: 13, margin: "8px 0 16px" }}>
+        Please provide a reason for cancelling this trip. This will be recorded
+        for audit purposes.
+      </p>
+      <Form form={form} layout="vertical">
+        <Form.Item
+          name="reason"
+          label={<span style={{ fontWeight: 600, fontSize: 12 }}>Cancellation Reason</span>}
+          rules={[
+            { required: true, message: "Please enter a reason" },
+            { min: 10, message: "Reason must be at least 10 characters" },
+          ]}
+        >
+          <Input.TextArea
+            rows={3}
+            placeholder="e.g. Driver unavailable, wrong destination assigned..."
+            maxLength={300}
+            showCount
+            autoFocus
+            style={{ borderRadius: 8, fontSize: 13 }}
+          />
+        </Form.Item>
+      </Form>
+    </AntModal>
+  );
+}
+
 // ─── Workflow Actions ─────────────────────────────────────────────────────────
 function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   const [loading, setLoading] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
+  const customers = [...CUSTOMER, ...SUPPLIERS]
+
+  const DEFAULT_TRIP_INTERNAL = {
+    material: "",
+    quantity: "",
+    invoiceNo: "",
+    invoiceAmount: "",
+    customer: "",
+  };
+
+  const [openLoadModal, setOpenLoadModal] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState(null);
+  const [tripInternal, setTripInternal] = useState(DEFAULT_TRIP_INTERNAL);
 
   const { modalProps, openChangeRouteModal } = useChangeRouteModal({
     onConfirmInternal: async (factory, trip) => {
@@ -229,10 +504,45 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
   };
   const withTripFactory = { ...vehiclePayload, tripId: trip?._id, factoryId: userFactoryId };
 
+  const handleLoadComplete = async () => {
+    try {
+      if (
+        !tripInternal.material ||
+        !tripInternal.quantity ||
+        !tripInternal.invoiceNo ||
+        !tripInternal.invoiceAmount
+      ) {
+        return message.error("Please fill all fields");
+      }
+
+      await doAction(() =>
+        api.post(`/trip/load-complete/${selectedTrip._id}`,
+          {
+            ...withTripFactory,
+            tripDetails: {
+              material: tripInternal.material,
+              quantity: tripInternal.quantity,
+              invoiceNo: tripInternal.invoiceNo,
+              invoiceAmount: tripInternal.invoiceAmount,
+              customer: tripInternal.customer,
+            },
+          }
+        )
+      );
+
+      setOpenLoadModal(false);
+      setTripInternal(DEFAULT_TRIP_INTERNAL);
+      setSelectedTrip(null);
+
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to complete loading");
+    }
+  };
+
   // ─── Button Definitions ──────────────────────────────────────────────────────
   // Each entry: { label, confirmTitle, color, onConfirm, condition }
   const actions = [
-
     // 1. atGate | outside/enroute | DESTINATION → Allow Entry
     {
       condition:
@@ -256,7 +566,9 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       label: "✕ Cancel Trip",
       confirmTitle: "Are you sure you want to cancel this trip?",
       color: "#D75656",
-      onConfirm: () => doAction(() => api.post(`/trip/cancel/${trip._id}`, withFactory)),
+      onConfirm: () => {
+        setCancelModalOpen(true);
+      },
     },
 
     // 3. atGate | outside/enroute | ORIGIN | at destination factory → Mark Arrived
@@ -334,7 +646,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
         (userRole === "storeSite" || userRole === "dispatchSite") &&
         isInsideFactory &&
         purpose === "Delivery" &&
-        loadStatus !== "unloaded" &&
+        loadStatus !== "unloaded" && 
         (type === "external_delivery" || type === "internal_transfer") &&
         destId === userFactoryId &&
         isNotClosedOrCancelled,
@@ -355,17 +667,20 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       label: "↑ Mark Load Complete",
       confirmTitle: "Confirm the vehicle has been fully loaded?",
       color: "#8b5cf6",
-      onConfirm: () => doAction(() => api.post(`/trip/load-complete/${trip._id}`, withTripFactory)),
+      onConfirm: () => {
+        setSelectedTrip(trip);
+        setTripInternal(DEFAULT_TRIP_INTERNAL);
+        setOpenLoadModal(true);
+      },
     },
 
     {
       condition:
         (userRole === "storeSite" || userRole === "dispatchSite") &&
         isInsideFactory &&
-        loadStatus === "pending" &&
-        destId === userFactoryId &&
+        destId === userFactoryId && loadStatus !== "unloaded" &&
         isNotClosedOrCancelled,
-      label: "Change Route",
+      label: "Next Trip → ",
       confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
       color: "#3a64c7",
       onConfirm: () =>  openChangeRouteModal(trip),
@@ -376,19 +691,19 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       condition:
         (userRole === "storeSite" || userRole === "dispatchSite") &&
         isInsideFactory &&
-        loadStatus !== "pending" &&
+        loadStatus !== "pending" && loadStatus !== "loaded" &&
         tripState !== "CLOSED" &&
         tripState !== "CANCELLED" &&
-        tripState !== "COMPLETE",
-      label: type === "internal_transfer" ? "Mark Trip Completed" : "Mark Ready to Checkout",
-      confirmTitle:
+        tripState !== "COMPLETED",
+        label: (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal") ? "Mark Trip Completed & Close" : "Mark Ready to Checkout",
+        confirmTitle:
         type === "internal_transfer"
-          ? "Mark this trip as completed?"
+          ? "This will complete the internal transfer and close the trip. Are you sure?"
           : "Mark this vehicle as ready to checkout?",
       color: "#8b5cf6",
       onConfirm: () => {
         const endpoint =
-          type === "internal_transfer"
+          (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
             ? `/trip/internal-transfer-complete/${trip._id}`
             : `/trip/complete/${trip._id}`;
         return doAction(() => api.post(endpoint, withTripFactory));
@@ -432,6 +747,208 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
       ))}
 
       <ChangeRouteModal {...modalProps} />
+
+
+    <AntModal
+      open={openLoadModal}
+      onCancel={() => setOpenLoadModal(false)}
+      footer={null}
+      width={520}
+      centered
+      closeIcon={
+        <span style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: "#f3f4f6", display: "flex",
+          alignItems: "center", justifyContent: "center",
+          fontSize: 13, color: "#6b7280", cursor: "pointer",
+          transition: "background .15s",
+        }}>✕</span>
+      }
+      styles={{
+        content: { padding: 0, borderRadius: 16, overflow: "hidden" },
+        mask: { backdropFilter: "blur(4px)", background: "rgba(0,0,0,0.35)" },
+      }}
+      title={null}
+    >
+      {/* ── Header ── */}
+      <div style={{
+        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+        padding: "22px 24px 20px",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        {/* decorative circles */}
+        <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"rgba(99,102,241,0.12)", pointerEvents:"none" }}/>
+        <div style={{ position:"absolute", bottom:-20, left:60, width:80, height:80, borderRadius:"50%", background:"rgba(34,211,238,0.07)", pointerEvents:"none" }}/>
+
+        <div style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12,
+            background: "linear-gradient(135deg,#6366f1,#4f46e5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, boxShadow: "0 4px 14px rgba(99,102,241,0.4)",
+          }}><i class="ri-box-1-fill"></i></div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#f8fafc", letterSpacing: -0.3 }}>
+              Complete Loading
+            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontWeight: 400 }}>
+              Fill in shipment details to confirm dispatch
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div style={{ padding: "20px 24px 24px", background: "#fff" }}>
+
+        {/* Section label */}
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <span style={{ fontSize:10, fontWeight:700, color:"#6366f1", textTransform:"uppercase", letterSpacing:1 }}>
+            Shipment Info
+          </span>
+          <div style={{ flex:1, height:1, background:"#e0e7ff" }}/>
+        </div>
+
+        {/* Row 1 — Customer + Invoice No */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Customer (optional)
+            </label>
+            <Select
+              showSearch
+              placeholder="Search customer…"
+              style={{ width: "100%" }}
+              value={tripInternal.customer || undefined}
+              onChange={(value) => setTripInternal({ ...tripInternal, customer: value })}
+              options={(customers || []).map((c) => ({ label: c.l, value: c.v }))}
+              filterOption={(input, option) =>
+                option.label.toLowerCase().includes(input.toLowerCase())
+              }
+              optionFilterProp="label"
+              styles={{
+                popup: { root: { borderRadius: 10 } }
+              }}
+            />
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Invoice No.
+            </label>
+            <Input
+              required
+              placeholder="e.g. INV-2024-001"
+              value={tripInternal.invoiceNo?.toUpperCase()}
+              onChange={(e) => setTripInternal({ ...tripInternal, invoiceNo: e.target.value })}
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+
+        </div>
+
+        {/* Row 2 — Material + Quantity */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Material
+            </label>
+            <Input
+              required
+              placeholder="Material description"
+              value={tripInternal.material?.toUpperCase()}
+              onChange={(e) => setTripInternal({ ...tripInternal, material: e.target.value })}
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Quantity
+            </label>
+            <InputNumber
+              required
+              placeholder="0"
+              style={{ width:"100%", borderRadius: 8 }}
+              value={tripInternal.quantity}
+              onChange={(value) => setTripInternal({ ...tripInternal, quantity: value })}
+            />
+          </div>
+
+        </div>
+
+        {/* Row 3 — Invoice Amount full width */}
+        <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:20 }}>
+          <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+            Invoice Amount (₹)
+          </label>
+          <InputNumber
+            required
+            placeholder="0.00"
+            style={{ width:"100%", borderRadius: 8 }}
+            value={tripInternal.invoiceAmount}
+            formatter={(v) => v ? `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : ""}
+            parser={(v) => v?.replace(/₹\s?|(,*)/g, "") || ""}
+            onChange={(value) => setTripInternal({ ...tripInternal, invoiceAmount: value })}
+          />
+        </div>
+
+        {/* Divider */}
+        <div style={{ height:1, background:"#f1f5f9", marginBottom:16 }}/>
+
+        {/* Actions */}
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button
+            onClick={() => setOpenLoadModal(false)}
+            style={{
+              padding:"8px 16px", borderRadius:9, fontSize:12, fontWeight:600,
+              border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569",
+              cursor:"pointer", transition:"all .15s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={e => e.currentTarget.style.background="#f8fafc"}
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleLoadComplete}
+            style={{
+              padding:"8px 20px", borderRadius:9, fontSize:12, fontWeight:700,
+              border:"none", cursor:"pointer", transition:"all .15s",
+              background:"linear-gradient(135deg,#6366f1,#4f46e5)",
+              color:"#fff", boxShadow:"0 3px 10px rgba(99,102,241,0.35)",
+              display:"flex", alignItems:"center", gap:6,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.filter="brightness(1.1)"; e.currentTarget.style.transform="translateY(-1px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.filter=""; e.currentTarget.style.transform=""; }}
+          >
+            <span>✓</span> Confirm Loading
+          </button>
+        </div>
+
+      </div>
+    </AntModal>
+
+    <CancelTripModal
+      open={cancelModalOpen}
+      loading={cancelLoading}
+      onCancel={() => setCancelModalOpen(false)}
+      onConfirm={async (reason) => {
+        setCancelLoading(true);
+        try {
+           doAction (() => api.post(`/trip/cancel/${trip._id}`, { ...withFactory, reason }) ) ;
+          setCancelModalOpen(false);
+        } catch (e) {
+          message.error(e.response?.data?.message || "Failed to cancel trip");
+        } finally {
+          setCancelLoading(false);
+        }
+      }}
+    />
+      
     </div>
   );
 }
@@ -439,7 +956,6 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
 export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userRole }) {
   if (!vehicle) return null;
-  console.log("Rendering VehicleDetailModal with vehicle:", vehicle);
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
   const location    = vehicle.location;
@@ -449,6 +965,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
   const phase       = vehicle.phase;
   const stage       = getWorkflowStage(vehicle);
   const tripHistory = Array.isArray(vehicle.tripHistory) ? vehicle.tripHistory : [];
+
   const Row = ({ label, value, warn, accent }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid #f9fafb" }}>
       <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, flexShrink: 0, minWidth: 110 }}>{label}</span>
@@ -469,11 +986,11 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <TypeBadge type={vehicleData?.typeOfVehicle} />
         <span style={{ fontSize: 11, fontWeight: 600, color: "#374151", background: "#f3f4f6", borderRadius: 5, padding: "2px 7px" }}>
-          {trip?.purpose === "pickup" ? "📦 Pickup" : "🚚 Delivery"}
+          {trip?.purpose === "Pickup" ? "📦 Pickup" : "🚚 Delivery"}
         </span>
         {phase && (
           <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: .8, textTransform: "uppercase", padding: "2px 8px", borderRadius: 20, background: phase === "ORIGIN" ? "#ede9fe" : "#dcfce7", color: phase === "ORIGIN" ? "#6366f1" : "#15803d" }}>
-            {phase === "ORIGIN" ? "📤 Origin" : "📥 Destination"}
+            {phase === "ORIGIN" ? "Origin" : "Destination"}
           </span>
         )}
         {pucAlert && (
@@ -498,10 +1015,10 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
           <Row label="PUC End"          value={fmtDate(vehicleData?.PUCExpiry)} warn={pucAlert} />
         </Section>
         <Section title="Trip Details">
+          <Row label="Type"             value={trip?.type === "external_delivery"? "External Trip" : "Internal Trip"} />
           <Row label="Status"           value={trip?.status} />
           <Row label="Load Status"      value={trip?.loadStatus} accent={trip?.loadStatus === "loaded"} />
           <Row label="Purpose"          value={trip?.purpose} />
-          <Row label="Type"             value={trip?.type} />
         </Section>
         <Section title="Location">
           <Row label="State"            value={location === "outside_factory" ? "Outside Factory" : location === "inside_factory" ? "Inside Factory" : "In Transit"} accent />
@@ -510,23 +1027,30 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
           <Row label="Trip Start"    value={fmtTime(trip?.createdAt) || "N/A"} />
         </Section>
         <Section title="Material Details">
-          <Row label="Material"         value={trip?.materials[0]?.material || "N/A"} accent />
-          <Row label="Quantity"         value={trip?.materials[0]?.quantity || "N/A"} accent />
+          <Row label="Material"         value={trip?.materials[0]?.material || "-"} accent />
+          <Row label="Quantity"         value={trip?.materials[0]?.quantity || "-"} accent />
           {trip?.materials[0] && 
-          trip?.materials[0].customer === "" && (
-              <Row label="Customer"     value={trip?.materials[0]?.customer || "N/A"} />
+          trip?.materials[0].customer !== "" && (
+              <Row label="Customer"     value={trip?.materials[0]?.customer || "-"} />
           )}
           {trip?.materials[0]?.supplier && trip?.materials[0]?.supplier !== "" && (
-            <Row label="Supplier"         value={trip?.materials[0]?.supplier || "N/A"} />
+            <Row label="Supplier"         value={trip?.materials[0]?.supplier || "-"} />
           )}
         </Section>
 
         <Section title="Invoice Details">
-          <Row label="Material Type"    value={trip?.materials[0]?.name === "RM" ? "Raw Material" : trip?.materials[0]?.name === "FG" ? "Finished Goods" : trip?.materials[0]?.name || "N/A" } accent />
-          <Row label="Invoice No"       value={trip?.materials[0]?.invoiceNo || "N/A"} accent />
-          <Row label="Amount"           value={trip?.materials[0]?.invoiceAmount|| "N/A"} accent />
+          <Row label="Material Type"    value={trip?.materials[0]?.name === "RM" ? "Raw Material" : trip?.materials[0]?.name === "FG" ? "Finished Goods" : trip?.materials[0]?.name || "-" } accent />
+          <Row label="Invoice No"       value={trip?.materials[0]?.invoiceNo || "-"} accent />
+          <Row label="Amount"           value={trip?.materials[0]?.invoiceAmount|| "-"} accent />
         </Section>
       </div>
+
+        { trip?.reason && (
+          <div className=" border border-red-400 bg-red-100/80 rounded px-2 text-sm py-1" >
+            <span className="block text-[10px] font-semibold" >Trip is cancelled due to :</span>
+            <span className="text-[11px] tracking-wide pl-2" > {trip?.reason} </span>
+          </div>
+        )}
 
       {/* ── Horizontal Trip History Timeline ── */}
       <TripTimeline tripHistory={tripHistory} />
@@ -534,7 +1058,6 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
       {/* Workflow actions */}
       <div style={{ display: "flex", gap: 8, paddingTop: 12, borderTop: "1px solid #f0f0f0", marginTop: 14, flexWrap: "wrap" }}>
         <WorkflowActions vehicle={vehicle} onAction={() => { onRefresh(); onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
-        <button onClick={onClose} style={{ background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Close</button>
       </div>
 
       

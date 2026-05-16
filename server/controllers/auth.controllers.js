@@ -41,6 +41,7 @@ const otpStore = new Map();
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
       return res.status(400).json({ success: false, message: "Email and password are required" });
     }
@@ -51,10 +52,13 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
+    console.log("User found for login:", { email: user.email, id: user._id });
+
     // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
-      console.warn(`Failed login attempt for email: ${email}`);
+      console.warn(`Invalid password attempt for email: ${email}`);
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 

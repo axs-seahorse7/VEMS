@@ -1,14 +1,21 @@
 import e from "express";
-import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
+
+
+import cookieParser from "cookie-parser";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+
 import { createAdmin } from "../seed/createAdmin.js";
+import { globalLimiter } from "../services/expressRateLimiter.js";
+import errorMiddleware from "../middleware/Asynct-handler/errorMiddleware.js";
 
 import connectDB from "../db/config/db.config.js";
 await connectDB(); // Initialize DB connection
 
-// createAdmin();
+// createAdmin(); 
 
 console.log("env.PORT:", process.env.SERVER_ENV, process.env.PORT);
 // Routes
@@ -34,12 +41,19 @@ const corsOptions = {
 
 const app = e();
 
+app.set("trust proxy", 1); 
+app.use(helmet());
 app.use(cookieParser());
 app.use(cors(corsOptions));
+app.use(globalLimiter);
 app.use(e.json());
 
 app.get("/", (req, res) => {
  return res.send("Welcome to the Vehicle Management System API");
+});
+
+app.get("/spam", (req, res) => {
+ return res.json({ message: "This is a spam endpoint" });
 });
 
 app.get("/api/health", (req, res) => {
@@ -58,6 +72,7 @@ app.use("/api", vehicleRoutes)
 app.use("/api", gateRoutes)
 app.use("/api", tripRoutes)
 
+app.use(errorMiddleware);
 
 app.listen(process.env.PORT, (function () {
   console.log(`Server is running on port ${process.env.PORT}`);

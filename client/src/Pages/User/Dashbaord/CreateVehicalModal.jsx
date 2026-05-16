@@ -9,14 +9,11 @@ const ID_FORMAT = {
   Aadhar: {
     hint:        "12-digit number — e.g. 2345 6789 0123",
     placeholder: "2345 6789 0123",
-    maxRaw:      12,            // raw digits stored/sent
-    // strip non-digits, cap at 12
+    maxRaw:      12,
     clean:  (v) => v.replace(/\D/g, "").slice(0, 12),
-    // display with spaces: XXXX XXXX XXXX
     display:(v) => v.replace(/\D/g,"").replace(/(\d{4})(\d{1,4})?(\d{1,4})?/, (_, a, b, c) =>
       [a, b, c].filter(Boolean).join(" ")
     ),
-    // validate the raw (digits only) value
     validate:(v) => /^\d{12}$/.test(v) ? null : "Aadhaar must be exactly 12 digits",
   },
   PAN: {
@@ -29,53 +26,40 @@ const ID_FORMAT = {
       ? null : "PAN format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)",
   },
   DL: {
-  hint: "DL formats - (e.g. MH-12-2019-1234567)",
-  placeholder: "AB-XX-XXXX-XXXXXXX ",
-  maxRaw: 16,
-
-  clean: (raw) => {
-    const c = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 16);
-
-    // 👇 If starts like new format → apply dash formatting
-    if (/^[A-Z]{2}\d{2}/.test(c)) {
-      if (c.length <= 2) return c;
-      if (c.length <= 4) return `${c.slice(0,2)}-${c.slice(2)}`;
-      if (c.length <= 8) return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4)}`;
-      return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4,8)}-${c.slice(8)}`;
+    hint: "DL formats - (e.g. MH-12-2019-1234567)",
+    placeholder: "AB-XX-XXXX-XXXXXXX ",
+    maxRaw: 16,
+    clean: (raw) => {
+      const c = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 16);
+      if (/^[A-Z]{2}\d{2}/.test(c)) {
+        if (c.length <= 2) return c;
+        if (c.length <= 4) return `${c.slice(0,2)}-${c.slice(2)}`;
+        if (c.length <= 8) return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4)}`;
+        return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4,8)}-${c.slice(8)}`;
+      }
+      return c;
+    },
+    display: (v) => v,
+    validate: (v) => {
+      const raw = v.replace(/-/g, "");
+      const pattern = /^[A-Z]{2}\d{2}[A-Z0-9]{3,5}\d{6,9}$/;
+      if (pattern.test(raw)) return null;
+      return "Invalid DL format";
     }
-
-    // 👇 Otherwise keep as old format (no dashes)
-    return c;
-  },
-
-  display: (v) => v,
-
-  validate: (v) => {
-    // Normalize (ignore dashes for validation)
-    const raw = v.replace(/-/g, "");
-
-    // General DL pattern:
-    // SS (2 letters) + RR (2 digits) + optional series (0–2 letters)
-    // + year/number mix (3–5 chars) + final number (6–9 digits)
-    const pattern = /^[A-Z]{2}\d{2}[A-Z0-9]{3,5}\d{6,9}$/;
-
-    if (pattern.test(raw)) return null;
-
-    return "Invalid DL format";
   }
-}
 };
 
-// Vehicle number: SS NN LLL NNNN  — e.g. RJ 14 AB 1234
 const VEH_REGEX = /^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}$/;
 function cleanVehicleNumber(raw) {
   return raw.replace(/[-\s]/g, "").toUpperCase().slice(0, 10);
 }
+
 function displayVehicleNumber(raw) {
   const c = cleanVehicleNumber(raw);
   const m = c.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
   return m ? `${m[1]} ${m[2]} ${m[3]} ${m[4]}` : c;
 }
+
 function validateVehicleNumber(raw) {
   const c = cleanVehicleNumber(raw);
   return VEH_REGEX.test(c) ? null : "Format: SS NN LLL NNNN (e.g. RJ 14 AB 1234)";
@@ -269,13 +253,24 @@ const DEFAULT_VEHICLE = {
 };
 
 const DEFAULT_TRIP_COMMON = { purpose: "", materialType: "" };
-const DEFAULT_TRIP_INTERNAL = { ...DEFAULT_TRIP_COMMON, destinationFactoryId: "" };
+
+// ── Internal trip: no isInternalShifting toggle (it IS internal shifting),
+//    no source field (auto-set from user.factory), passType always "Incoming"
+const DEFAULT_TRIP_INTERNAL = {
+  ...DEFAULT_TRIP_COMMON,
+  destinationFactoryId: "",
+  supplier: "", material: "", quantity: "", invoiceNo: "",
+  invoiceAmount: "", customer: "",
+  passType: "Incoming",
+};
+
 const DEFAULT_TRIP_EXTERNAL = {
   ...DEFAULT_TRIP_COMMON,
   supplier: "", material: "", quantity: "", invoiceNo: "",
   invoiceAmount: "", customer: "", isInternalShifting: false,
   destinationFactoryId: "", passType: "Incoming", source: "",
 };
+
 const DEFAULT_INTERNAL = { ...DEFAULT_DRIVER, ...DEFAULT_VEHICLE, ...DEFAULT_TRIP_INTERNAL };
 const DEFAULT_EXTERNAL = { ...DEFAULT_DRIVER, ...DEFAULT_VEHICLE, ...DEFAULT_TRIP_EXTERNAL };
 
@@ -345,7 +340,7 @@ function Modal({ open, onClose, children, title, width = 780 }) {
 }
 
 // ─── Premium Tab Bar ──────────────────────────────────────────────────────────
-function TabBar({ active, setActive, autoSwitched, hasDraft }) {
+function TabBar({ active, setActive, hasDraft, showExternal }) {
   const tabs = [
     {
       key: "internal", label: "Internal Vehicle", sub: "Plant to plant transfer",
@@ -361,7 +356,10 @@ function TabBar({ active, setActive, autoSwitched, hasDraft }) {
       activeBg: "linear-gradient(135deg,#fffbeb,#fef3c7)", activeColor: "#92400e",
       activeBorder: "#fcd34d", iconBg: "#fef3c7", iconColor: "#d97706",
     },
-  ];
+  ].filter(t => t.key === "internal" || showExternal);
+
+  if (tabs.length === 1) return null;
+
   return (
     <div style={{ display:"flex", gap:8, marginBottom:12, flexShrink:0 }}>
       {tabs.map(t => {
@@ -376,7 +374,6 @@ function TabBar({ active, setActive, autoSwitched, hasDraft }) {
               <div style={{ fontSize:9.5, color:isActive?t.activeColor+"aa":"#9ca3af", fontWeight:500, transition:"color .22s" }}>{t.sub}</div>
             </div>
             {hasDraft[t.key] && (<div style={{ position:"absolute", top:7, right:9, width:6, height:6, borderRadius:"50%", background:"#6366f1", boxShadow:"0 0 0 2px #fff" }} title="Draft saved" />)}
-            {autoSwitched === t.key && (<span className="veh-badge" style={{ position:"absolute", top:-4, right:-4, background:"#6366f1", color:"#fff", fontSize:7.5, fontWeight:800, borderRadius:6, padding:"1px 5px", letterSpacing:.4 }}>AUTO</span>)}
             {isActive && (<div style={{ position:"absolute", bottom:0, left:"10%", width:"80%", height:2, borderRadius:"2px 2px 0 0", background:t.gradient }} />)}
           </button>
         );
@@ -422,7 +419,6 @@ function DraftBadge({ show }) {
   );
 }
 
-// ─── Format Hint Banner ───────────────────────────────────────────────────────
 function FormatHint({ idType }) {
   const rule = ID_FORMAT[idType];
   if (!rule) return null;
@@ -434,7 +430,6 @@ function FormatHint({ idType }) {
   );
 }
 
-// ─── Vehicle Format Hint ──────────────────────────────────────────────────────
 function VehicleFormatHint({ value }) {
   const err = value.length >= 4 ? validateVehicleNumber(value) : null;
   if (!err && !value) return (
@@ -452,24 +447,23 @@ function VehicleFormatHint({ value }) {
 const SourceField = ({ value, onChange, options }) => {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:4}}>
-    <label className="text-[10px] text-gray-500 font-semibold">Source Factory</label>
-    <AutoComplete
-      required
-      value={value || ""}
-      style={{ width: "100%", height:32 }}
-      placeholder="Source Factory"
-      options={options.map((o) => ({
-        value: o.v,   // what gets stored
-        label: o.l,   // what user sees
-      }))}
-      filterOption={(inputValue, option) =>
-        option.label.toLowerCase().includes(inputValue.toLowerCase())
-      }
-      onChange={(val) => {
-        onChange("source", val); // 👈 string only
-        clearErr("source");
-      }}
-    />
+      <label className="text-[10px] text-gray-500 font-semibold">Source Factory</label>
+      <AutoComplete
+        required
+        value={value || ""}
+        style={{ width: "100%", height:32 }}
+        placeholder="Source Factory"
+        options={options.map((o) => ({
+          value: o.v,
+          label: o.l,
+        }))}
+        filterOption={(inputValue, option) =>
+          option.label.toLowerCase().includes(inputValue.toLowerCase())
+        }
+        onChange={(val) => {
+          onChange("source", val);
+        }}
+      />
     </div>
   );
 };
@@ -478,20 +472,30 @@ const SourceField = ({ value, onChange, options }) => {
 export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
 
-  const [activeTab, setActiveTab]       = useState(() => lsGet(LS_TAB, "internal"));
+  const workLocation  = user.workLocation;
+  const showExternal  = workLocation === "atGate";
+  const canAutoLookup = true;
+  const [messageApi, contextHolder] = message.useMessage()
+
+  const [activeTab, setActiveTab]       = useState(() => workLocation === "atGate" ? lsGet(LS_TAB, "external") : lsGet(LS_TAB, "internal"));
   const [factories, setFactories]       = useState([]);
   const [fetchingFactories, setFF]      = useState(false);
   const [internalForm, _setInternal]    = useState(() => lsGet(LS_INTERNAL, DEFAULT_INTERNAL));
   const [externalForm, _setExternal]    = useState(() => lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
   const [errors, setErrors]             = useState({});
   const [submitting, setSubmitting]     = useState(false);
-  const [autoSwitched, setAutoSwitched] = useState(null);
   const [draftSaved, setDraftSaved]     = useState(false);
   const [hasDraft, setHasDraft]         = useState({ internal:false, external:false });
   const [driverLookup, setDL]           = useState({ loading:false, found:false, foundBy:null });
   const [vehicleLookup, setVL]          = useState({ loading:false, found:false });
   const draftTimer = useRef(null);
   const ALL_CUSTOMERS = [...CUSTOMER, ...SUPPLIERS].sort((a,b) => a.l.localeCompare(b.l));
+
+  useEffect(() => {
+    if (!showExternal && activeTab === "external") {
+      setActiveTab("internal");
+    }
+  }, [showExternal, activeTab]);
 
   const checkDraft = useCallback((intForm, extForm) => {
     const hasData = (form, defaults) =>
@@ -502,14 +506,16 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     setHasDraft({ internal:hasData(intForm, DEFAULT_INTERNAL), external:hasData(extForm, DEFAULT_EXTERNAL) });
   }, []);
 
-  const setInternalForm = useCallback(updater => {_setInternal(prev => {
+  const setInternalForm = useCallback(updater => {
+    _setInternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       lsSet(LS_INTERNAL, next); flashDraft();
       checkDraft(next, lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL)); return next;
     });
   }, [checkDraft]);
 
-  const setExternalForm = useCallback(updater => {_setExternal(prev => {
+  const setExternalForm = useCallback(updater => {
+    _setExternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       lsSet(LS_EXTERNAL, next); flashDraft();
       checkDraft(lsGet(LS_INTERNAL, DEFAULT_INTERNAL), next); return next;
@@ -523,26 +529,30 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   };
 
   useEffect(() => { lsSet(LS_TAB, activeTab); }, [activeTab]);
+
   useEffect(() => {
-    if (!open) return;
-    const si = lsGet(LS_INTERNAL, DEFAULT_INTERNAL);
-    const se = lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL);
-    const st = lsGet(LS_TAB, "internal");
-    _setInternal(si); _setExternal(se); setActiveTab(st); checkDraft(si, se);
-  }, [open, checkDraft]);
+  if (!open) return;
+  const si = lsGet(LS_INTERNAL, DEFAULT_INTERNAL);
+  const se = lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL);
+  _setInternal(si); _setExternal(se);
+  // ✅ respect workLocation on open
+  setActiveTab(workLocation === "atGate" ? "external" : "internal");
+  checkDraft(si, se);
+}, [open, checkDraft]);
 
   useEffect(() => {
     if (!open) return;
     setFF(true);
     api.get("/factories")
       .then(res => setFactories(res.data?.factories || res.data || []))
-      .catch(() => message.error("Could not load factories"))
+      .catch(() => messageApi.error("Could not load factories"))
       .finally(() => setFF(false));
   }, [open]);
 
   // ── Driver Lookup ──────────────────────────────────────────────────────────
   const lookupDriver = useCallback(
     debounce(async (value, field, currentTab) => {
+      if (!canAutoLookup) return;
       if (field === "driverContact" && value.length < 10) return;
       if (field === "driverIdNumber" && value.length < 4) return;
       setDL({ loading:true, found:false, foundBy:null });
@@ -557,12 +567,13 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
         } else { setDL({ loading:false, found:false, foundBy:null }); }
       } catch { setDL({ loading:false, found:false, foundBy:null }); }
     }, 700),
-    [setInternalForm, setExternalForm]
+    [setInternalForm, setExternalForm, canAutoLookup]
   );
 
   // ── Vehicle Lookup ─────────────────────────────────────────────────────────
   const lookupVehicle = useCallback(
     debounce(async (vehicleNumber, currentTab) => {
+      if (!canAutoLookup) return;
       if (!vehicleNumber || vehicleNumber.length < 4) return;
       setVL({ loading:true, found:false });
       try {
@@ -570,20 +581,13 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
         const v = res.data?.vehicle || res.data;
         if (v) {
           const patch = { typeOfVehicle:v.typeOfVehicle||"truck", transporterName:v.transporterName||"", PUCExpiry:v.PUCExpiry?v.PUCExpiry.split("T")[0]:"" };
-          if (v.type && v.type !== currentTab) {
-            setActiveTab(v.type); setAutoSwitched(v.type);
-            setTimeout(() => setAutoSwitched(null), 3000);
-            if (v.type==="internal") setInternalForm(p=>({...p,...patch,vehicleNumber}));
-            else setExternalForm(p=>({...p,...patch,vehicleNumber}));
-          } else {
-            if (currentTab==="internal") setInternalForm(p=>({...p,...patch}));
-            else setExternalForm(p=>({...p,...patch}));
-          }
+          if (currentTab==="internal") setInternalForm(p=>({...p,...patch}));
+          else setExternalForm(p=>({...p,...patch}));
           setVL({ loading:false, found:true });
         } else { setVL({ loading:false, found:false }); }
       } catch { setVL({ loading:false, found:false }); }
     }, 700),
-    [setInternalForm, setExternalForm]
+    [setInternalForm, setExternalForm, canAutoLookup]
   );
 
   // ── Field handlers ─────────────────────────────────────────────────────────
@@ -606,19 +610,15 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const clearErr = k => setErrors(p => ({ ...p, [k]:"" }));
 
   // ── Validation ─────────────────────────────────────────────────────────────
-  // Returns format errors for ID fields based on current idType
   const getFormatErrors = (form) => {
     const e = {};
-    // Vehicle number
     const vehErr = validateVehicleNumber(form.vehicleNumber);
     if (form.vehicleNumber && vehErr) e.vehicleNumber = vehErr;
-    // ID number
     const rule = ID_FORMAT[form.driverIdType];
     if (rule && form.driverIdNumber) {
       const idErr = rule.validate(form.driverIdNumber);
       if (idErr) e.driverIdNumber = idErr;
     }
-    // License (always DL format)
     if (form.licenseNumber) {
       const dlErr = ID_FORMAT.DL.validate(form.licenseNumber);
       if (dlErr) e.licenseNumber = dlErr;
@@ -626,58 +626,98 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     return e;
   };
 
+  // ── Internal validation: no source check (auto-set), no isInternalShifting
   const validateInternal = () => {
     const e = {};
-    if (!internalForm.driverContact)           e.driverContact = "Required";
+    if (!internalForm.driverContact)        e.driverContact = "Required";
     if (!internalForm.driverName)           e.driverName = "Required";
-    if (!internalForm.driverIdNumber)           e.driverIdNumber = "Required";
-    if (!internalForm.vehicleNumber)         e.vehicleNumber = "Required";
+    if (!internalForm.driverIdNumber)       e.driverIdNumber = "Required";
+    if (!internalForm.vehicleNumber)        e.vehicleNumber = "Required";
     if (!internalForm.destinationFactoryId) e.destinationFactoryId = "Required";
     if (!internalForm.purpose)              e.purpose = "Required";
     if (!internalForm.materialType)         e.materialType = "Required";
+    // Material detail validation — skip if purpose is Pickup
+    if (internalForm.purpose !== "Pickup") {
+      // if (internalForm.materialType === "RM" && !internalForm.supplier)   e.supplier = "Required";
+      // if (["RM","FG","Scrap","NewMachines","Others"].includes(internalForm.materialType) ) e.material = "Required";
+      if (internalForm.materialType === "FG" && !internalForm.customer)   e.customer = "Required";
+    }
     const fmtErr = getFormatErrors(internalForm);
     const merged = { ...e, ...fmtErr };
-    setErrors(merged); return !Object.keys(merged).length;
+    setErrors(merged); 
+    return !Object.keys(merged).length;
   };
 
   const validateExternal = () => {
     const e = {};
     if (!externalForm.driverContact)   e.driverContact = "Required";
-    if (!externalForm.driverName)   e.driverName = "Required";
-    if (!externalForm.driverIdNumber) e.driverIdNumber = "Required";
-    if (!externalForm.vehicleNumber) e.vehicleNumber = "Required";
-    if (!externalForm.purpose)      e.purpose = "Required";
-    if (!externalForm.materialType) e.materialType = "Required";
-    if(externalForm.isInternalShifting && !externalForm.supplier) e.supplier = "Required";
-    if(!externalForm.source) e.source = "Required";
+    if (!externalForm.driverName)      e.driverName = "Required";
+    if (!externalForm.driverIdNumber)  e.driverIdNumber = "Required";
+    if (!externalForm.vehicleNumber)   e.vehicleNumber = "Required";
+    if (!externalForm.purpose)         e.purpose = "Required";
+    if (!externalForm.materialType)    e.materialType = "Required";
+    if (!externalForm.source)          e.source = "Required";
+    if (externalForm.isInternalShifting && !externalForm.supplier)             e.supplier = "Required";
     if (externalForm.isInternalShifting && !externalForm.destinationFactoryId) e.destinationFactoryId = "Required";
+    if (externalForm.purpose !== "Pickup") {
+      if (externalForm.materialType === "RM" && !externalForm.supplier)   e.supplier = "Required";
+      if (["RM","FG","Scrap","NewMachines","Others"].includes(externalForm.materialType) && !externalForm.material) e.material = "Required";
+      if (externalForm.materialType === "FG" && !externalForm.customer)   e.customer = "Required";
+    }
     const fmtErr = getFormatErrors(externalForm);
     const merged = { ...e, ...fmtErr };
-    setErrors(merged); return !Object.keys(merged).length;
+    setErrors(merged); 
+    return !Object.keys(merged).length;
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmitInternal = async () => {
-    if (!validateInternal()) return message.error("Please Fill the all required fields.");
+    if (!validateInternal()) {
+       const validation = validateInternal()
+        messageApi.error("Please fill all required fields.",);
+        return ;
+    }
     setSubmitting(true);
     try {
-      await api.post("/new/internal-trip", { ...internalForm, vehicleNumber:cleanVehicleNumber(internalForm.vehicleNumber), sourceFactoryId:user.factory?._id, status:"inside_factory" });
-      message.success("Internal vehicle entry created");
+      // sourceFactoryId is always the current user's factory — never entered manually
+     const response = await api.post("/new/internal-trip", {
+        ...internalForm,
+        vehicleNumber:   cleanVehicleNumber(internalForm.vehicleNumber),
+        sourceFactoryId: user.factory?._id,
+        source:          user.factory?.name || user.factory?._id || "",
+        status:          "inside_factory",
+      });
+      messageApi.success("Internal vehicle entry created");
       onRefresh(); handleClose();
-    } catch (e) { message.error(e.response?.data?.message||"Failed"); }
-    finally { setSubmitting(false); }
+    } catch (e) { 
+      messageApi.error(e.response?.data?.message||"Failed"); 
+    }finally { 
+      setSubmitting(false); 
+    }
   };
 
   const handleSubmitExternal = async () => {
-    if (!validateExternal()) return message.error("Please Fill the all required fields.");
+    if (!validateExternal()) return message.error("Please fill all required fields.");
     setSubmitting(true);
     try {
-      await api.post("/new/external-trip", { ...externalForm, vehicleNumber:cleanVehicleNumber(externalForm.vehicleNumber), sourceFactoryId:user.factory?._id });
-      message.success("External vehicle entry created — awaiting gate check-in");
-      onRefresh(); handleClose();
-    } catch (e) { message.error(e.response?.data?.message||"Failed"); }
-    finally { setSubmitting(false); }
+    const response = await api.post("/new/external-trip", {
+      ...externalForm,
+      vehicleNumber:   cleanVehicleNumber(externalForm.vehicleNumber),
+      sourceFactoryId: user.factory?._id,
+    });
+    messageApi.success(response?.data?.message || " External Vehicle created.");
+    setTimeout(() => {
+      onRefresh();
+      handleClose();
+    }, 500);
+
+    } catch (e) { 
+    messageApi.error(String(e.response?.data?.message ||"Failed")); 
+    }finally { 
+      setSubmitting(false); 
+    }
   };
+
 
   const handleClose = () => {
     onClose();
@@ -685,7 +725,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     _setExternal(DEFAULT_EXTERNAL); lsSet(LS_EXTERNAL, DEFAULT_EXTERNAL);
     lsDel(LS_TAB);
     setErrors({}); setVL({ loading:false, found:false }); setDL({ loading:false, found:false, foundBy:null });
-    setAutoSwitched(null); setHasDraft({ internal:false, external:false });
+    setHasDraft({ internal:false, external:false });
   };
 
   // ── Style tokens ───────────────────────────────────────────────────────────
@@ -698,37 +738,27 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   const ID_TYPES       = [{ v:"Aadhar",l:"Aadhar"},{v:"PAN",l:"PAN"},{v:"DL",l:"Driving Licence"}];
   const MATERIAL_TYPES = [{ v:"RM",l:"RM – Raw Material"},{v:"FG",l:"FG – Finished Goods"},{v:"Scrap",l:"Scrap"},{v:"NewMachines",l:"New Machines"},{v:"Others",l:"Others"}];
-  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"},];
+  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"}];
   const PASS_TYPE_OPTS = [{ v:"Incoming",l:"Incoming"},{v:"Outgoing",l:"Outgoing"}];
   const factoryOpts    = factories.filter(f=>f._id!==user.factory?._id).map(f=>({v:f._id,l:`${f.name} – ${f.location}`}));
   const VEHICLE_TYPES  = [
-    {v:"truck",l:"Truck"},
-    {v:"car",l:"Car"},
-    {v:"bike",l:"Bike"},
-    {v:"byHand",l:"By Hand"},
-    {v:"trackter",l:"Trackter"},
-    {v:"miniTruck",l:"Mini Truck"},
-    {v:"mixerTruck",l:"Mixer Truck"},
-    {v:"autoRikshaw",l:"Auto Rikshaw"},
-    {v:"waterTanker",l:"Water Tanker"},
-    {v:"containerTruck",l:"Container Truck"},
+    {v:"truck",l:"Truck"},{v:"car",l:"Car"},{v:"bike",l:"Bike"},{v:"byHand",l:"By Hand"},
+    {v:"trackter",l:"Trackter"},{v:"miniTruck",l:"Mini Truck"},{v:"mixerTruck",l:"Mixer Truck"},
+    {v:"autoRikshaw",l:"Auto Rikshaw"},{v:"waterTanker",l:"Water Tanker"},{v:"containerTruck",l:"Container Truck"},
   ];
-  
+
   // ── Field builders ─────────────────────────────────────────────────────────
   const inp = (key, label, value, onChange, type="text", placeHolder, req=false, activeIdType=null) => {
     const isDriverLookupField  = key==="driverContact"||key==="driverIdNumber";
     const isVehicleLookupField = key==="vehicleNumber";
-    const showSpinner = (isDriverLookupField&&driverLookup.loading)||(isVehicleLookupField&&vehicleLookup.loading);
-    const showSearch  = (isDriverLookupField||isVehicleLookupField)&&!showSpinner;
+    const showSpinner = canAutoLookup && ((isDriverLookupField&&driverLookup.loading)||(isVehicleLookupField&&vehicleLookup.loading));
+    const showSearch  = canAutoLookup && (isDriverLookupField||isVehicleLookupField) && !showSpinner;
 
-    // ── Determine placeholder, maxLength for format-controlled fields ──
     let placeholder = placeHolder;
     let maxLen;
     if (key==="driverIdNumber" && activeIdType && ID_FORMAT[activeIdType]) {
       placeholder = ID_FORMAT[activeIdType].placeholder;
-      maxLen = key==="driverIdNumber" && activeIdType==="DL"
-        ? 19   // with dashes: SS-RR-YYYY-SSSSSSS = 18 chars
-        : ID_FORMAT[activeIdType].maxRaw;
+      maxLen = key==="driverIdNumber" && activeIdType==="DL" ? 19 : ID_FORMAT[activeIdType].maxRaw;
     }
     if (key==="licenseNumber") { placeholder = ID_FORMAT.DL.placeholder; maxLen = 19; }
     if (key==="vehicleNumber") { placeholder = "MH 12 AB 1234"; maxLen = 13; }
@@ -736,11 +766,9 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
     const handleChange = (e) => {
       let val = e.target.value;
-
       if (key==="driverContact") {
         val = val.replace(/\D/g,"").slice(0,10);
       } else if (key==="vehicleNumber") {
-        // allow spaces/dashes during input, clean on blur/submit
         val = val.replace(/[^A-Z0-9\s-]/gi,"").toUpperCase().slice(0,13);
       } else if (key==="driverIdNumber" && activeIdType) {
         const rule = ID_FORMAT[activeIdType];
@@ -777,13 +805,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
             </span>
           )}
         </div>
-        {/* Inline format error */}
-        {errors[key] && (
-          <span className="fmt-err" style={ERR}>⚠ {errors[key]}</span>
-        )}
-        {/* Vehicle number live hint */}
+        {errors[key] && <span className="fmt-err" style={ERR}>⚠ {errors[key]}</span>}
         {key==="vehicleNumber" && !errors[key] && <VehicleFormatHint value={value} />}
-        {/* ID number live validation */}
         {key==="driverIdNumber" && !errors[key] && activeIdType && (() => {
           const rule = ID_FORMAT[activeIdType];
           if (!rule || !value) return null;
@@ -792,7 +815,6 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
           if (!err) return <span style={{ fontSize:9, color:"#059669", marginTop:2, fontWeight:600 }}>✓ Valid {rule.label} number</span>;
           return null;
         })()}
-        {/* DL / license live validation */}
         {key==="licenseNumber" && !errors[key] && (() => {
           if (!value) return null;
           const err = ID_FORMAT.DL.validate(value);
@@ -817,8 +839,6 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </div>
   );
 
- 
-
   const submitRow = (label, onClick, gradient) => (
     <div style={{ display:"flex", alignItems:"center", gap:8, paddingTop:10, borderTop:"1px solid #f0f0f0", marginTop:4, flexShrink:0 }}>
       <button className="veh-btn-p" onClick={onClick} disabled={submitting}
@@ -833,9 +853,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </div>
   );
 
-  const supplierOptions = SUPPLIERS.map(s=>({value:s.v,label:s.l}));
-
-  // ── Driver Layer ──────────────────────────────────────────────────────────
+  // ── Driver Layer ───────────────────────────────────────────────────────────
   const renderDriverLayer = (form, onChange) => (
     <Layer
       icon={<User size={13}/>} title="Driver Details"
@@ -845,9 +863,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
       foundMsg={`Driver found via ${driverLookup.foundBy==="driverContact"?"phone number":"ID number"} — fields auto-filled`}
       defaultOpen={true}
     >
-      {/* Format hint for current ID type */}
       <FormatHint idType={form.driverIdType} />
-
       <div style={g3}>
         {inp("driverContact",  "Phone Number", form.driverContact,  onChange, "text", undefined, false, null)}
         {inp("driverIdNumber", "ID Number",    form.driverIdNumber, onChange, "text", undefined, false, form.driverIdType)}
@@ -865,7 +881,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </Layer>
   );
 
-  // ── Vehicle Layer ─────────────────────────────────────────────────────────
+  // ── Vehicle Layer ──────────────────────────────────────────────────────────
   const renderVehicleLayer = (form, onChange) => (
     <Layer
       icon={<Car size={13}/>} title="Vehicle Details"
@@ -891,34 +907,112 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     </Layer>
   );
 
+  // ── Material Detail Sections ───────────────────────────────────────────────
+  const renderMaterialDetails = (form, onChange, isPickup) => {
+    if (isPickup) return null;
+    const supplierOpts = SUPPLIERS.map(s=>({value:s.v,label:s.l}));
+
+    if (form.materialType === "RM") return (
+      <div style={{ animation:"vehFade .18s ease" }}>
+        <SL label="Raw Material Details" color="#059669"/>
+        <div style={{ background:"#f0fdf4", border:"1.5px solid #bbf7d0", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
+          <div style={g3}>
+            <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+              <label style={LBL}>Supplier <span style={{ color:"#6366f1",marginLeft:2 }}>*</span></label>
+              <Select mode="tags" showSearch style={{ width:"100%", height:32 }} placeholder="Search or enter supplier"
+                value={form.supplier?[form.supplier]:[]}
+                onChange={(value)=>onChange("supplier",value[0]||"")}
+                options={supplierOpts}
+              />
+              {errors.supplier&&<span style={ERR}>{errors.supplier}</span>}
+            </div>
+            {inp("material","Material Name",form.material,onChange,"text",undefined,true)}
+            {inp("quantity","Quantity",form.quantity,onChange,"number")}
+          </div>
+          <div style={g2}>
+            {inp("invoiceNo","Invoice No.",form.invoiceNo,onChange)}
+            {inp("invoiceAmount","Invoice Amount (₹)",form.invoiceAmount,onChange,"number")}
+          </div>
+        </div>
+      </div>
+    );
+
+    if (form.materialType === "FG") return (
+      <div style={{ animation:"vehFade .18s ease" }}>
+        <SL label="Finished Goods Details" color="#2563eb"/>
+        <div style={{ background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
+          <div style={g2}>
+            {sel("customer","Customer",form.customer,onChange,CUSTOMER,true)}
+            {inp("invoiceNo","Invoice No.",form.invoiceNo,onChange)}
+          </div>
+          <div style={g2}>
+            {inp("quantity","Quantity",form.quantity,onChange,"number")}
+            {inp("invoiceAmount","Invoice Amount (₹)",form.invoiceAmount,onChange,"number")}
+          </div>
+        </div>
+      </div>
+    );
+
+    if (["Scrap","NewMachines","Others"].includes(form.materialType)) return (
+      <div style={{ animation:"vehFade .18s ease" }}>
+        <SL label="Additional Details" color="#7c3aed"/>
+        <div style={{ background:"#faf5ff", border:"1.5px solid #e9d5ff", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
+          <div style={g2}>
+            {inp("material","Material / Description",form.material,onChange,"text",undefined,true)}
+            {inp("quantity","Quantity",form.quantity,onChange,"number")}
+          </div>
+        </div>
+      </div>
+    );
+
+    return null;
+  };
+
   return (
     <Modal open={open} onClose={handleClose} title="New Vehicle Entry">
-      <TabBar active={activeTab} setActive={setActiveTab} autoSwitched={autoSwitched} hasDraft={hasDraft} />
+    {contextHolder}
+      <TabBar
+        active={activeTab}
+        setActive={setActiveTab}
+        hasDraft={hasDraft}
+        showExternal={showExternal}
+      />
 
       {/* ── INTERNAL TAB ── */}
       {activeTab==="internal" && (
         <div className="veh-sec">
+          {/* Source factory info pill — read-only, no input needed */}
           <div style={{ background:"linear-gradient(135deg,#eef2ff,#e0e7ff)", borderRadius:8, padding:"6px 11px", marginBottom:9, fontSize:10, color:"#4338ca", fontWeight:500, display:"flex", alignItems:"center", gap:5 }}>
-            <Factory size={12}/> Internal vehicles default to <code style={{ background:"rgba(99,102,241,.12)", padding:"0 5px", borderRadius:3, marginLeft:2 }}>inside_factory</code> status.
+            <Factory size={12}/>
+            Source: <strong style={{ marginLeft:4 }}>{user.factory?.name || "Your Factory"}</strong>
+            <span style={{ marginLeft:8, opacity:.6 }}>· Status set to</span>
+            <code style={{ background:"rgba(99,102,241,.12)", padding:"0 5px", borderRadius:3, marginLeft:2 }}>inside_factory</code>
           </div>
+
           {renderDriverLayer(internalForm, setInternal)}
           {renderVehicleLayer(internalForm, setInternal)}
+
           <Layer icon={<ClipboardList size={13}/>} title="Trip Details" subtitle="Destination, purpose and material info"
             color="#7c3aed" bg="linear-gradient(135deg,#faf5ff,#ede9fe)" border="#e9d5ff"
             found={false} foundMsg="" defaultOpen={true}
           >
+            {/* Destination + Purpose + Material Type in one row */}
             <div style={g3}>
               {sel("destinationFactoryId","Destination Factory",internalForm.destinationFactoryId,setInternal,fetchingFactories?[{v:"",l:"Loading…"}]:factoryOpts,true)}
               {sel("purpose","Purpose",internalForm.purpose,setInternal,PURPOSE_OPTS,true)}
               {sel("materialType","Material Type",internalForm.materialType,setInternal,MATERIAL_TYPES,true)}
             </div>
+
+            {/* Material detail sections — hidden when purpose is Pickup */}
+            {internalForm.materialType && renderMaterialDetails(internalForm, setInternal, internalForm.purpose === "Pickup")}
           </Layer>
+
           {submitRow("Create Internal Entry", handleSubmitInternal, "linear-gradient(135deg,#6366f1,#4f46e5)")}
         </div>
       )}
 
-      {/* ── EXTERNAL TAB ── */}
-      {activeTab==="external" && (
+      {/* ── EXTERNAL TAB — only visible to atGate ── */}
+      {activeTab==="external" && showExternal && (
         <div className="veh-sec">
           <div style={{ background:"linear-gradient(135deg,#fffbeb,#fef3c7)", borderRadius:8, padding:"6px 11px", marginBottom:9, fontSize:10, color:"#92400e", fontWeight:500, display:"flex", alignItems:"center", gap:5 }}>
             <Truck size={12}/> External vehicles await <strong style={{ marginLeft:2 }}>gate check-in</strong>. Material type reveals extra fields.
@@ -929,7 +1023,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
             color="#d97706" bg="linear-gradient(135deg,#fffbeb,#fef3c7)" border="#fcd34d"
             found={false} foundMsg="" defaultOpen={true}
           >
-            {/* Internal Shifting Toggle */}
+            {/* Internal Shifting Toggle — external only */}
             <div style={{ background:"linear-gradient(135deg,#f8faff,#eef2ff)", border:"1.5px solid #e0e7ff", borderRadius:10, padding:"8px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 1px 4px rgba(99,102,241,.07)" }}>
               <div style={{ display:"flex", alignItems:"center", gap:9 }}>
                 <div style={{ width:28, height:28, borderRadius:8, background:externalForm.isInternalShifting?"#ede9fe":"#f3f4f6", display:"flex", alignItems:"center", justifyContent:"center", transition:"background .2s" }}>
@@ -956,66 +1050,12 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
             )}
 
             <div style={g3}>
-             <SourceField
-                value={externalForm.source}
-                onChange={setExternal}
-                options={ALL_CUSTOMERS}
-              />
-              {sel("purpose","Purpose" ,externalForm.purpose, setExternal, PURPOSE_OPTS,true)}
-              {sel("materialType","Material Type", externalForm.materialType, setExternal, MATERIAL_TYPES,true)}
+              <SourceField value={externalForm.source} onChange={setExternal} options={ALL_CUSTOMERS} />
+              {sel("purpose","Purpose",externalForm.purpose,setExternal,PURPOSE_OPTS,true)}
+              {sel("materialType","Material Type",externalForm.materialType,setExternal,MATERIAL_TYPES,true)}
             </div>
 
-            {externalForm.materialType==="RM" && (
-              <div style={{ animation:"vehFade .18s ease" }}>
-                <SL label="Raw Material Details" color="#059669"/>
-                <div style={{ background:"#f0fdf4", border:"1.5px solid #bbf7d0", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
-                  <div style={g3}>
-                    <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-                      <label style={LBL}>Supplier</label>
-                      <Select mode="tags" showSearch style={{ width:"100%", height:32 }} placeholder="Search or enter supplier"
-                        value={externalForm.supplier?[externalForm.supplier]:[]}
-                        onChange={(value)=>setExternal("supplier",value[0])}
-                        options={supplierOptions}
-                      />
-                    </div>
-                    {inp("material","Material Name",externalForm.material,setExternal)}
-                    {inp("quantity","Quantity",externalForm.quantity,setExternal,"number")}
-                  </div>
-                  <div style={g2}>
-                    {inp("invoiceNo","Invoice No.",externalForm.invoiceNo,setExternal)}
-                    {inp("invoiceAmount","Invoice Amount (₹)",externalForm.invoiceAmount,setExternal,"number")}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {externalForm.materialType==="FG" && (
-              <div style={{ animation:"vehFade .18s ease" }}>
-                <SL label="Finished Goods Details" color="#2563eb"/>
-                <div style={{ background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
-                  <div style={g2}>
-                    {sel("customer","Customer",externalForm.customer,setExternal,CUSTOMER)}
-                    {inp("invoiceNo","Invoice No.",externalForm.invoiceNo,setExternal)}
-                  </div>
-                  <div style={g2}>
-                    {inp("quantity","Quantity",externalForm.quantity,setExternal,"number")}
-                    {inp("invoiceAmount","Invoice Amount (₹)",externalForm.invoiceAmount,setExternal,"number")}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {["Scrap", "NewMachines", "Others"].includes(externalForm.materialType) && (
-              <div style={{ animation:"vehFade .18s ease" }}>
-                <SL label="Additional Details" color="#7c3aed"/>
-                <div style={{ background:"#faf5ff", border:"1.5px solid #e9d5ff", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
-                  <div style={g2}>
-                    {inp("material","Material / Description",externalForm.material,setExternal)}
-                    {inp("quantity","Quantity",externalForm.quantity,setExternal,"number")}
-                  </div>
-                </div>
-              </div>
-            )}
+            {externalForm.materialType && renderMaterialDetails(externalForm, setExternal, externalForm.purpose === "Pickup")}
           </Layer>
           {submitRow("Create External Entry", handleSubmitExternal, "linear-gradient(135deg,#f59e0b,#d97706)")}
         </div>

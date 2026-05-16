@@ -65,7 +65,7 @@ const STAGE_META = {
   inside:  { label: "Inside",   bg: "#dcfce7", color: "#15803d" },
   enroute: { label: "Transit",  bg: "#dbeafe", color: "#1d4ed8" },
   closed:  { label: "Closed",   bg: "#D6F4ED", color: "#3A8B95" },
-  canceled:{ label: "Canceled", bg: "#fee2e2", color: "#dc2626" },
+  canceled:{ label: "Canceled", bg: "#D70040", color: "#dc2626" },
   exited:  { label: "Exited",   bg: "#fee2e2", color: "#dc2626" },
   unknown: { label: "Unknown",  bg: "#f3f4f6", color: "#131314" },
 };
@@ -135,21 +135,23 @@ export default function VehicleCard({ vehicle, onClick }) {
   const borderMeta = STATE_BORDER[stageKey];
 
   const route =
-  vehicle.type === "internal_transfer" ? (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-      {vehicle.sourceFactory?.name || "Source"}
-      <i className="ri-arrow-right-long-line"></i>
-      {vehicle.destinationFactory?.name || "Dest"}
-    </span>
-  ) : (
-    <span>
-      External <i className="ri-arrow-right-long-line"></i> {vehicle.destinationFactory?.name || "Unknown"}
-    </span>
-  );
+    vehicle.type === "internal_transfer" ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+        {vehicle.sourceFactory?.name || "Source"}
+        <i className="ri-arrow-right-long-line"></i>
+        {vehicle.destinationFactory?.name || "Unknown"}
+      </span>
+    ) : (
+      <div className="flex items-center gap-1 min-w-0 w-full overflow-hidden">
+        <span className="truncate min-w-0 flex-1">{ vehicle.sourceFactory?.name? vehicle.sourceFactory?.name : vehicle?.externalSource ?? "External"}</span>
+        <i className="ri-arrow-right-long-line flex-shrink-0"></i>
+        <span className="truncate min-w-0 flex-1">{vehicle.destinationFactory?.name || (vehicle?.externalDestination?? "Unknown") }</span>
+      </div>
+    );
 
   const isAtOrigin      = phase === "ORIGIN";
   const isAtDestination = phase === "DESTINATION";
-  const isAtInTransit     = vehicle.status === "IN_TRANSIT";
+  const isAtInTransit   = vehicle.status === "IN_TRANSIT";
 
   const materialNames = Array.isArray(vehicle?.materials)
   ? vehicle.materials
@@ -211,13 +213,13 @@ export default function VehicleCard({ vehicle, onClick }) {
 
       <div
         onClick={onClick}
-        className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-md shadow-gray-600"}
+        className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-md "}
         style={{
           display: "flex",
           flexDirection: "column",
+          backgroundColor:"white",
           borderRadius: 10,
           overflow: "hidden",
-          // boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
           cursor: "pointer",
           transition: "box-shadow .15s, transform .15s",
           position: "relative",
@@ -375,54 +377,61 @@ export default function VehicleCard({ vehicle, onClick }) {
               value={materialNames.join(", ") || "Empty"}
               />
             <InfoRow
+              icon="ri-attachment-2" iconColor="#7c3ae7"
+              label="Seal"
+              value={vehicle?.materials[0]?.seal === "sealed"? "Sealed" : "-"}
+            />
+            <InfoRow
               icon="ri-time-line" iconColor="#7c3aed"
-              label="Trip At"
+              label="Started"
               value={fmtTime(vehicle?.createdAt)}
             />
           </div>
 
           {/* ── Origin → Destination tracker ── */}
-          <div className="absolute right-5 top-20 flex flex-col items-center text-[10px]">
+         <div className="absolute right-5 top-22 flex flex-col items-center text-[10px] w-20">
 
             {/* ORIGIN */}
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center w-full">
               <div className="relative flex items-center justify-center">
                 {isAtOrigin && (
                   <span className="absolute inline-flex w-4 h-4 rounded-full bg-blue-400 opacity-75 animate-ping"></span>
                 )}
                 <div className="relative w-2 h-2 rounded-full bg-blue-500"></div>
               </div>
-              <span className="mt-1 text-blue-600">{vehicle?.sourceFactory?.name || (vehicle.externalSource?? "Out Source") }</span>
+              <span className="mt-1 text-blue-600 w-full text-center truncate">
+                {vehicle?.sourceFactory?.name || (vehicle.externalSource ?? "Out Source")}
+              </span>
             </div>
 
             {/* GRADIENT LINE */}
             <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #3b82f6, #10b981)" }}></div>
 
-            {/* DESTINATION */}
-            <div className="flex flex-col items-center">
+            {/* IN TRANSIT */}
+            <div className="flex flex-col items-center w-full">
               <div className="relative flex items-center justify-center">
                 {isAtInTransit && (
                   <span className="absolute inline-flex w-4 h-4 rounded-full bg-purple-500 opacity-75 animate-ping"></span>
                 )}
-                <div className={`relative w-2 h-2 rounded-full ${isAtInTransit ? "bg-purple-500" : "bg-purple-500"}`}></div>
+                <div className="relative w-2 h-2 rounded-full bg-purple-500"></div>
               </div>
-              <span className={`mt-1 ${isAtInTransit ? "text-purple-600" : "text-purple-500"}`}>
-                {"On the way"}
+              <span className={`mt-1 w-full text-center truncate ${isAtInTransit ? "text-purple-600" : "text-purple-500"}`}>
+                Enroute
               </span>
             </div>
 
-                <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #3b82f6, #10b981)" }}></div>
+            <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #a855f7, #10b981)" }}></div>
 
             {/* DESTINATION */}
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center w-full">
               <div className="relative flex items-center justify-center">
                 {isAtDestination && (
                   <span className="absolute inline-flex w-4 h-4 rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
                 )}
-                <div className={`relative w-2 h-2 rounded-full ${isAtDestination ? "bg-emerald-500" :  "bg-gray-300"}`}></div>
+                <div className={`relative w-2 h-2 rounded-full ${isAtDestination ? "bg-emerald-500" : "bg-gray-300"}`}></div>
               </div>
-              <span className={`mt-1 ${isAtDestination ? "text-emerald-600" : "text-gray-400"}`}>
-                {vehicle?.destinationFactory?.name?? vehicle.externalDestination?? "Destination"}
+              <span className={`mt-1 w-full text-center truncate ${isAtDestination ? "text-emerald-600" : "text-gray-400"}`}>
+                {vehicle?.destinationFactory?.name ?? vehicle.externalDestination ?? "Destination"}
               </span>
             </div>
 

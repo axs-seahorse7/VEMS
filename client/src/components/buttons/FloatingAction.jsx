@@ -183,7 +183,7 @@ const Icon = {
     </svg>
   ),
 };
-export default function FloatingActions({ viewMode, setViewMode, setIsFilterDrawerOpen }) {
+export default function FloatingActions({ viewMode, setViewMode, setIsFilterDrawerOpen, setIsVehicleDrawerOpen }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -254,6 +254,16 @@ export default function FloatingActions({ viewMode, setViewMode, setIsFilterDraw
             style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.12)" }}
           >
             Available vehicles
+          </Button>
+        </div>
+
+        <div className={`fab-item${open ? " visible" : ""}`}>
+          <Button
+            shape="round"
+            onClick={() => { setIsVehicleDrawerOpen(true); setOpen(false); }}
+            style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.12)" }}
+          >
+            Track vehicles
           </Button>
         </div>
 

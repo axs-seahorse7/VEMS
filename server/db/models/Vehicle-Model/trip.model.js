@@ -18,7 +18,6 @@ const TripSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId, 
     ref: "Vehicle",
     required: true,
-    index: true
   },
 
   type: {
@@ -87,6 +86,9 @@ const TripSchema = new mongoose.Schema({
   },
 
   purpose: String,
+  reason:{
+    type: String,
+  },
 
   loadStatus: {
     type: String,
@@ -125,7 +127,19 @@ const TripSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 
-TripSchema.index({ vehicleId: 1, status: 1 });
+TripSchema.index(
+  {
+    vehicleId: 1
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      tripState: {
+        $in: ["ACTIVE"]
+      }
+    }
+  }
+);
 TripSchema.index({ sourceFactoryId: 1, status: 1 });
 TripSchema.index({ destinationFactoryId: 1, status: 1 });
 TripSchema.index({ createdAt: -1 });
