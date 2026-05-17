@@ -259,10 +259,7 @@ const ACTION_META = {
 };
 
 function resolveAction(entry) {
-  // action can be a string OR an object {type: "..."}
-  const key = typeof entry.action === "string"
-    ? entry.action
-    : entry.action?.type;
+  const key = typeof entry.action === "string"? entry.action : entry.action?.type;
   return ACTION_META[key] || { color: "#9ca3af", icon: "ri-radio-button-line", label: key || entry.status || "Event" };
 }
 

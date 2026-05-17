@@ -34,3 +34,9 @@
   font-size: 8px !important;
   line-height: 1.2 !important;
 }
+
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.3; transform: scale(0.6); }
+}

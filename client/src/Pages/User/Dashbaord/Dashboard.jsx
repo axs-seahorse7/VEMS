@@ -1,23 +1,29 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import api from "../../../../services/API/Api/api";
+
+// helper functions and constants
 import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented  } from "antd";
+
+// customer services 
+import api from "../../../../services/API/Api/api";
+
+// third party components
+import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented, Modal, Spin  } from "antd";
+import { TruckElectric } from "lucide-react";
+
+// local components
 import VehicleDetailModal from "./VehicleDetailsModal.jsx";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
 import VehicleCard from "./VehicleCard.jsx";
 import LiveButton from "../../../components/buttons/LiveButtons.jsx";
-import { TruckElectric } from "lucide-react";
 import FloatingActions from "../../../components/buttons/FloatingAction.jsx";
 import VehicleDrawer from "../../../components/Dashboard/VehicleDrawer.jsx";
 import VehicleStatusDrawer from "../../../components/Vehicle-Status/VehicleStatusDrawer.jsx";
 import NetworkStatusBanner from "../../../components/Interne-Status/NetworkStatusBanner.jsx";
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN") : "—");
-const fmtTime = (d) => d ? new Date(d).toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }) : "—";
+const fmtTime = (d) => d ? new Date(d).toLocaleTimeString("en-IN", {hour: "2-digit", minute: "2-digit"}) : "—";
 
 const getLocationLabel = (loc) => {
   switch (loc) {
@@ -54,6 +60,7 @@ const STAGE_META = {
   waiting: { label: "Waiting",        bg: "#fef9c3", color: "#92400e" },
   inside:  { label: "Inside Factory", bg: "#dcfce7", color: "#15803d" },
   enroute: { label: "In Transit",     bg: "#dbeafe", color: "#1d4ed8" },
+  exited:  { label: "Exited",         bg: "#fee2e2", color: "#dc2626" },
   unknown: { label: "Unknown",        bg: "#f3f4f6", color: "#6b7280" },
 };
 
@@ -150,15 +157,250 @@ function SegmentFilter({ filter, setFilter, counts }) {
 
 // ─── Ant Design Table Columns ─────────────────────────────────────────────────
 const vehicleColumns = [
-  { title: "Vehicle No.", key: "vehicleNumber", fixed: "left", width: 150, render: (_, record) => { const vehicleData = record.vehicle || record.vehicleId || {}; const pucAlert = isPUCExpired(vehicleData?.PUCExpiry); return (<div style={{ display: "flex", alignItems: "center", gap: 6 }}>{pucAlert && (<span style={{ color: "#dc2626", width: 14, height: 14, display: "flex", flexShrink: 0 }} title="PUC Expired">{Icon.alert}</span>)}<span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{vehicleData?.vehicleNumber || "—"}</span></div>); } },
-  { title: "Transporter", key: "transporterName", width: 160, render: (_, record) => { const vehicleData = record.vehicle || record.vehicleId || {}; return (<span style={{ fontSize: 12, color: "#6b7280" }}>{vehicleData?.transporterName || "—"}</span>); } },
-  { title: "Type", key: "typeOfVehicle", width: 150, render: (_, record) => { const vehicleData = record.vehicle || record.vehicleId || {}; return <TypeBadge type={vehicleData?.typeOfVehicle} />; } },
-  { title: "Status", key: "location", width: 140, render: (_, record) => { const stage = record.location === "outside_factory" ? "waiting" : record.location === "inside_factory" ? "inside" : record.location === "enroute" ? "enroute" : "unknown"; return <Badge stage={stage} />; } },
-  { title: "Driver", key: "driverName", width: 140, render: (_, record) => { const vehicleData = record.vehicle || record.vehicleId || {}; return (<span style={{ fontSize: 12, color: "#374151" }}>{vehicleData?.driverName || "—"}</span>); } },
-  { title: "Purpose", key: "purpose", width: 110, render: (_, record) => { const isPickup = record.currentTrip?.purpose === "pickup"; return (<span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 5, background: isPickup ? "#ede9fe" : "#fce7f3", color: isPickup ? "#6366f1" : "#db2777" }}>{isPickup ? "Pickup" : "Delivery"}</span>); } },
-  { title: "Load", key: "loadStatus", width: 110, render: (_, record) => { const color = record.loadStatus === "loaded" ? "#15803d" : record.loadStatus === "unloaded" ? "#b45309" : "#6b7280"; return (<span style={{ fontSize: 12, fontWeight: 600, color }}>{record.loadStatus || "pending"}</span>); } },
-  { title: "Trip State", key: "tripState", width: 120, render: (_, record) => (<span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 5, background: record.tripState === "CLOSED" ? "#fee2e2" : "#f3f4f6", color: record.tripState === "CLOSED" ? "#dc2626" : "#374151" }}>{record.tripState || "—"}</span>) },
-  { title: "Route", key: "route", width: 220, render: (_, record) => { const src = record.sourceFactory?.name || "Out Source"; const dst = record.destinationFactory?.name || "—"; return (<span style={{ fontSize: 11, color: "#6b7280" }}><span style={{ fontWeight: 600, color: "#374151" }}>{src}</span>{" → "}<span style={{ fontWeight: 600, color: "#374151" }}>{dst}</span></span>); } },
+  {
+    title: "Vehicle",
+    key: "vehicleNumber",
+    fixed: "left",
+    width: 160,
+    render: (_, r) => {
+      const v = r.vehicle || {};
+      const pucAlert = isPUCExpired(v?.PUCExpiry);
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {pucAlert && (
+              <span style={{ color: "#dc2626", width: 13, height: 13, display: "flex", flexShrink: 0 }} title="PUC Expired">
+                {Icon.alert}
+              </span>
+            )}
+            <span style={{ fontWeight: 800, fontSize: 13, color: "#111" }}>{v?.vehicleNumber || "—"}</span>
+          </div>
+          <span style={{ fontSize: 10, color: "#9ca3af" }}>{v?.transporterName || "—"}</span>
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Status",
+    key: "status",
+    width: 160,
+    render: (_, r) => {
+      const stageKey =
+        r.location === "inside_factory" ? "inside"
+        : r.location === "enroute"      ? "enroute"
+        : r.location === "outside_factory" && r.tripState !== "CLOSED" && r.tripState !== "CANCELLED" ? "waiting"
+        : r.location === "outside_factory" ? "exited"
+        : "unknown";
+
+      const tripColor = r.tripState === "CANCELLED" ? "#dc2626"
+        : r.tripState === "CLOSED" ? "#64748b"
+        : "#059669";
+      const tripBg = r.tripState === "CANCELLED" ? "#fee2e2"
+        : r.tripState === "CLOSED" ? "#f1f5f9"
+        : "#dcfce7";
+
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <Badge stage={stageKey} />
+          <span style={{
+            fontSize: 9.5, fontWeight: 700, padding: "1px 6px",
+            borderRadius: 4, background: tripBg, color: tripColor,
+            width: "fit-content", letterSpacing: 0.3,
+          }}>
+            {r.tripState || "—"}
+          </span>
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Live",
+    key: "live",
+    width: 60,
+    render: (_, r) => {
+      const isLive = r.tripState !== "CLOSED" && r.tripState !== "CANCELLED";
+      return (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: isLive ? "#22c55e" : "#d1d5db",
+            boxShadow: isLive ? "0 0 0 3px #bbf7d055" : "none",
+            animation: isLive ? "livePulse 1.8s ease-in-out infinite" : "none",
+            display: "inline-block",
+          }} />
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Driver",
+    key: "driver",
+    width: 160,
+    render: (_, r) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>{r.driver?.name || "—"}</span>
+        <span style={{ fontSize: 10, color: "#6b7280" }}>{r.driver?.phone || ""}</span>
+      </div>
+    ),
+  },
+
+  {
+    title: "Type / Purpose",
+    key: "typePurpose",
+    width: 150,
+    render: (_, r) => {
+      const isExternal = r.type === "external_delivery";
+      const isPickup   = r.purpose === "Pickup";
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{
+            fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+            background: isExternal ? "#fee2e2" : "#cffafe",
+            color: isExternal ? "#dc2626" : "#0e7490",
+            width: "fit-content",
+          }}>
+            {isExternal ? "External" : "Internal"}
+          </span>
+          <span style={{
+            fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+            background: isPickup ? "#ede9fe" : "#fce7f3",
+            color: isPickup ? "#6366f1" : "#db2777",
+            width: "fit-content",
+          }}>
+            {r.purpose || "—"}
+          </span>
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Route",
+    key: "route",
+    width: 220,
+    render: (_, r) => {
+      const src = r.sourceFactory?.name || r.externalSource || "External";
+      const dst = r.destinationFactory?.name || r.externalDestination || "—";
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
+            {/* Origin dot */}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#3b82f6", flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: "#374151", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src}</span>
+            </div>
+            <div style={{ width: 1, height: 10, background: "linear-gradient(to bottom,#3b82f6,#10b981)", marginLeft: 2.5 }} />
+            {/* Destination dot */}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: "#374151", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dst}</span>
+            </div>
+          </div>
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Phase",
+    key: "phase",
+    width: 120,
+    render: (_, r) => {
+      if (!r.phase) return <span style={{ color: "#9ca3af", fontSize: 11 }}>—</span>;
+      const isOrigin = r.phase === "ORIGIN";
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+            background: isOrigin ? "#6366f1" : "#10b981",
+            animation: "livePulse 1.8s ease-in-out infinite",
+          }} />
+          <span style={{
+            fontSize: 10.5, fontWeight: 700,
+            color: isOrigin ? "#6366f1" : "#10b981",
+          }}>
+            {isOrigin ? r.sourceFactory?.name : r.destinationFactory?.name}
+          </span>
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Material",
+    key: "material",
+    width: 150,
+    render: (_, r) => {
+      const mat = r.material;
+      if (!mat) return <span style={{ color: "#9ca3af", fontSize: 11 }}>—</span>;
+      const isSealed = mat.seal === "sealed";
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{mat.name || mat.material || "—"}</span>
+          {isSealed && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+              background: "#fef3c7", color: "#92400e", width: "fit-content",
+            }}>
+              🔒 Sealed
+            </span>
+          )}
+        </div>
+      );
+    },
+  },
+
+  {
+    title: "Load",
+    key: "loadStatus",
+    width: 100,
+    render: (_, r) => {
+      const color = r.loadStatus === "loaded" ? "#15803d"
+        : r.loadStatus === "unloaded" ? "#b45309" : "#6b7280";
+      const bg = r.loadStatus === "loaded" ? "#dcfce7"
+        : r.loadStatus === "unloaded" ? "#fef3c7" : "#f3f4f6";
+      return (
+        <span style={{
+          fontSize: 11, fontWeight: 700, padding: "2px 8px",
+          borderRadius: 5, background: bg, color,
+        }}>
+          {r.loadStatus
+            ? r.loadStatus.charAt(0).toUpperCase() + r.loadStatus.slice(1)
+            : "Pending"}
+        </span>
+      );
+    },
+  },
+
+  {
+    title: "Vehicle Type",
+    key: "vehicleType",
+    width: 130,
+    render: (_, r) => {
+      const v = r.vehicle || {};
+      return (
+        <span style={{
+          background: "#f3f4f6", color: "#374151", fontSize: 10.5,
+          fontWeight: 600, borderRadius: 5, border: "1px solid #e5e7eb",
+          padding: "2px 7px", whiteSpace: "nowrap",
+        }}>
+          {vehicleTypeLabel[v?.typeOfVehicle] || v?.typeOfVehicle || "—"}
+        </span>
+      );
+    },
+  },
+
+  {
+    title: "Started",
+    key: "startedAt",
+    width: 130,
+    render: (_, r) => (
+      <span style={{ fontSize: 11, color: "#6b7280" }}>{fmtTime(r.createdAt)}</span>
+    ),
+  },
 ];
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
@@ -171,6 +413,7 @@ export default function VehicleDashboard() {
   const [searchOpen, setSearchOpen]             = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [vehicleDrawer, setVehicleDrawer]       = useState(false);
+  const [isVehicleDetailsModalLoading, setisVehicleDetailsModalLoading] = useState(false);
   const observerRef = useRef(null);
 
   // ── Network state ──────────────────────────────────────────────────────────
@@ -195,7 +438,7 @@ export default function VehicleDashboard() {
     };
   }, []);
 
- 
+  
 
   // ── User ──────────────────────────────────────────────────────────────────
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
@@ -222,13 +465,28 @@ export default function VehicleDashboard() {
       return res.data;
     },
 
-    getNextPageParam: (lastPage, allPages) => {
-      if (!lastPage.hasMore) {
-        return undefined;
-      }
-      return allPages.length + 1;
+    getNextPageParam: (lastPage) => {
+      return lastPage.nextPage || undefined;
     },
 
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: false,
+  });
+
+
+  const {data: closedAndCancelledTripsData, isError: closedTripsError, isLoading: closedTripsLoading, fetchNextPage: fetchClosedTripsNextPage, hasNextPage: hasMoreClosedTrips, isFetchingNextPage: isFetchingClosedTripsNextPage} = useInfiniteQuery({
+    queryKey: ["vehicles-closed-and-cancelled"],
+    initialPageParam: 1,
+
+    queryFn: async ({ pageParam = 1 }) => {
+      const res = await api.get(`/vehicle/trips/closed-and-cancelled?page=${pageParam}&limit=20`);
+      return res.data;
+    },
+
+    getNextPageParam: (lastPage) => {
+      return lastPage?.nextPage || undefined;
+    },
 
     refetchInterval: 10000,
     refetchOnWindowFocus: true,
@@ -236,58 +494,32 @@ export default function VehicleDashboard() {
   });
 
   const trips = data?.pages.flatMap((page) => page.trips ) || [];
+  const closedAndCancelledTrips = closedAndCancelledTripsData?.pages.flatMap((page) => page.trips ) || [];
+  const selectedVehicleId = selectedVehicle?._id;
+
+  const abortControllerRef = useRef(null);
 
   const {data: selectedTrip, isLoading: selectedTripLoading } = useQuery({
-  queryKey: ["vehicle-trip", selectedVehicle?._id],
-  queryFn: async () => {
-    const res = await api.get(`/vehicle/trips/${selectedVehicle._id}`);
-    return res.data;
-  },
-  enabled: !!selectedVehicle?._id,
-  refetchInterval: 10000,
-  refetchOnWindowFocus: true,
-  refetchIntervalInBackground: false,
-});
+    queryKey: ["vehicle-trip", selectedVehicleId],
+    queryFn: async () => {
+      // if (!selectedVehicleId) return null;
+      const res = await api.get(`/vehicle/trips/${selectedVehicleId}`,);
+      return res.data;
+    },
 
+    enabled: !!selectedVehicleId,
+    refetchInterval: selectedVehicleId? 10000: false,
+    
+  });
 
-const lastTripElementRef = useCallback((node) => {
-    if (isLoading) return;
-    if (isFetchingNextPage) return;
-    if (!hasNextPage) return;
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-    }
-
-    observerRef.current =
-      new IntersectionObserver((entries) => {
-          if (entries[0].isIntersecting) {
-            fetchNextPage();
-          }
-        },
-
-        {
-          rootMargin: "100px"
-        }
-      );
-
-    if (node) {
-      observerRef.current.observe(node);
-    }
-  },
-
-  [
-    isLoading,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage
-  ]
-);
-
-  
+  const handleCloseLoadingDetailModal = () => {
+    setisVehicleDetailsModalLoading(false);
+    setSelectedVehicle(null);
+  };
 
   // ── Data slices ────────────────────────────────────────────────────────────
-  const filteredData     = trips?.filter((v) => v.tripState !== "CLOSED" && v.tripState !== "CANCELLED").sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)) || [];
-  const closedTrips      = trips?.filter((v) => v.tripState === "CLOSED"  || v.tripState === "CANCELLED").sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) || [];
+  const filteredData     = trips.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)) || [];
+  const closedTrips      = closedAndCancelledTrips.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) || [];
   const waitingVehicles  = filteredData.filter((v) => v.destinationFactory?._id === userFactoryId && v.location === "outside_factory" && (v.tripState !== "CLOSED" || v.tripState !== "CANCELLED"));
   const insideVehicles   = trips?.filter((v) => v.location === "inside_factory" && v.tripState !== "CLOSED" && v.tripState !== "CANCELLED" && ((v.phase === "ORIGIN" && v.sourceFactory?._id?.toString() === userFactoryId?.toString()) || (v.phase === "DESTINATION" && v.destinationFactory?._id?.toString() === userFactoryId?.toString())));
   const enrouteVehicles  = filteredData.filter((v) => v.destinationFactory?._id === userFactoryId && v.location === "enroute");
@@ -331,8 +563,61 @@ const lastTripElementRef = useCallback((node) => {
     }
   };
 
+  const lastLiveRef   = useRef(null);
+  const lastClosedRef = useRef(null);
+
+  useEffect(() => {
+    const isClosedFilter = filter === "closed";
+    const node           = isClosedFilter ? lastClosedRef.current : lastLiveRef.current;
+    const canFetch       = isClosedFilter ? hasMoreClosedTrips    : hasNextPage;
+    const fetching       = isClosedFilter ? isFetchingClosedTripsNextPage : isFetchingNextPage;
+    const loadMore       = isClosedFilter ? fetchClosedTripsNextPage      : fetchNextPage;
+    if (!node || !canFetch || fetching) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) loadMore();
+    },{ rootMargin: "20px" });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filter, filteredVehicles, closedTrips, hasNextPage, hasMoreClosedTrips, isFetchingNextPage, isFetchingClosedTripsNextPage, fetchNextPage, fetchClosedTripsNextPage,]);
+
+
+  const tableBottomRef = useRef(null);
+  useEffect(() => {
+    if (viewMode === "grid") return;
+
+    const node = tableBottomRef.current;
+    const isClosedFilter = filter === "closed";
+    const canFetch = isClosedFilter ? hasMoreClosedTrips : hasNextPage;
+    const fetching = isClosedFilter ? isFetchingClosedTripsNextPage : isFetchingNextPage;
+    const loadMore = isClosedFilter ? fetchClosedTripsNextPage : fetchNextPage;
+
+    if (!node || !canFetch || fetching) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { rootMargin: "100px" }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [
+    viewMode,
+    filter,
+    filteredVehicles.length,
+    hasNextPage,
+    hasMoreClosedTrips,
+    isFetchingNextPage,
+    isFetchingClosedTripsNextPage,
+    fetchNextPage,
+    fetchClosedTripsNextPage,
+  ]);
+
   return (
-    <div style={{ minHeight: "100vh", background: "#f8f9fb", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", color: "#111" }}>
+    <div style={{ minHeight: "100vh", background: "#f8f9fb", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", color: "#111", scrollbarWidth: "thin", scrollbarColor: "#cbd5e1 #f8f9fb" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -428,9 +713,7 @@ const lastTripElementRef = useCallback((node) => {
         </div>
       )}
 
-      <NetworkStatusBanner/>
-
-      <FloatingActions viewMode={viewMode} setViewMode={setViewMode} setIsFilterDrawerOpen={setIsFilterDrawerOpen} setIsVehicleDrawerOpen={setVehicleDrawer} />
+      
 
       {/* ── Search result hint ── */}
       {(searchQuery || filter !== "all") && (
@@ -467,26 +750,49 @@ const lastTripElementRef = useCallback((node) => {
 
               {filteredVehicles.map((v, index) => {
                 const isLast = index === filteredVehicles.length - 1;
-
                 return (
-                  <div ref={isLast ? lastTripElementRef : null} key={v._id} >
-                    <VehicleCard vehicle={v} onClick={() => setSelectedVehicle(v)} userFactoryId={userFactoryId} factory={factory}  />
+                  <div
+                    ref={isLast ? (filter === "closed" ? lastClosedRef : lastLiveRef) : null}
+                    key={v._id}
+                  >
+                    <VehicleCard vehicle={v} onClick={() => setSelectedVehicle(v)} />
+                    
                   </div>
                 );
               })}
             </div>
           )
         ) : (
-          <Table
-            columns={vehicleColumns} dataSource={filteredVehicles} rowKey={(r) => r._id}
-            size="small" scroll={{ x: 1200 }}
-            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `${total} vehicles` }}
-            onRow={(record) => ({ onClick: () => setSelectedVehicle(record), style: { cursor: "pointer" } })}
-            rowClassName={() => "vehicle-table-row"}
-            locale={{ emptyText: (<div style={{ padding: "40px 0", border: "1.5px dashed #e5e7eb", color: "#9ca3af", justifyContent: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}><TruckElectric color="blue" size={40} /><div style={{ fontSize: 14, fontWeight: 600 }}>No vehicles found</div></div>) }}
-            
-          />
+          <> 
+            <Table
+              columns={vehicleColumns}
+              dataSource={filteredVehicles}
+              rowKey={(r) => r._id}
+              size="small"
+              scroll={{ x: 1200}}
+              pagination={false}
+              onRow={(record) => ({ onClick: () => setSelectedVehicle(record), style: { cursor: "pointer" } })}
+              rowClassName={() => "vehicle-table-row"}
+              locale={{
+                emptyText: (
+                  <div style={{ padding: "40px 0", border: "1.5px dashed #e5e7eb", color: "#9ca3af", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <TruckElectric color="blue" size={40} />
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>No vehicles found</div>
+                  </div>
+                ),
+              }}
+            />
+            <div ref={tableBottomRef} style={{ height: 1,}} />
+
+            {(isFetchingNextPage || isFetchingClosedTripsNextPage) && (
+              <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "#6366f1", fontWeight: 600 }}>
+                Loading more…
+              </div>
+            )}
+          </>
+
         )}
+          
 
         {
           hasNextPage && (
@@ -505,11 +811,40 @@ const lastTripElementRef = useCallback((node) => {
         }
       </div>
 
+
       {/* ── Modals & Drawers ── */}
-      <VehicleDetailModal vehicle={selectedTrip} selectedTripLoading={selectedTripLoading} onClose={() => setSelectedVehicle(null)} onRefresh={manualRefetch} userFactoryId={userFactoryId} factory={factory} userRole={userRole} />
+
+        {selectedTripLoading ? (
+          <Modal
+            onClose={handleCloseLoadingDetailModal}
+            title="Vehicle Details is Loading..."
+            open={selectedTripLoading}
+            footer={null}
+            closable={true}
+            centered
+            bodyStyle={{ padding: 0, minWidth: 300 }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
+              <Spin />
+            </div>
+          </Modal>
+        ) : (
+          <VehicleDetailModal
+            vehicle={selectedTrip}
+            selectedTripLoading={selectedTripLoading}
+            onClose={() => setSelectedVehicle(null)}
+            onRefresh={manualRefetch}
+            userFactoryId={userFactoryId}
+            factory={factory}
+            userRole={userRole}
+          />
+        )}
+
       <CreateVehicleModal open={entryOpen} onClose={() => setEntryOpen(false)} onRefresh={manualRefetch} />
       <VehicleStatusDrawer open={vehicleDrawer} onClose={() => setVehicleDrawer(false)} />
       <VehicleDrawer refetch={manualRefetch} open={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen((prev) => !prev)} />
+      <FloatingActions viewMode={viewMode} setViewMode={setViewMode} setIsFilterDrawerOpen={setIsFilterDrawerOpen} setIsVehicleDrawerOpen={setVehicleDrawer} />
+      <NetworkStatusBanner/>
     </div>
   );
 }

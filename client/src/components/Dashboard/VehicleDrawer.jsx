@@ -1,369 +1,369 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { Drawer, DatePicker, Input, Segmented } from "antd";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { Drawer, DatePicker, Input, Tabs } from "antd";
+import {
+  CarOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  SearchOutlined,
+  DownloadOutlined,
+  CheckOutlined,
+  WarningOutlined,
+  UserOutlined,
+  PhoneOutlined,
+  ArrowRightOutlined,
+  ClockCircleOutlined,
+  LoadingOutlined,
+  CalendarOutlined,
+  InboxOutlined,
+} from "@ant-design/icons";
 import api from "../../../services/API/Api/api";
-import { Truck, EvCharger, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 
 const { RangePicker } = DatePicker;
 
-/* ── Fuel badge styles ─────────────────────────────────────── */
-const FUEL_STYLE = {
-  Electric: { bg: "#dbeafe", color: "#1d4ed8" },
-  Petrol:   { bg: "#ffedd5", color: "#c2410c" },
-  Diesel:   { bg: "#dcfce7", color: "#166534" },
-  Hybrid:   { bg: "#faf5ff", color: "#7e22ce" },
-};
-
-/* ═══════════════════════════════════════════════════════════════
-   EXCEL EXPORT  (SheetJS)
-   One row per material line.  If a trip has no materials, one
-   row is still emitted with the trip-level fields only.
-═══════════════════════════════════════════════════════════════ */
-function fmt(date) {
-  if (!date) return "";
-  return new Date(date).toLocaleString("en-IN", { hour12: true });
-}
-function fmtDate(date) {
-  if (!date) return "";
-  return new Date(date).toLocaleDateString("en-IN");
-}
+/* ══════════════════════════════════════════════════════════════
+   EXCEL EXPORT
+══════════════════════════════════════════════════════════════ */
+function fmt(date)     { return date ? new Date(date).toLocaleString("en-IN", { hour12: true }) : ""; }
+function fmtDate(date) { return date ? new Date(date).toLocaleDateString("en-IN") : ""; }
 
 function exportClosedTripsXLSX(trips) {
   const wb = XLSX.utils.book_new();
 
-  /* ── 1.  TRIP DETAILS sheet (one row per material) ── */
   const detailHeaders = [
-    "Trip ID",
-    "Trip Type",
-    "Started At",
-    "Closed At",
-    // Vehicle
-    "Vehicle Number",
-    "Vehicle Category",
-    "Vehicle Type (Internal/External)",
-    "PUC Expiry",
-    // Driver
-    "Driver Name",
-    "Driver Contact",
-    "Driver ID Type",
-    "Driver ID Number",
-    "License Number",
-    // Route
-    "Source Factory",
-    "Source Location",
-    "Destination Factory",
-    "Destination Location",
-    // Material (one row per item)
-    "Material Name",
-    "Material Type",
-    "Quantity",
-    "Unit",
-    "Invoice No",
-    "Invoice Amount (₹)",
-    "Seal",
-    "Supplier",
-    "Customer",
+    "Trip ID","Trip Type","Started At","Closed At",
+    "Vehicle Number","Vehicle Category","Vehicle Type","PUC Expiry",
+    "Driver Name","Driver Contact","Driver ID Type","Driver ID Number","License Number",
+    "Source Factory","Source Location","Destination Factory","Destination Location",
+    "Material Name","Material Type","Quantity","Unit","Invoice No","Invoice Amount (₹)","Seal","Supplier","Customer",
   ];
 
   const detailRows = [];
-
   trips.forEach(trip => {
     const base = [
-      trip._id?.toString() || "",
-      trip.type || "",
-      fmt(trip.startedAt),
-      fmt(trip.updatedAt),
-      // Vehicle
-      trip.vehicle?.vehicleNumber || "",
-      trip.vehicle?.typeOfVehicle || "",
-      trip.vehicle?.type === "internal" ? "Internal" : "External",
-      fmtDate(trip.vehicle?.PUCExpiry),
-      // Driver
-      trip.driver?.driverName    || "",
-      trip.driver?.driverContact || "",
-      trip.driver?.driverIdType  || "",
-      trip.driver?.driverIdNumber || "",
-      trip.driver?.licenseNumber  || "",
-      // Route
-      trip.sourceFactory?.name      || "",
-      trip.sourceFactory?.location  || "",
-      trip.destinationFactory?.name     || "",
-      trip.destinationFactory?.location || "",
+      trip._id?.toString() || "", 
+      trip.type === "internal_transfer" ? "Internal Transfer" : "External Delivery", 
+      fmt(trip.startedAt) || "", 
+      fmt(trip.updatedAt) || "",
+      trip.vehicle?.vehicleNumber || "", 
+      trip.vehicle?.typeOfVehicle || "", 
+      trip.vehicle?.type === "internal" ? "Internal Movement" : "External Movement", 
+      fmtDate(trip.vehicle?.PUCExpiry) || "",
+      trip.driver?.driverName || "", 
+      trip.driver?.driverContact || "", 
+      trip.driver?.driverIdType || "", 
+      trip.driver?.driverIdNumber || "", 
+      trip.driver?.licenseNumber || "", 
+      trip.sourceFactory?.name || "", 
+      trip.sourceFactory?.location || trip?.externalSource || "",
+      trip.destinationFactory?.name || "", 
+      trip.destinationFactory?.location || trip?.externalDestination || "",
     ];
 
     const materials = trip.materials?.length ? trip.materials : [null];
-
     materials.forEach(mat => {
       detailRows.push([
         ...base,
-        mat?.name          || "",
-        mat?.material      || "",
-        mat?.quantity      ?? "",
-        mat?.unit          || "",
-        mat?.invoiceNo     || "",
-        mat?.invoiceAmount ?? "",   // note: schema spells it "invoiceAmmount"
-        mat?.seal          || "",
-        mat?.supplier      || "",
-        mat?.customer      || "",
+        mat?.name || "", 
+        mat?.material || "", 
+        mat?.quantity ?? "", 
+        mat?.unit || "",
+        mat?.invoiceNo || "", 
+        mat?.invoiceAmount ?? "", 
+        mat?.seal || "", 
+        mat?.supplier || "", 
+        mat?.customer || "", 
       ]);
     });
   });
 
   const detailSheet = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
-
-  // Column widths
   detailSheet["!cols"] = [
-    { wch: 26 }, // Trip ID
-    { wch: 20 }, // Trip Type
-    { wch: 20 }, // Started At
-    { wch: 20 }, // Closed At
-    { wch: 16 }, // Vehicle Number
-    { wch: 18 }, // Vehicle Category
-    { wch: 24 }, // Vehicle Type
-    { wch: 14 }, // PUC Expiry
-    { wch: 18 }, // Driver Name
-    { wch: 16 }, // Driver Contact
-    { wch: 14 }, // ID Type
-    { wch: 16 }, // ID Number
-    { wch: 16 }, // License
-    { wch: 20 }, // Source Factory
-    { wch: 18 }, // Source Location
-    { wch: 20 }, // Dest Factory
-    { wch: 18 }, // Dest Location
-    { wch: 18 }, // Material Name
-    { wch: 18 }, // Material Type
-    { wch: 10 }, // Quantity
-    { wch: 8  }, // Unit
-    { wch: 16 }, // Invoice No
-    { wch: 18 }, // Invoice Amount
-    { wch: 12 }, // Seal
-    { wch: 18 }, // Supplier
-    { wch: 18 }, // Customer
+    {wch:26},{wch:20},{wch:20},{wch:20},{wch:16},{wch:18},{wch:24},{wch:14},
+    {wch:18},{wch:16},{wch:14},{wch:16},{wch:16},{wch:20},{wch:18},{wch:20},{wch:18},
+    {wch:18},{wch:18},{wch:10},{wch:8},{wch:16},{wch:18},{wch:12},{wch:18},{wch:18},
   ];
-
-  // Style header row bold (basic — SheetJS free tier supports cell props via !rows)
-  detailSheet["!rows"] = [{ hpt: 18 }];
-
   XLSX.utils.book_append_sheet(wb, detailSheet, "Trip Details");
 
-  /* ── 2.  SUMMARY sheet ── */
   const summaryRows = [
-    ["Closed Trips Report"],
+    ["Closed Trips Report"], 
     ["Generated At", new Date().toLocaleString("en-IN")],
-    ["Total Trips", trips.length],
+    ["Total Trips", trips.length], [],
+    ["Vehicle","Trips Completed"],
+    ...Object.values(trips.reduce((acc, t) => {
+      const vn = t.vehicle?.vehicleNumber || "Unknown";
+      acc[vn] = acc[vn] || { v: vn, c: 0 }; acc[vn].c++; return acc;
+    }, {})).sort((a, b) => b.c - a.c).map(x => [x.v, x.c]),
     [],
-    ["Vehicle", "Trips Completed"],
-    ...Object.values(
-      trips.reduce((acc, t) => {
-        const vn = t.vehicle?.vehicleNumber || "Unknown";
-        acc[vn] = acc[vn] || { v: vn, c: 0 };
-        acc[vn].c++;
-        return acc;
-      }, {})
-    )
-      .sort((a, b) => b.c - a.c)
-      .map(x => [x.v, x.c]),
-    [],
+
     ["Driver", "Contact", "Trips Completed"],
-    ...Object.values(
-      trips.reduce((acc, t) => {
-        const dn = t.driver?.driverName || "Unknown";
-        acc[dn] = acc[dn] || { n: dn, c: t.driver?.driverContact || "", trips: 0 };
-        acc[dn].trips++;
-        return acc;
-      }, {})
-    )
-      .sort((a, b) => b.trips - a.trips)
-      .map(x => [x.n, x.c, x.trips]),
+    ...Object.values(trips.reduce((acc, t) => {
+      const dn = t.driver?.driverName || "Unknown";
+      acc[dn] = acc[dn] || { n: dn, c: t.driver?.driverContact || "", trips: 0 };
+      acc[dn].trips++; return acc;
+    }, {})).sort((a, b) => b.trips - a.trips).map(x => [x.n, x.c, x.trips]),
   ];
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-  summarySheet["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 16 }];
+  summarySheet["!cols"] = [{wch:28},{wch:18},{wch:16}];
   XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
 
-  /* ── Write file ── */
-  const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `closed-trips-${dateStr}.xlsx`);
+  XLSX.writeFile(wb, `closed-trips-${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
-/* Available vehicles CSV (unchanged behaviour) */
 function exportAvailableCSV(rows) {
   const header = ["Vehicle Number", "Type", "Vehicle Type", "Driver"];
-  const body = rows.map(v =>
-    [v.vehicleNumber, v.type, v.typeOfVehicle, v.driverId?.name || ""].join(",")
-  );
+  const body = rows.map(v => [v.vehicleNumber, v.type, v.typeOfVehicle, v.driverId?.name || ""].join(","));
   const blob = new Blob([[header, ...body].join("\n")], { type: "text/csv" });
-  const a = Object.assign(document.createElement("a"), {
-    href: URL.createObjectURL(blob), download: "available-vehicles.csv",
-  });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "available-vehicles.csv" });
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-/* ── Skeleton Card ─────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════
+   SKELETON
+══════════════════════════════════════════════════════════════ */
 function SkeletonCard() {
   return (
-    <div style={{
-      background: "#fff", border: "1.5px solid #e5e7eb",
-      borderRadius: 14, padding: "16px 14px 14px", overflow: "hidden",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={skEl(28, 28, 8)} /><div style={skEl(50, 16, 20)} />
+    <div style={{ background:"#fff", border:"1px solid #e8eaed", borderRadius:10, padding:"14px 12px", overflow:"hidden" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div style={sk(32, 32, 8)} />
+        <div style={sk(48, 16, 20)} />
       </div>
-      <div style={{ ...skEl("70%", 13, 4), marginBottom: 6 }} />
-      <div style={{ ...skEl("45%", 10, 4), marginBottom: 14 }} />
-      <div style={{ display: "flex", gap: 5 }}>
-        <div style={skEl(44, 20, 6)} /><div style={skEl(36, 20, 6)} /><div style={skEl(36, 20, 6)} />
+      <div style={{ ...sk("65%", 12, 4), marginBottom:6 }} />
+      <div style={{ ...sk("40%", 10, 4), marginBottom:12 }} />
+      <div style={{ display:"flex", gap:5 }}>
+        <div style={sk(40, 18, 5)} />
+        <div style={sk(32, 18, 5)} />
       </div>
     </div>
   );
 }
-const skEl = (w, h, r) => ({
-  width: w, height: h, borderRadius: r,
-  background: "linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%)",
-  backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite",
+const sk = (w, h, r) => ({
+  width:w, height:h, borderRadius:r,
+  background:"linear-gradient(90deg,#f4f4f5 25%,#e8e8ec 50%,#f4f4f5 75%)",
+  backgroundSize:"200% 100%", animation:"vdShimmer 1.5s infinite",
 });
 
-/* ── Available Vehicle Card ────────────────────────────────── */
-function AvailableCard({ v }) {
-  const [hov, setHov] = useState(false);
-  const color = "#10b981";
-  const fs = FUEL_STYLE[v.fuel] || FUEL_STYLE.Diesel;
+/* ══════════════════════════════════════════════════════════════
+   CHIPS / TAGS
+══════════════════════════════════════════════════════════════ */
+function Tag({ label, color = "#52525b", bg = "#f4f4f5" }) {
   return (
-    <div
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{
-        background: "#fff", border: `1.5px solid ${hov ? color : "#e5e7eb"}`,
-        borderRadius: 14, padding: "16px 14px 14px", cursor: "pointer",
-        position: "relative", overflow: "hidden", transition: "all .22s ease",
-        transform: hov ? "translateY(-3px)" : "none",
-        boxShadow: hov ? `0 10px 30px ${color}28,0 2px 8px rgba(0,0,0,0.06)` : "0 1px 4px rgba(0,0,0,0.05)",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
+    <span style={{
+      fontSize:10, fontWeight:600, padding:"2px 7px", borderRadius:5,
+      background:bg, color, border:`1px solid ${color}18`, whiteSpace:"nowrap",
+    }}>{label}</span>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AVAILABLE VEHICLE CARD
+══════════════════════════════════════════════════════════════ */
+function AvailableCard({ v }) {
+  return (
+    <div style={{
+      background:"#fff", border:"1px solid #e8eaed", borderRadius:10,
+      padding:"14px 12px", transition:"border-color .18s, box-shadow .18s",
+      cursor:"default",
+    }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor="#22c55e"; e.currentTarget.style.boxShadow="0 4px 16px rgba(34,197,94,.08)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor="#e8eaed"; e.currentTarget.style.boxShadow="none"; }}
     >
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 3,
-        background: color, opacity: hov ? 1 : 0.35, transition: "opacity .22s", borderRadius: "14px 14px 0 0",
-      }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ fontSize: 28 }}>🚘</span>
-        <span style={{ fontSize: 9, fontWeight: 700, background: "#dcfce7", color: "#15803d", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.06em" }}>✓ AVAILABLE</span>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+        <div style={{
+          width:32, height:32, borderRadius:8, background:"#f0fdf4",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          border:"1px solid #bbf7d0",
+        }}>
+          <CarOutlined style={{ fontSize:15, color:"#16a34a" }} />
+        </div>
+        <Tag label="AVAILABLE" color="#16a34a" bg="#f0fdf4" />
       </div>
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 2 }}>{v.vehicleNumber}</div>
-      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 11 }}>{v.typeOfVehicle}</div>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
-        {v.ownerFactoryId && (
-          <span style={{ ...chipBase, background: fs.bg, color: fs.color }}>{v.ownerFactoryId.name}</span>
-        )}
-        <span style={{ ...chipBase, background: "#f3f4f6", color: "#6b7280" }}>
-          {v.type === "internal" ? "🏭 Internal" : "🌐 External"}
-        </span>
-        {v.driverId?.name && (
-          <span style={{ ...chipBase, background: "#f3f4f6", color: "#6b7280" }}>👤 {v.driverId.name}</span>
-        )}
+
+      {/* Vehicle Number */}
+      <div style={{ fontSize:13, fontWeight:700, color:"#18181b", marginBottom:2, letterSpacing:0.3, fontFamily:"monospace" }}>
+        {v.vehicleNumber}
       </div>
-      <div style={{
-        fontSize: 10, fontWeight: 700, color: "#c8cdd7", background: "#f9fafb",
-        borderRadius: 6, padding: "3px 8px", display: "inline-block", letterSpacing: "0.1em",
-      }}>{v.vehicleNumber}</div>
+      <div style={{ fontSize:11, color:"#a1a1aa", marginBottom:10 }}>
+        {v.typeOfVehicle || "—"}
+      </div>
+
+      {/* Tags */}
+      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+        <Tag label={v.type === "internal" ? "Internal" : "External"} />
+        {v.driverId?.name && <Tag label={v.driverId.name} />}
+      </div>
     </div>
   );
 }
 
-/* ── Closed Trip Card ──────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════
+   CLOSED TRIP CARD
+══════════════════════════════════════════════════════════════ */
 function ClosedTripCard({ v }) {
-  const [hov, setHov] = useState(false);
-  const color = "#f97316";
+  const closedAt = v.updatedAt
+    ? new Date(v.updatedAt).toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })
+    : null;
+
   return (
-    <div
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{
-        background: "#fff", border: `1.5px solid ${hov ? color : "#e5e7eb"}`,
-        borderRadius: 14, padding: "16px 14px 14px", cursor: "pointer",
-        position: "relative", overflow: "hidden", transition: "all .22s ease",
-        transform: hov ? "translateY(-3px)" : "none",
-        boxShadow: hov ? `0 10px 30px ${color}28,0 2px 8px rgba(0,0,0,0.06)` : "0 1px 4px rgba(0,0,0,0.05)",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
+    <div style={{
+      background:"#fff", border:"1px solid #e8eaed", borderRadius:10,
+      padding:"14px 12px", transition:"border-color .18s, box-shadow .18s",
+      cursor:"default",
+    }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor="#f97316"; e.currentTarget.style.boxShadow="0 4px 16px rgba(249,115,22,.08)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor="#e8eaed"; e.currentTarget.style.boxShadow="none"; }}
     >
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 3,
-        background: color, opacity: hov ? 1 : 0.35, transition: "opacity .22s", borderRadius: "14px 14px 0 0",
-      }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ fontSize: 28 }}>🚛</span>
-        <span style={{ fontSize: 9, fontWeight: 700, background: "#fff7ed", color: "#c2410c", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.06em" }}> CLOSED</span>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+        <div style={{
+          width:32, height:32, borderRadius:8, background:"#fff7ed",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          border:"1px solid #fed7aa",
+        }}>
+          <CarOutlined style={{ fontSize:15, color:"#ea580c" }} />
+        </div>
+        <Tag label="CLOSED" color="#ea580c" bg="#fff7ed" />
       </div>
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 2 }}>
+
+      {/* Vehicle */}
+      <div style={{ fontSize:13, fontWeight:700, color:"#18181b", letterSpacing:0.3, fontFamily:"monospace", marginBottom:6 }}>
         {v.vehicle?.vehicleNumber || "—"}
       </div>
-      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 11 }}>
-        {v.sourceFactory?.name || "?"} → {v.destinationFactory?.name || "?"}
-      </div>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
-        {v.driver?.driverName && (
-          <span style={{ ...chipBase, background: "#f3f4f6", color: "#6b7280" }}>👤 {v.driver.driverName}</span>
-        )}
-        {v.driver?.driverContact && (
-          <span style={{ ...chipBase, background: "#f3f4f6", color: "#6b7280" }}>📞 {v.driver.driverContact}</span>
-        )}
-      </div>
-      {v.updatedAt && (
-        <div style={{
-          fontSize: 10, fontWeight: 700, color: "#88898a", background: "#f9fafb",
-          borderRadius: 6, padding: "3px 8px", display: "inline-block", letterSpacing: "0.1em",
-        }}>
-          {new Date(v.updatedAt).toLocaleString()}
+
+      {/* Route */}
+      {(v.sourceFactory?.name || v.destinationFactory?.name) && (
+        <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:8 }}>
+          <span style={{ fontSize:10.5, color:"#71717a", fontWeight:500, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {v.sourceFactory?.name || "?"}
+          </span>
+          <ArrowRightOutlined style={{ fontSize:9, color:"#d4d4d8", flexShrink:0 }} />
+          <span style={{ fontSize:10.5, color:"#71717a", fontWeight:500, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {v.destinationFactory?.name || "?"}
+          </span>
+        </div>
+      )}
+
+      {/* Driver */}
+      {v.driver?.driverName && (
+        <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:8 }}>
+          <UserOutlined style={{ fontSize:10, color:"#a1a1aa" }} />
+          <span style={{ fontSize:11, color:"#52525b", fontWeight:500 }}>{v.driver.driverName}</span>
+          {v.driver?.driverContact && (
+            <>
+              <PhoneOutlined style={{ fontSize:10, color:"#a1a1aa", marginLeft:4 }} />
+              <span style={{ fontSize:11, color:"#52525b" }}>{v.driver.driverContact}</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Closed at */}
+      {closedAt && (
+        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+          <ClockCircleOutlined style={{ fontSize:9, color:"#d4d4d8" }} />
+          <span style={{ fontSize:10, color:"#a1a1aa" }}>{closedAt}</span>
         </div>
       )}
     </div>
   );
 }
 
-const chipBase = { fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "3px 8px", display: "inline-block" };
-
-/* ── Stats Bar ─────────────────────────────────────────────── */
-function StatsBar({ stats }) {
+/* ══════════════════════════════════════════════════════════════
+   STATS ROW
+══════════════════════════════════════════════════════════════ */
+function StatsRow({ stats }) {
   if (!stats) return null;
+  const items = [
+    { label:"Trips",    value:stats.totalTrips,         color:"#2563eb", bg:"#eff6ff" },
+    { label:"Vehicles", value:stats.uniqueVehicleCount, color:"#16a34a", bg:"#f0fdf4" },
+    { label:"Drivers",  value:stats.uniqueDriverCount,  color:"#ea580c", bg:"#fff7ed" },
+  ];
   return (
-    <div style={{
-      display: "flex", gap: 8, padding: "10px 20px",
-      background: "#fff", borderBottom: "1px solid #f0f0f0",
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
-    }}>
-      {[
-        { label: "Trips",    value: stats.totalTrips,         bg: "#eff6ff", color: "#3b82f6" },
-        { label: "Vehicles", value: stats.uniqueVehicleCount, bg: "#f0fdf4", color: "#16a34a" },
-        { label: "Drivers",  value: stats.uniqueDriverCount,  bg: "#fff7ed", color: "#c2410c" },
-      ].map(s => (
-        <div key={s.label} style={{ flex: 1, textAlign: "center", background: s.bg, borderRadius: 10, padding: "8px 4px" }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: s.color }}>{s.value}</div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+    <div style={{ display:"flex", gap:6, padding:"10px 16px", background:"#fafafa", borderBottom:"1px solid #f0f0f0" }}>
+      {items.map(s => (
+        <div key={s.label} style={{
+          flex:1, textAlign:"center", padding:"8px 4px",
+          background:s.bg, borderRadius:8, border:`1px solid ${s.color}18`,
+        }}>
+          <div style={{ fontSize:16, fontWeight:800, color:s.color, lineHeight:1 }}>{s.value ?? "—"}</div>
+          <div style={{ fontSize:9, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.06em", marginTop:3 }}>{s.label}</div>
         </div>
       ))}
     </div>
   );
 }
 
-/* ════════════════════════════════════════════════════════════
-   VehicleDrawer
-════════════════════════════════════════════════════════════ */
-export default function VehicleDrawer({ open = false, onClose = () => {},  }) {
-  const [segment, setSegment]     = useState("available");
+/* ══════════════════════════════════════════════════════════════
+   LOAD MORE SENTINEL  (IntersectionObserver target)
+══════════════════════════════════════════════════════════════ */
+function LoadMoreSentinel({ onIntersect, loading }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) onIntersect(); },
+      { threshold: 0.1 }
+    );
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [onIntersect]);
+
+  return (
+    <div ref={ref} style={{ display:"flex", justifyContent:"center", alignItems:"center", padding:"20px 0", gap:8 }}>
+      {loading && (
+        <>
+          <LoadingOutlined style={{ fontSize:14, color:"#a1a1aa" }} />
+          <span style={{ fontSize:12, color:"#a1a1aa" }}>Loading more…</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════════════════════════ */
+function EmptyState({ icon, title, sub }) {
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"52px 24px", gap:10 }}>
+      <div style={{
+        width:52, height:52, borderRadius:14, background:"#f4f4f5",
+        display:"flex", alignItems:"center", justifyContent:"center", marginBottom:4,
+      }}>
+        {icon}
+      </div>
+      <div style={{ fontSize:13.5, fontWeight:700, color:"#3f3f46" }}>{title}</div>
+      <div style={{ fontSize:12, color:"#a1a1aa", textAlign:"center", lineHeight:1.6, maxWidth:220 }}>{sub}</div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+══════════════════════════════════════════════════════════════ */
+export default function VehicleDrawer({ open = false, onClose = () => {} }) {
+  const [tab, setTab]             = useState("available");
   const [search, setSearch]       = useState("");
   const [dateRange, setDateRange] = useState([null, null]);
   const [dlFlash, setDlFlash]     = useState(false);
 
-  /* ── Available vehicles state ── */
+  /* ── Available vehicles ── */
   const [availableVehicles, setAvailableVehicles] = useState([]);
   const [availLoading, setAvailLoading]           = useState(false);
   const [availError, setAvailError]               = useState(null);
 
-  /* ── Closed trips state ── */
-  const [closedTrips, setClosedTrips]       = useState([]);
-  const [closedStats, setClosedStats]       = useState(null);
-  const [closedLoading, setClosedLoading]   = useState(false);
-  const [closedError, setClosedError]       = useState(null);
+  /* ── Closed trips with pagination ── */
+  const [closedTrips, setClosedTrips]     = useState([]);
+  const [closedStats, setClosedStats]     = useState(null);
+  const [closedLoading, setClosedLoading] = useState(false);
+  const [closedError, setClosedError]     = useState(null);
   const [isDefaultRange, setIsDefaultRange] = useState(true);
+  const [nextCursor, setNextCursor]       = useState(null);
+  const [hasMore, setHasMore]             = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
 
   /* ── Fetch available vehicles ── */
   useEffect(() => {
@@ -383,17 +383,21 @@ export default function VehicleDrawer({ open = false, onClose = () => {},  }) {
     return () => { cancelled = true; };
   }, [open]);
 
-  /* ── Fetch closed trips ── */
+  /* ── Fetch closed trips (first page / reset) ── */
   const fetchClosedTrips = useCallback(async (from, to) => {
     setClosedLoading(true); setClosedError(null);
+    setClosedTrips([]); setNextCursor(null); setHasMore(false);
     try {
       const params = {};
       if (from) params.from = from.format("YYYY-MM-DD");
       if (to)   params.to   = to.format("YYYY-MM-DD");
       const res = await api.get("/trip/closed", { params });
+      console.log("Closed trips response:", res.data);
       setClosedTrips(res.data.data  || []);
       setClosedStats(res.data.stats || null);
       setIsDefaultRange(res.data.dateRange?.isDefault ?? true);
+      setNextCursor(res.data.pagination?.nextCursor ?? null);
+      setHasMore(res.data.pagination?.hasMore ?? false);
     } catch (err) {
       setClosedError(err.message);
     } finally {
@@ -406,243 +410,272 @@ export default function VehicleDrawer({ open = false, onClose = () => {},  }) {
     fetchClosedTrips(dateRange[0], dateRange[1]);
   }, [open, dateRange, fetchClosedTrips]);
 
-  /* ── Source list & client-side search ── */
-  const sourceList = segment === "available" ? availableVehicles : closedTrips;
+  /* ── Fetch next page (infinite scroll) ── */
+  const fetchMoreClosedTrips = useCallback(async () => {
+    if (!hasMore || isFetchingMore || closedLoading || !nextCursor) return;
+    setIsFetchingMore(true);
+    try {
+      const params = { cursor: nextCursor };
+      if (dateRange[0]) params.from = dateRange[0].format("YYYY-MM-DD");
+      if (dateRange[1]) params.to   = dateRange[1].format("YYYY-MM-DD");
+      const res = await api.get("/trip/closed", { params });
+      setClosedTrips(prev => [...prev, ...(res.data.data || [])]);
+      setNextCursor(res.data.pagination?.nextCursor ?? null);
+      setHasMore(res.data.pagination?.hasMore ?? false);
+      // stats only comes on page 1 — keep what we have
+    } catch (err) {
+      console.error("Failed to load more closed trips:", err.message);
+    } finally {
+      setIsFetchingMore(false);
+    }
+  }, [hasMore, isFetchingMore, closedLoading, nextCursor, dateRange]);
+
+  /* ── Client-side search filter ── */
+  const sourceList = tab === "available" ? availableVehicles : closedTrips;
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     if (!q) return sourceList;
-    if (segment === "available") {
+    if (tab === "available") {
       return sourceList.filter(v =>
-        (v.vehicleNumber   ?? "").toLowerCase().includes(q) ||
-        (v.typeOfVehicle   ?? "").toLowerCase().includes(q) ||
-        (v.type            ?? "").toLowerCase().includes(q) ||
-        (v.driverId?.name  ?? "").toLowerCase().includes(q)
+        (v.vehicleNumber  ?? "").toLowerCase().includes(q) ||
+        (v.typeOfVehicle  ?? "").toLowerCase().includes(q) ||
+        (v.type           ?? "").toLowerCase().includes(q) ||
+        (v.driverId?.name ?? "").toLowerCase().includes(q)
       );
     }
     return sourceList.filter(v =>
-      (v.vehicle?.vehicleNumber    ?? "").toLowerCase().includes(q) ||
-      (v.driver?.driverName        ?? "").toLowerCase().includes(q) ||
-      (v.driver?.driverContact     ?? "").toLowerCase().includes(q)
+      (v.vehicle?.vehicleNumber  ?? "").toLowerCase().includes(q) ||
+      (v.driver?.driverName      ?? "").toLowerCase().includes(q) ||
+      (v.driver?.driverContact   ?? "").toLowerCase().includes(q)
     );
-  }, [sourceList, search, segment]);
+  }, [sourceList, search, tab]);
 
-  /* ── Download handler ── */
+  /* ── Download ── */
   const handleDownload = () => {
-    if (segment === "closed") {
-      exportClosedTripsXLSX(filtered);          // ← Excel with full details
-    } else {
-      exportAvailableCSV(filtered);             // ← simple CSV
-    }
+    if (tab === "closed") exportClosedTripsXLSX(filtered);
+    else exportAvailableCSV(filtered);
     setDlFlash(true);
     setTimeout(() => setDlFlash(false), 1400);
   };
 
-  const isLoading   = segment === "available" ? availLoading : closedLoading;
-  const activeError = segment === "available" ? availError   : closedError;
-  const accentColor = segment === "available" ? "#10b981"    : "#f97316";
+  const isLoading   = tab === "available" ? availLoading  : closedLoading;
+  const activeError = tab === "available" ? availError    : closedError;
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        .vd-root .ant-drawer-content-wrapper { box-shadow:-6px 0 40px rgba(0,0,0,0.12) !important; }
-        .vd-root .ant-drawer-content { border-radius:0 !important; }
-        .vd-root .ant-drawer-header { padding:16px 20px !important; border-bottom:1px solid #f0f0f0 !important; background:#fff !important; }
-        .vd-root .ant-drawer-title { font-family:'Plus Jakarta Sans',sans-serif !important; }
-        .vd-root .ant-drawer-body  { padding:0 !important; background:#f8fafc !important; }
-        .vd-root .ant-drawer-close { color:#9ca3af !important; order:2 !important; }
-        .vd-root .ant-picker { width:100%; border-radius:9px !important; font-family:'Plus Jakarta Sans',sans-serif !important; }
-        .vd-root .ant-picker:hover,.vd-root .ant-picker-focused { border-color:#6366f1 !important; }
-        .vd-root .ant-input-affix-wrapper { border-radius:9px !important; font-family:'Plus Jakarta Sans',sans-serif !important; font-size:13px !important; }
-        .vd-root .ant-input-affix-wrapper:hover,
-        .vd-root .ant-input-affix-wrapper-focused { border-color:#6366f1 !important; box-shadow:0 0 0 2px rgba(99,102,241,.1) !important; }
-        .vd-root .ant-segmented { font-family:'Plus Jakarta Sans',sans-serif !important; border-radius:10px !important; }
-        .vd-root .ant-segmented-item-label { font-weight:700 !important; font-size:12px !important; }
-        .vd-daterange-hidden  { max-height:0;     opacity:0; overflow:hidden; pointer-events:none; }
-        .vd-daterange-visible { max-height:120px; opacity:1; transition:max-height .28s ease,opacity .22s ease; overflow:hidden; }
-        @keyframes shimmer  { to { background-position:-200% 0; } }
-        @keyframes vdFadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
-        .vd-grid { animation:vdFadeUp .28s ease both; }
+        @keyframes vdShimmer { to { background-position:-200% 0; } }
+        @keyframes vdFadeUp  { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+        .vd-card-grid { animation:vdFadeUp .22s ease both; }
+        /* Drawer overrides */
+        .vd-drawer .ant-drawer-body { padding:0 !important; background:#f8fafc !important; }
+        .vd-drawer .ant-drawer-header { padding:14px 16px !important; border-bottom:1px solid #f0f0f0 !important; background:#fff !important; }
+        .vd-drawer .ant-drawer-content-wrapper { box-shadow:-4px 0 24px rgba(15,23,42,.08) !important; }
+        /* Tabs */
+        .vd-drawer .ant-tabs-nav { margin:0 !important; background:#fff; padding:0 16px; border-bottom:1px solid #f0f0f0 !important; }
+        .vd-drawer .ant-tabs-tab { font-size:12px !important; font-weight:600 !important; padding:10px 0 !important; }
+        .vd-drawer .ant-tabs-tab-active .ant-tabs-tab-btn { color:#18181b !important; }
+        .vd-drawer .ant-tabs-ink-bar { background:#18181b !important; }
+        /* Inputs */
+        .vd-drawer .ant-input-affix-wrapper { border-radius:8px !important; border-color:#e8eaed !important; font-size:12.5px !important; }
+        .vd-drawer .ant-input-affix-wrapper:hover,
+        .vd-drawer .ant-input-affix-wrapper-focused { border-color:#52525b !important; box-shadow:0 0 0 2px rgba(82,82,91,.08) !important; }
+        .vd-drawer .ant-picker { border-radius:8px !important; border-color:#e8eaed !important; font-size:12.5px !important; }
+        .vd-drawer .ant-picker:hover,
+        .vd-drawer .ant-picker-focused { border-color:#52525b !important; box-shadow:0 0 0 2px rgba(82,82,91,.08) !important; }
       `}</style>
 
       <Drawer
-        rootClassName="vd-root"
+        rootClassName="vd-drawer"
+        open={open}
+        onClose={onClose}
+        width={460}
+        placement="right"
+        destroyOnClose
         title={
-          <div style={{ display:"flex", alignItems:"center", gap:10, fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
-            <Truck color={accentColor} size={30} style={{ transition:"color .3s", flexShrink:0 }} />
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{
+              width:32, height:32, borderRadius:8, background:"#f4f4f5",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              border:"1px solid #e8eaed",
+            }}>
+              <CarOutlined style={{ fontSize:16, color:"#52525b" }} />
+            </div>
             <div>
-              <div style={{ fontSize:15, fontWeight:800, color:"#2165f8", lineHeight:1.3 }}>Vehicles</div>
-              <div style={{ fontSize:11, fontWeight:500, color:"#9ca3af" }}>Browse &amp; export fleet vehicles</div>
+              <div style={{ fontSize:13.5, fontWeight:700, color:"#18181b", lineHeight:1.2 }}>Fleet Vehicles</div>
+              <div style={{ fontSize:10.5, color:"#a1a1aa", fontWeight:400 }}>Browse &amp; export</div>
             </div>
           </div>
         }
-        open={open} onClose={onClose} size={480} placement="right" destroyOnClose
       >
-
-        {/* ══ 1 — Segment ═══════════════════════════════════════ */}
-        <div style={{ ...layerStyle, paddingTop:16, paddingBottom:16 }}>
-          <Segmented
-            block value={segment}
-            onChange={val => { setSegment(val); setSearch(""); }}
-            options={[
-              {
-                label: (
-                  <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent:"center" }}>
-                    <Truck size={16} color="#10b981" />
-                    <span style={{ color:"#15803d", fontWeight:700 }}>Available Vehicles</span>
-                  </div>
-                ),
-                value: "available",
-              },
-              {
-                label: (
-                  <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent:"center" }}>
-                    <EvCharger size={16} color="#f97316" />
-                    <span style={{ color:"#f97316", fontWeight:700 }}>Closed Trips</span>
-                  </div>
-                ),
-                value: "closed",
-              },
-            ]}
-          />
-        </div>
-
-        {/* ══ 2 — Export ════════════════════════════════════════ */}
-        <div style={layerStyle}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
-              <div style={{ fontSize:13, fontWeight:700, color:"#374151" }}>Export Report</div>
-              <div style={{ fontSize:11, color:"#9ca3af", marginTop:1 }}>
-                {filtered.length} {segment === "available" ? "vehicle" : "trip"}{filtered.length !== 1 ? "s" : ""} •{" "}
-                <span style={{ color: segment === "closed" ? "#16a34a" : "#9ca3af", fontWeight:600 }}>
-                  {segment === "closed" ? "Excel (.xlsx)" : "CSV"}
+        {/* ══ Tabs ══ */}
+        <Tabs
+          activeKey={tab}
+          onChange={key => { setTab(key); setSearch(""); }}
+          items={[
+            {
+              key: "available",
+              label: (
+                <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <CheckCircleOutlined style={{ color: tab === "available" ? "#16a34a" : "#a1a1aa" }} />
+                  Available
+                  {availableVehicles.length > 0 && (
+                    <span style={{
+                      fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:20,
+                      background: tab === "available" ? "#f0fdf4" : "#f4f4f5",
+                      color:      tab === "available" ? "#16a34a" : "#a1a1aa",
+                    }}>{availableVehicles.length}</span>
+                  )}
                 </span>
-              </div>
-            </div>
-            <button
-              onClick={handleDownload}
-              style={{
-                display:"flex", alignItems:"center", gap:7,
-                background: dlFlash
-                  ? "linear-gradient(135deg,#10b981,#059669)"
-                  : "linear-gradient(135deg,#3b82f6,#6366f1)",
-                border:"none", borderRadius:10, padding:"9px 20px", color:"#fff",
-                fontWeight:700, fontSize:13, cursor:"pointer",
-                fontFamily:"'Plus Jakarta Sans',sans-serif",
-                boxShadow: dlFlash ? "0 2px 12px rgba(16,185,129,0.3)" : "0 2px 14px rgba(99,102,241,0.3)",
-                transition:"all .25s", whiteSpace:"nowrap",
-              }}
-            >
-              <span style={{ fontSize:15 }}>{dlFlash ? "✅" : "⬇"}</span>
-              {dlFlash ? "Downloaded!" : segment === "closed" ? "Download Excel" : "Download CSV"}
-            </button>
-          </div>
-        </div>
+              ),
+            },
+            {
+              key: "closed",
+              label: (
+                <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <CloseCircleOutlined style={{ color: tab === "closed" ? "#ea580c" : "#a1a1aa" }} />
+                  Closed Trips
+                  {closedTrips.length > 0 && (
+                    <span style={{
+                      fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:20,
+                      background: tab === "closed" ? "#fff7ed" : "#f4f4f5",
+                      color:      tab === "closed" ? "#ea580c" : "#a1a1aa",
+                    }}>{closedTrips.length}{hasMore ? "+" : ""}</span>
+                  )}
+                </span>
+              ),
+            },
+          ]}
+        />
 
-        {/* ══ 3 — Date Range (Closed only) ══════════════════════ */}
-        <div
-          className={segment === "closed" ? "vd-daterange-visible" : "vd-daterange-hidden"}
-          style={{ background:"#fff", borderBottom: segment === "closed" ? "1px solid #f0f0f0" : "none" }}
-        >
-          <div style={{ padding:"14px 20px" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:9 }}>
-              <span style={labelStyle}>Filter by Date</span>
+        {/* ══ Filters row ══ */}
+        <div style={{ padding:"12px 16px", background:"#fff", borderBottom:"1px solid #f0f0f0", display:"flex", flexDirection:"column", gap:8 }}>
+
+          {/* Date range — closed only */}
+          {tab === "closed" && (
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <RangePicker
+                style={{ flex:1 }}
+                onChange={vals => setDateRange(vals || [null, null])}
+                placeholder={["Start date", "End date"]}
+                format="YYYY-MM-DD"
+                allowClear
+                size="small"
+              />
               {isDefaultRange && (
-                <span style={{
-                  fontSize:9, fontWeight:700, background:"#eff6ff", color:"#3b82f6",
-                  borderRadius:20, padding:"2px 8px", letterSpacing:"0.05em",
-                }}>⏱ Last 36 hrs</span>
+                <span style={{ fontSize:9.5, fontWeight:600, color:"#2563eb", background:"#eff6ff", padding:"5px 12px", borderRadius:6, whiteSpace:"nowrap" }}>
+                  Last 36h
+                </span>
               )}
             </div>
-            <RangePicker
-              style={{ width:"100%" }}
-              onChange={vals => setDateRange(vals || [null, null])}
-              placeholder={["Start date","End date"]}
-              format="YYYY-MM-DD"
-              allowClear size="middle"
-            />
-          </div>
-        </div>
+          )}
 
-        {/* ══ 4 — Stats Bar (Closed only) ═══════════════════════ */}
-        {segment === "closed" && !closedLoading && closedStats && (
-          <StatsBar stats={closedStats} />
-        )}
-
-        {/* ══ 5 — Search ════════════════════════════════════════ */}
-        <div style={layerStyle}>
-          <div style={labelStyle}>
-            {segment === "available" ? "Search Vehicles" : "Search by Vehicle / Driver"}
-          </div>
+          {/* Search */}
           <Input
-            placeholder={segment === "available" ? "Vehicle no., type…" : "Vehicle no., driver name or contact…"}
+            placeholder={tab === "available" ? "Search by vehicle no., type…" : "Search by vehicle no., driver name or contact…"}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            allowClear size="middle"
-            prefix={<Search size={16} color="#d1d5db" />}
+            allowClear
+            size="medium"
+            prefix={<SearchOutlined style={{ color:"#d4d4d8", fontSize:15 }} />}
           />
         </div>
 
-        {/* ══ 6 — Grid ══════════════════════════════════════════ */}
-        <div style={{ padding:"18px 20px 32px", background:"#f8fafc" }}>
-          <div style={{
-            display:"flex", alignItems:"center", justifyContent:"space-between",
-            marginBottom:16, fontFamily:"'Plus Jakarta Sans',sans-serif",
-          }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span style={{ fontSize:12, fontWeight:800, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em" }}>
-                {segment === "available" ? "Available Vehicles" : "Closed Trips"}
-              </span>
-              <span style={{
-                background: segment === "available" ? "#f0fdf4" : "#fff7ed",
-                color:      segment === "available" ? "#16a34a" : "#c2410c",
-                borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700,
-              }}>{filtered.length}</span>
-              {search && (
-                <span style={{ background:"#fefce8", color:"#ca8a04", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700 }}>Filtered</span>
-              )}
-            </div>
-            <span style={{ fontSize:11, color:"#9ca3af", fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
-              {sourceList.length} total
+        {/* ══ Stats — closed only ══ */}
+        {tab === "closed" && !closedLoading && closedStats && (
+          <StatsRow stats={closedStats} />
+        )}
+
+        {/* ══ Toolbar: count + download ══ */}
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"8px 16px", background:"#fafafa", borderBottom:"1px solid #f0f0f0",
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:"#52525b" }}>
+              {filtered.length} {tab === "available" ? "vehicles" : "trips"}
             </span>
+            {search && (
+              <span style={{ fontSize:9.5, fontWeight:600, background:"#fefce8", color:"#ca8a04", padding:"1px 7px", borderRadius:20 }}>
+                Filtered
+              </span>
+            )}
+            {tab === "closed" && hasMore && (
+              <span style={{ fontSize:9.5, color:"#a1a1aa" }}>· more below</span>
+            )}
           </div>
 
+          <button
+            onClick={handleDownload}
+            style={{
+              display:"flex", alignItems:"center", gap:5,
+              background: dlFlash ? "#f0fdf4" : "#18181b",
+              border: dlFlash ? "1px solid #bbf7d0" : "1px solid #18181b",
+              borderRadius:7, padding:"5px 12px", cursor:"pointer",
+              color: dlFlash ? "#16a34a" : "#fff",
+              fontSize:11, fontWeight:600, transition:"all .2s",
+            }}
+          >
+            {dlFlash ? <CheckOutlined style={{ fontSize:11 }} /> : <DownloadOutlined style={{ fontSize:11 }} />}
+            {dlFlash ? "Saved!" : "Download Excel"}
+          </button>
+        </div>
+
+        {/* ══ Content ══ */}
+        <div style={{ padding:"14px 16px 32px", overflowY:"auto", height:"calc(100vh - 240px)" }}>
+
+          {/* Loading skeleton */}
           {isLoading && (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))", gap:14 }}>
-              {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(148px,1fr))", gap:10 }}>
+              {[1,2,3,4,5,6].map(i => <SkeletonCard key={i} />)}
             </div>
           )}
 
+          {/* Error */}
           {!isLoading && activeError && (
-            <div style={{ textAlign:"center", padding:"40px 20px", fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
-              <div style={{ fontSize:36, marginBottom:10 }}>⚠️</div>
-              <div style={{ fontSize:14, fontWeight:700, color:"#dc2626", marginBottom:4 }}>Failed to load</div>
-              <div style={{ fontSize:12, color:"#9ca3af" }}>{activeError}</div>
-            </div>
+            <EmptyState
+              icon={<WarningOutlined style={{ fontSize:22, color:"#fca5a5" }} />}
+              title="Failed to load"
+              sub={activeError}
+            />
           )}
 
+          {/* Empty */}
+          {!isLoading && !activeError && filtered.length === 0 && (
+            <EmptyState
+              icon={<InboxOutlined style={{ fontSize:22, color:"#d4d4d8" }} />}
+              title={tab === "available" ? "No available vehicles" : "No closed trips"}
+              sub={
+                search
+                  ? "Clear the search to see all results"
+                  : tab === "closed"
+                    ? "No trips closed in this date range"
+                    : "All vehicles are currently on trips"
+              }
+            />
+          )}
+
+          {/* Grid */}
           {!isLoading && !activeError && filtered.length > 0 && (
-            <div className="vd-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))", gap:14 }}>
+            <div className="vd-card-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(148px,1fr))", gap:10 }}>
               {filtered.map((v, i) =>
-                segment === "available"
+                tab === "available"
                   ? <AvailableCard  key={v._id ?? i} v={v} />
                   : <ClosedTripCard key={v._id ?? i} v={v} />
               )}
             </div>
           )}
 
-          {!isLoading && !activeError && filtered.length === 0 && (
-            <div style={{ textAlign:"center", padding:"52px 20px", fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
-              <div style={{ fontSize:42, marginBottom:12, display:"flex", justifyContent:"center" }}>
-                {segment === "available" ? <Truck size={42} color="#10b981" /> : <EvCharger size={42} color="#f97316" />}
-              </div>
-              <div style={{ fontSize:15, fontWeight:700, color:"#374151", marginBottom:6 }}>
-                No {segment === "available" ? "available vehicles" : "closed trips"}
-              </div>
-              <div style={{ fontSize:12, color:"#9ca3af" }}>
-                {search ? "Clear search to see all" : segment === "closed" ? "No trips closed in this period" : "All vehicles are currently on trips"}
-              </div>
+          {/* ── Infinite scroll sentinel (closed trips only) ── */}
+          {tab === "closed" && !isLoading && !activeError && hasMore && (
+            <LoadMoreSentinel onIntersect={fetchMoreClosedTrips} loading={isFetchingMore} />
+          )}
+
+          {/* End of list indicator */}
+          {tab === "closed" && !isLoading && !hasMore && closedTrips.length > 0 && (
+            <div style={{ textAlign:"center", padding:"16px 0 0", fontSize:11, color:"#d4d4d8" }}>
+              All {closedTrips.length} trips loaded
             </div>
           )}
         </div>
@@ -650,11 +683,3 @@ export default function VehicleDrawer({ open = false, onClose = () => {},  }) {
     </>
   );
 }
-
-/* ── Shared tokens ─────────────────────────────────────────── */
-const layerStyle = { padding:"14px 20px", borderBottom:"1px solid #f0f0f0", background:"#fff" };
-const labelStyle = {
-  fontFamily:"'Plus Jakarta Sans',sans-serif",
-  fontSize:11, fontWeight:700, letterSpacing:"0.08em",
-  textTransform:"uppercase", color:"#9ca3af", marginBottom:9,
-};

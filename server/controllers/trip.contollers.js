@@ -262,10 +262,18 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
       const existingTrip = await Trip.findOne({
         vehicleId: vehicle._id,
         tripState: { $in: ["ACTIVE", "COMPLETED", "PENDING"] }
-      }).session(session);
+      })
+      .populate("currentFactoryId", "name")
+      .populate("sourceFactoryId", "name")
+      .populate("destinationFactoryId", "name")
+      .session(session);
+
+      const currentFactoryName = existingTrip?.currentFactoryId?.name || "Unknown Location";
+      const sourceFactoryName = existingTrip?.sourceFactoryId?.name || existingTrip?.externalSource || "Unknown Location";
+      const destinationFactoryName = existingTrip?.destinationFactoryId?.name || existingTrip?.externalDestination || "Unknown Location";
 
       if (existingTrip) {
-        throw new AppError("Vehicle already on a trip", 400);
+        throw new AppError(`Vehicle already on a trip from "${sourceFactoryName}" to "${destinationFactoryName}"`, 400);
       }
 
       // ========================
@@ -287,8 +295,8 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         startedAt: new Date(),
         materials: [
           {
-            name: req.body.materialType,
-            material: req.body.material || req.body.materialType,
+            name: req.body.materialType?? "",
+            material: req.body.material?? "",
             quantity: req.body.quantity,
             invoiceNo: req.body.invoiceNo,
             invoiceAmount: req.body.invoiceAmount,
@@ -569,8 +577,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
       // ========================
       // UPDATE TRIP
       // ========================
-      updatedTrip =
-        await Trip.findByIdAndUpdate(
+      updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
           {
             location: "inside_factory",
@@ -591,8 +598,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
                   sourceFactoryId: trip.sourceFactoryId,
                   destinationFactoryId: trip.destinationFactoryId,
                   startedAt: trip.startedAt,
-                  completedAt:
-                    new Date()
+                  completedAt: new Date()
                 }
               }
             }
@@ -609,10 +615,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
       await Vehicle.findByIdAndUpdate(
         trip.vehicleId,
         {
-          currentFactoryId:
-            trip.destinationFactoryId || null,
-
-          currentTrip: null
+          currentFactoryId:trip.destinationFactoryId || null,
         },
         {
           session
@@ -645,9 +648,7 @@ export const unloadTrip = async (req, res) => {
     let updatedTrip = null;
 
     await session.withTransaction(async () => {
-
       const { tripId } = req.params;
-
       const user = await User.findById(req.userId)
         .populate("factory")
         .session(session);
@@ -695,37 +696,17 @@ export const unloadTrip = async (req, res) => {
                 status: trip.status,
                 location: trip.location,
                 phase: "DESTINATION",
-                factoryId:
-                  trip.destinationFactoryId ||
-                  user.factory._id ||
-                  null,
-
+                factoryId: trip.destinationFactoryId || user.factory._id || null,
                 action: "unload",
                 timestamp: new Date(),
                 segment: {
-                  movementType:
-                    trip.type ===
-                    "internal_transfer"
-                      ? "internal"
-                      : "external",
-
-                  externalSource:
-                    trip.externalSource,
-
-                  externalDestination:
-                    trip.externalDestination,
-
-                  sourceFactoryId:
-                    trip.sourceFactoryId,
-
-                  destinationFactoryId:
-                    trip.destinationFactoryId,
-
-                  startedAt:
-                    trip.startedAt,
-
-                  completedAt:
-                    new Date()
+                  movementType: trip.type === "internal_transfer" ? "internal" : "external",
+                  externalSource: trip.externalSource,
+                  externalDestination: trip.externalDestination,
+                  sourceFactoryId: trip.sourceFactoryId,
+                  destinationFactoryId: trip.destinationFactoryId,
+                  startedAt: trip.startedAt,
+                  completedAt:new Date()
                 }
               }
             }
@@ -741,12 +722,11 @@ export const unloadTrip = async (req, res) => {
     responseData = {
       success: true,
       trip: updatedTrip,
-      message:
-        "Vehicle unloaded successfully"
+      message: "Vehicle unloaded successfully"
     };
 
   }finally {
-    session.endSession();
+   await session.endSession();
   }
 
  return  res.status(200).json(responseData);
@@ -823,18 +803,6 @@ export const completeTrip = asyncHandler( async (req, res) => {
           }
         );
 
-      // ========================
-      // RELEASE VEHICLE
-      // ========================
-      await Vehicle.findByIdAndUpdate(
-        trip.vehicleId,
-        {
-          currentTrip: null
-        },
-        {
-          session
-        }
-      );
 
     });
 
@@ -934,7 +902,7 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
 
     return res.status(400).json({
       success: false,
-      error: err.message
+      message: err.message
     });
 
   }
@@ -1044,7 +1012,6 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
 
             $set: {
               activeTripId: null,
-
               assignedVehicle: null
             }
           },
@@ -1329,7 +1296,6 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
 
             $set: {
               activeTripId: null,
-
               assignedVehicle: null
             }
           },
@@ -1422,8 +1388,8 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
               loadStatus: "loaded",
               materials: [
                 {
-                  name: tripDetails.material,
-                  material: tripDetails.material,
+                  name: tripDetails?.materialType?? currentTrip.materials[0]?.name ?? "",
+                  material: tripDetails?.material?? "",
                   quantity: tripDetails.quantity,
                   invoiceNo: tripDetails.invoiceNo,
                   invoiceAmount: tripDetails.invoiceAmount,
@@ -1576,7 +1542,6 @@ export const cancelTrip = asyncHandler( async (req, res) => {
           {
             $set: {
               activeTripId: null,
-
               assignedVehicle: null
             }
           },
@@ -1713,7 +1678,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         sourceFactoryId:user.factory._id,
         destinationFactoryId:type === "internal"? newDestinationFactoryId: null,
         phase: "ORIGIN",
-        status: "ORIGIN",
+        status: "ROUTE_CHANGED",
         startedAt: now
       };
 
@@ -1783,7 +1748,6 @@ export const changeRoute = asyncHandler( async (req, res) => {
 
 });
 
-
 // This endpoint is designed to fetch all relevant trips for a factory, including:
 export const getVehicleTrips = async (req, res) => {
   try {
@@ -1792,9 +1756,7 @@ export const getVehicleTrips = async (req, res) => {
     const { tripId } = req.params;
 
     const factoryId = user.factory._id;
-
     const now = new Date();
-    const last36Hours = new Date(now.getTime() - 36 * 60 * 60 * 1000);
 
     const matchStage = {
       _id: new mongoose.Types.ObjectId(tripId),
@@ -1815,9 +1777,6 @@ export const getVehicleTrips = async (req, res) => {
             {
               tripState: { $in: ["CLOSED", "CANCELLED"] },
 
-              createdAt: {
-                $gte: last36Hours
-              }
             }
           ]
         }
@@ -2039,7 +1998,8 @@ export const getVehicleTrips = async (req, res) => {
 export const getLiveVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
-      .populate("factory");
+    .select("factory")
+    .lean();
 
     if (!user || !user.factory) {
 
@@ -2049,16 +2009,10 @@ export const getLiveVehicleTrips = async (req, res) => {
       });
     }
 
-    const factoryId = user.factory._id;
-
-    // =========================
-    // DATE FILTER
-    // =========================
+    const factoryId = user.factory;
 
     const now = new Date();
-    const last36Hours = new Date(
-      now.getTime() - (80 * 60 * 60 * 1000)
-    );
+
 
     // =========================
     // PAGINATION
@@ -2080,34 +2034,14 @@ export const getLiveVehicleTrips = async (req, res) => {
             { destinationFactoryId: factoryId }
           ]
         },
-
         {
-          $or: [
+          tripState: {
+            $in: ["ACTIVE", "COMPLETED"]
+          }
+        },
 
-            {
-              tripState: {
-                $nin: ["CLOSED", "CANCELLED"]
-              }
-            },
-
-            {
-              tripState: {
-                $in: ["CLOSED", "CANCELLED"]
-              },
-
-              createdAt: {
-                $gte: last36Hours
-              }
-            }
-          ]
-        }
       ]
     })
-
-    // =========================
-    // MINIMAL LIVE CARD FIELDS
-    // =========================
-
     .select(`
       type
       phase
@@ -2128,24 +2062,15 @@ export const getLiveVehicleTrips = async (req, res) => {
       sourceFactoryId
       destinationFactoryId
     `)
-
-    // =========================
-    // VEHICLE
-    // =========================
-
     .populate({
       path: "vehicleId",
       select: `
         vehicleNumber
         type
         typeOfVehicle
+        transporterName
       `
-    })
-
-    // =========================
-    // DRIVER
-    // =========================
-
+    })       
     .populate({
       path: "driverId",
       select: `
@@ -2153,11 +2078,6 @@ export const getLiveVehicleTrips = async (req, res) => {
         driverContact
       `
     })
-
-    // =========================
-    // SOURCE FACTORY
-    // =========================
-
     .populate({
       path: "sourceFactoryId",
       select: `
@@ -2165,11 +2085,6 @@ export const getLiveVehicleTrips = async (req, res) => {
         location
       `
     })
-
-    // =========================
-    // DESTINATION FACTORY
-    // =========================
-
     .populate({
       path: "destinationFactoryId",
       select: `
@@ -2178,8 +2093,180 @@ export const getLiveVehicleTrips = async (req, res) => {
       `
     })
     .sort({
-      createdAt: -1
+      createdAt: -1,
+      updatedAt: -1,
+      _id: -1
     })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+    const totalTrips = await Trip.countDocuments({
+      $and: [
+        {
+          $or: [
+            { sourceFactoryId: factoryId },
+            { destinationFactoryId: factoryId }
+          ]
+        },
+        {
+          tripState: {
+            $in: ["ACTIVE", "COMPLETED"]
+          }
+        }
+      ]
+    });
+
+    const formattedTrips = trips.map((trip) => ({
+      _id: trip._id,
+      type: trip.type,
+      phase: trip.phase,
+      location: trip.location,
+      status: trip.status,
+      tripState: trip.tripState,
+      purpose: trip.purpose,
+      reason: trip.reason,
+      loadStatus: trip.loadStatus,
+      externalSource: trip.externalSource,
+      externalDestination: trip.externalDestination,
+      createdAt: trip.createdAt,
+      startedAt: trip.startedAt,
+      completedAt: trip.completedAt,
+      vehicle: trip.vehicleId
+        ? {
+            _id: trip.vehicleId._id,
+            vehicleNumber: trip.vehicleId.vehicleNumber,
+            transporterName: trip.vehicleId.transporterName || null,
+            vehicleType: trip.vehicleId.type,
+            typeOfVehicle: trip.vehicleId.typeOfVehicle
+          }
+        : null,
+
+      driver: trip.driverId
+        ? {
+            _id: trip.driverId._id,
+            name: trip.driverId.driverName,
+            phone: trip.driverId.driverContact,
+          }
+        : null,
+
+      sourceFactory: trip.sourceFactoryId
+        ? {
+            _id: trip.sourceFactoryId._id,
+            name: trip.sourceFactoryId.name,
+            location: trip.sourceFactoryId.location
+          }
+        : null,
+
+      destinationFactory: trip.destinationFactoryId
+        ? {
+            _id: trip.destinationFactoryId._id,
+            name: trip.destinationFactoryId.name,
+            location: trip.destinationFactoryId.location
+          }
+        : null,
+
+      material: Array.isArray(trip.materials)
+        ? trip.materials[0] || null
+        : null
+    }));
+
+    // =========================
+    // RESPONSE
+    // =========================
+    const hasMore = skip + trips.length < totalTrips;
+    return res.status(200).json({
+    success: true,
+    page,
+    limit,
+    count: formattedTrips.length,
+    total: totalTrips,
+    hasMore,
+    nextPage: hasMore ? page + 1 : null,
+    trips: formattedTrips
+  });
+
+  } catch (err) {
+
+    console.error(
+      "Error fetching live vehicle trips:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch live vehicle trips",
+      error: err.message
+    });
+  }
+};
+
+export const closedAndCancelledTrips = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("factory").lean();
+    if (!user || !user.factory) {
+      return res.status(404).json({ message: "User or factory not found" });
+    }
+
+    const factoryId = user.factory;
+
+    const now = new Date();
+    const last36Hours = new Date(
+      now.getTime() - (36 * 60 * 60 * 1000)
+    );
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const filter = {
+      $and: [
+        {
+          $or: [
+            { destinationFactoryId: factoryId },
+            { sourceFactoryId: factoryId }
+          ]
+        },
+        {
+          updatedAt: {
+            $gte: last36Hours,
+            $lte: now
+          }
+        },
+        {
+          tripState: {
+            $in: ["CLOSED", "CANCELLED"]
+          }
+        }
+      ]
+    };
+
+    const trips = await Trip.find(filter)
+    .select(`
+      type
+      phase
+      location
+      status
+      tripState
+      purpose
+      reason
+      loadStatus
+      externalSource
+      externalDestination
+      materials
+      createdAt
+      startedAt
+      completedAt
+      vehicleId
+      driverId
+      sourceFactoryId
+      destinationFactoryId
+    `)
+    .populate("vehicleId", "vehicleNumber type typeOfVehicle transporterName")
+    .populate("driverId", "driverName driverContact ")
+    .populate("sourceFactoryId", "name location")
+    .populate("destinationFactoryId", "name location")
+    .sort({ updatedAt: -1, createdAt: -1, _id: -1 })
     .skip(skip)
     .limit(limit)
     .lean();
@@ -2203,6 +2290,7 @@ export const getLiveVehicleTrips = async (req, res) => {
         ? {
             _id: trip.vehicleId._id,
             vehicleNumber: trip.vehicleId.vehicleNumber,
+            transporterName: trip.vehicleId.transporterName || null,
             vehicleType: trip.vehicleId.type,
             typeOfVehicle: trip.vehicleId.typeOfVehicle
           }
@@ -2237,37 +2325,27 @@ export const getLiveVehicleTrips = async (req, res) => {
         : null
     }));
 
-    // =========================
-    // RESPONSE
-    // =========================
+    const totalClosedCancelledTrips = await Trip.countDocuments(filter);
+    const hasMore = skip + trips.length < totalClosedCancelledTrips;
 
     return res.status(200).json({
       success: true,
-      page,
-      limit,
-      count: formattedTrips.length,
-      hasMore: formattedTrips.length === limit,
+      count: trips.length,
+      totalTrips: totalClosedCancelledTrips,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
       trips: formattedTrips
     });
-
-  } catch (err) {
-
-    console.error(
-      "Error fetching live vehicle trips:",
-      err
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch live vehicle trips",
-      error: err.message
-    });
+  }
+    catch (err) {
+    console.error("Error fetching closed/cancelled trips:", err);
+    return res.status(500).json({ success: false, message: "Failed to fetch closed/cancelled trips", error: err.message });
   }
 };
 
 export const getClosedTrips = async (req, res) => {
   try {
-    const { vehicleNumber, driverContact, from, to } = req.query;
+    const { vehicleNumber, driverContact, from, to, cursor, limit } = req.query;
 
     const user = await User.findById(req.userId).select("factory");
     if (!user || !user.factory) {
@@ -2275,6 +2353,12 @@ export const getClosedTrips = async (req, res) => {
     }
 
     const factoryId = user.factory;
+
+    /* ── Pagination ─────────────────────────────────────────── */
+    const PAGE_LIMIT = Math.min(parseInt(limit) || 20, 100); // default 20, hard cap 100
+
+    // cursor = updatedAt ISO string of the last item received on the previous page
+    const cursorDate = cursor ? new Date(cursor) : null;
 
     /* ── Date range ─────────────────────────────────────────── */
     let fromDate, toDate;
@@ -2289,24 +2373,52 @@ export const getClosedTrips = async (req, res) => {
       fromDate = new Date(toDate.getTime() - 36 * 60 * 60 * 1000);
     }
 
-    const dateFilter = {};
-    if (fromDate) dateFilter.$gte = fromDate;
-    if (toDate)   dateFilter.$lte = toDate;
+    // Build the updatedAt filter for the DATA pipeline (includes cursor offset)
+    const dataDateFilter = {};
+    if (fromDate)   dataDateFilter.$gte = fromDate;
+    if (toDate)     dataDateFilter.$lte = toDate;
+    if (cursorDate) dataDateFilter.$lt  = cursorDate; // cursor: fetch older than last seen
 
-    /* ── Pipeline ───────────────────────────────────────────── */
-    const pipeline = [
-      {
-        $match: {
-          tripState: "CLOSED",
-          ...(Object.keys(dateFilter).length && { updatedAt: dateFilter }),
-          $or: [
-            { sourceFactoryId: factoryId },
-            { destinationFactoryId: factoryId },
-          ],
-        },
+    /* ── Base match for DATA pipeline ───────────────────────── */
+    const baseMatch = {
+      tripState: {
+        $in: ["CLOSED", "CANCELLED"]
       },
+      ...(Object.keys(dataDateFilter).length && { updatedAt: dataDateFilter }),
+      $or: [
+        { sourceFactoryId: factoryId },
+        { destinationFactoryId: factoryId },
+      ],
+    };
 
-      //  Join vehicle — pull all fields needed for Excel
+    /* ── Base match for STATS pipeline (full range, no cursor) ─ */
+    const statsDateFilter = {};
+    if (fromDate) statsDateFilter.$gte = fromDate;
+    if (toDate)   statsDateFilter.$lte = toDate;
+
+    const statsBaseMatch = {
+      tripState: {
+        $in: ["CLOSED", "CANCELLED"]
+      },
+      ...(Object.keys(statsDateFilter).length && { updatedAt: statsDateFilter }),
+      $or: [
+        { sourceFactoryId: factoryId },
+        { destinationFactoryId: factoryId },
+      ],
+    };
+
+    /* ── Dynamic search filters (post-lookup) ───────────────── */
+    const searchMatch = {
+      ...(vehicleNumber && {
+        "vehicle.vehicleNumber": { $regex: vehicleNumber, $options: "i" },
+      }),
+      ...(driverContact && {
+        "driver.driverContact": { $regex: driverContact, $options: "i" },
+      }),
+    };
+
+    /* ── Shared lookup + project stages ─────────────────────── */
+    const lookupStages = [
       {
         $lookup: {
           from: "vehicles",
@@ -2317,7 +2429,6 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: false } },
 
-      //  Join driver — pull full identity fields
       {
         $lookup: {
           from: "drivers",
@@ -2328,19 +2439,8 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
 
-      //  Dynamic search filters
-      {
-        $match: {
-          ...(vehicleNumber && {
-            "vehicle.vehicleNumber": { $regex: vehicleNumber, $options: "i" },
-          }),
-          ...(driverContact && {
-            "driver.driverContact": { $regex: driverContact, $options: "i" },
-          }),
-        },
-      },
+      ...(Object.keys(searchMatch).length ? [{ $match: searchMatch }] : []),
 
-      //  Join source factory
       {
         $lookup: {
           from: "factories",
@@ -2351,7 +2451,6 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$sourceFactory", preserveNullAndEmptyArrays: true } },
 
-      //  Join destination factory
       {
         $lookup: {
           from: "factories",
@@ -2362,7 +2461,6 @@ export const getClosedTrips = async (req, res) => {
       },
       { $unwind: { path: "$destinationFactory", preserveNullAndEmptyArrays: true } },
 
-      //  Project only fields we need — keeps payload lean
       {
         $project: {
           // Trip meta
@@ -2370,17 +2468,19 @@ export const getClosedTrips = async (req, res) => {
           type: 1,
           tripState: 1,
           startedAt: 1,
-          updatedAt: 1,      // used as "Closed At"
-          materials: 1,      // embedded array — already on the Trip doc
+          updatedAt: 1,
+          materials: 1,
+          externalSource: 1,
+          externalDestination: 1,
 
-          // Vehicle fields
+          // Vehicle
           "vehicle._id": 1,
           "vehicle.vehicleNumber": 1,
           "vehicle.type": 1,
           "vehicle.typeOfVehicle": 1,
           "vehicle.PUCExpiry": 1,
 
-          // Driver fields (note: schema uses driverName / driverContact, not name/contact)
+          // Driver
           "driver._id": 1,
           "driver.driverName": 1,
           "driver.driverContact": 1,
@@ -2397,12 +2497,23 @@ export const getClosedTrips = async (req, res) => {
       },
 
       { $sort: { updatedAt: -1 } },
+    ];
 
-      // ── Stats group ──────────────────────────────────────────
+    /* ── Data pipeline — paginated ───────────────────────────── */
+    const dataPipeline = [
+      { $match: baseMatch },
+      ...lookupStages,
+      { $limit: PAGE_LIMIT + 1 }, // +1 to detect whether a next page exists
+    ];
+
+    /* ── Stats pipeline — full range, runs only on page 1 ───── */
+    const statsPipeline = [
+      { $match: statsBaseMatch },
+      ...lookupStages,
       {
         $group: {
           _id: null,
-          trips: { $push: "$$ROOT" },
+          totalTrips:        { $sum: 1 },
           uniqueVehicles:    { $addToSet: "$vehicle._id" },
           uniqueDrivers:     { $addToSet: "$driver._id" },
           vehicleTripCounts: { $push: { vehicleNumber: "$vehicle.vehicleNumber", vehicleId: "$vehicle._id" } },
@@ -2411,57 +2522,104 @@ export const getClosedTrips = async (req, res) => {
       },
       {
         $addFields: {
-          totalTrips:         { $size: "$trips" },
           uniqueVehicleCount: { $size: "$uniqueVehicles" },
           uniqueDriverCount:  { $size: "$uniqueDrivers" },
         },
       },
     ];
 
-    const [result] = await Trip.aggregate(pipeline);
+    // Run in parallel; skip stats on subsequent pages (cursor present) to save DB load
+    const [dataResult, statsResult] = await Promise.all([
+      Trip.aggregate(dataPipeline),
+      !cursorDate ? Trip.aggregate(statsPipeline) : Promise.resolve([]),
+    ]);
 
-    const emptyResponse = {
-      success: true,
-      count: 0,
-      data: [],
-      stats: { totalTrips: 0, uniqueVehicleCount: 0, uniqueDriverCount: 0, perVehicle: [], perDriver: [] },
-      dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
-    };
+    /* ── Slice trips + determine hasMore ────────────────────── */
+    const hasMore   = dataResult.length > PAGE_LIMIT;
+    const trips     = hasMore ? dataResult.slice(0, PAGE_LIMIT) : dataResult;
+    const nextCursor = hasMore && trips.length > 0
+      ? trips[trips.length - 1].updatedAt.toISOString()
+      : null;
 
-    if (!result) return res.status(200).json(emptyResponse);
+    /* ── Empty first-page response ───────────────────────────── */
+    if (trips.length === 0 && !cursorDate) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+        stats: {
+          totalTrips: 0,
+          uniqueVehicleCount: 0,
+          uniqueDriverCount: 0,
+          perVehicle: [],
+          perDriver: [],
+        },
+        pagination: {
+          hasMore: false,
+          nextCursor: null,
+          limit: PAGE_LIMIT,
+        },
+        dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
+      });
+    }
 
-    /* ── Per-vehicle / per-driver breakdowns ────────────────── */
-    const perVehicle = Object.values(
-      result.vehicleTripCounts.reduce((acc, { vehicleId, vehicleNumber }) => {
-        if (!vehicleId) return acc;
-        const key = vehicleId.toString();
-        acc[key] = acc[key] || { vehicleId: key, vehicleNumber, tripCount: 0 };
-        acc[key].tripCount++;
-        return acc;
-      }, {})
-    ).sort((a, b) => b.tripCount - a.tripCount);
+    /* ── Per-vehicle / per-driver breakdowns ─────────────────── */
+    // Only built on page 1 alongside stats; subsequent pages return empty stats
+    // so the UI can keep the stats it already received from page 1.
+    let stats = { totalTrips: 0, uniqueVehicleCount: 0, uniqueDriverCount: 0, perVehicle: [], perDriver: [] };
 
-    const perDriver = Object.values(
-      result.driverTripCounts.reduce((acc, { driverId, driverContact, driverName }) => {
-        if (!driverId) return acc;
-        const key = driverId.toString();
-        acc[key] = acc[key] || { driverId: key, driverContact, driverName, tripCount: 0 };
-        acc[key].tripCount++;
-        return acc;
-      }, {})
-    ).sort((a, b) => b.tripCount - a.tripCount);
+    if (!cursorDate && statsResult.length > 0) {
+      const [s] = statsResult;
+
+      const perVehicle = Object.values(
+        s.vehicleTripCounts.reduce((acc, { vehicleId, vehicleNumber }) => {
+          if (!vehicleId) return acc;
+          const key = vehicleId.toString();
+          acc[key] = acc[key] || { vehicleId: key, vehicleNumber, tripCount: 0 };
+          acc[key].tripCount++;
+          return acc;
+        }, {})
+      ).sort((a, b) => b.tripCount - a.tripCount);
+
+      const perDriver = Object.values(
+        s.driverTripCounts.reduce((acc, { driverId, driverContact, driverName }) => {
+          if (!driverId) return acc;
+          const key = driverId.toString();
+          acc[key] = acc[key] || { driverId: key, driverContact, driverName, tripCount: 0 };
+          acc[key].tripCount++;
+          return acc;
+        }, {})
+      ).sort((a, b) => b.tripCount - a.tripCount);
+
+      stats = {
+        totalTrips:         s.totalTrips,
+        uniqueVehicleCount: s.uniqueVehicleCount,
+        uniqueDriverCount:  s.uniqueDriverCount,
+        perVehicle,
+        perDriver,
+      };
+    }
 
     return res.status(200).json({
       success: true,
-      count: result.totalTrips,
-      data: result.trips,
-      stats: { totalTrips: result.totalTrips, uniqueVehicleCount: result.uniqueVehicleCount, uniqueDriverCount: result.uniqueDriverCount, perVehicle, perDriver },
+      count: trips.length,          // trips in THIS page
+      data: trips,                  // ← same shape your UI already consumes
+      stats,                        // ← populated on page 1; empty object on subsequent pages
+      pagination: {
+        hasMore,                    // true → more trips exist; trigger next fetch on scroll
+        nextCursor,                 // send back as ?cursor= on the next request
+        limit: PAGE_LIMIT,
+      },
       dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
     });
 
   } catch (error) {
     console.error("Error fetching closed trips:", error);
-    return res.status(500).json({ success: false, message: "Failed to fetch closed trips", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch closed trips",
+      error: error.message,
+    });
   }
 };
 

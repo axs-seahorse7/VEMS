@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Tag, Divider, Badge } from "antd";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,8 +90,7 @@ function InfoRow({ icon, iconColor, label, value }) {
 }
 
 // ─── VehicleCard ──────────────────────────────────────────────────────────────
-export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
-  const vehicleData  = vehicle.vehicle || {};
+const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref) => {  const vehicleData  = vehicle.vehicle || {};
   const location     = vehicle.location;
   const phase        = vehicle.phase;
   const pucAlert     = isPUCExpired(vehicleData?.PUCExpiry);
@@ -134,8 +133,7 @@ export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
 
   const borderMeta = STATE_BORDER[stageKey];
 
-  const route =
-    vehicle.type === "internal_transfer" ? (
+  const route = vehicle.type === "internal_transfer" ? (
       <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
         {vehicle.sourceFactory?.name || "Source"}
         <i className="ri-arrow-right-long-line"></i>
@@ -152,15 +150,13 @@ export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
   const isAtOrigin      = phase === "ORIGIN";
   const isAtDestination = phase === "DESTINATION";
   const isAtInTransit   = vehicle.status === "IN_TRANSIT";
+  const isRouteChanged    = vehicle.status === "ROUTE_CHANGED";
 
-  const materialNames = Array.isArray(vehicle?.materials)
-  ? vehicle.materials
-      .filter((m) => m && m.material) // remove null / invalid
-      .map((m) =>
-        typeof m.material === "string"
-          ? m.material
-          : m.material?.name
-      )
+  const materialNames = Array.isArray(vehicle?.materials) ? vehicle.materials
+  .filter((m) => m && m.material) // remove null / invalid
+  .map((m) =>
+    typeof m.material === "string" ? m.material : m.material?.name
+  )
   : [];
 
   return (
@@ -212,6 +208,7 @@ export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
       `}</style>
 
       <div
+      ref={ref}
         onClick={onClick}
         className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-md "}
         style={{
@@ -335,7 +332,18 @@ export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
               <CBadge stage={stageKey} />
 
               {vehicle.tripState && (<Tag size="small" color={vehicle.tripState === "CANCELLED"? "red": vehicle.tripState === "CLOSED" ? "gray" : "green"} style={{fontWeight:600, fontSize:9}} >{ vehicle.tripState }</Tag>)}
-
+              
+              {isRouteChanged && (
+              <Tag 
+                style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing:0.5
+                 }}
+                // variant="border"
+                color="red"
+                >
+                {"Route Changed"}
+              </Tag>
+              )}
             </section>
 
               <Tag 
@@ -347,6 +355,7 @@ export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
                 >
                 {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
               </Tag>
+              
 
           </div>
 
@@ -438,4 +447,6 @@ export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
 
     </>
   );
-}
+});
+
+export default VehicleCard;
