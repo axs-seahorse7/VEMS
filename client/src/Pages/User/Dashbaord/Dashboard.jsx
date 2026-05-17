@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../../../../services/API/Api/api";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented  } from "antd";
 import VehicleDetailModal from "./VehicleDetailsModal.jsx";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
@@ -171,6 +171,7 @@ export default function VehicleDashboard() {
   const [searchOpen, setSearchOpen]             = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [vehicleDrawer, setVehicleDrawer]       = useState(false);
+  const observerRef = useRef(null);
 
   // ── Network state ──────────────────────────────────────────────────────────
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -194,6 +195,8 @@ export default function VehicleDashboard() {
     };
   }, []);
 
+ 
+
   // ── User ──────────────────────────────────────────────────────────────────
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
   const userFactoryId = user?.factory?._id || user?.factory;
@@ -211,19 +214,82 @@ export default function VehicleDashboard() {
     setTimeout(() => setRefreshing(false), 800);
   }, [queryClient]);
 
-  const { data, isLoading } = useQuery({
+  const {data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["vehicles"],
-    queryFn: () => api.get(`/vehicle/trips`).then((r) => r.data),
+    initialPageParam: 1,
+    queryFn: async ({ pageParam = 1 }) => {
+      const res = await api.get(`/vehicle/trips/live?page=${pageParam}&limit=20`);
+      return res.data;
+    },
+
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage.hasMore) {
+        return undefined;
+      }
+      return allPages.length + 1;
+    },
+
+
     refetchInterval: 10000,
     refetchOnWindowFocus: true,
     refetchIntervalInBackground: false,
   });
 
+  const trips = data?.pages.flatMap((page) => page.trips ) || [];
+
+  const {data: selectedTrip, isLoading: selectedTripLoading } = useQuery({
+  queryKey: ["vehicle-trip", selectedVehicle?._id],
+  queryFn: async () => {
+    const res = await api.get(`/vehicle/trips/${selectedVehicle._id}`);
+    return res.data;
+  },
+  enabled: !!selectedVehicle?._id,
+  refetchInterval: 10000,
+  refetchOnWindowFocus: true,
+  refetchIntervalInBackground: false,
+});
+
+
+const lastTripElementRef = useCallback((node) => {
+    if (isLoading) return;
+    if (isFetchingNextPage) return;
+    if (!hasNextPage) return;
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+
+    observerRef.current =
+      new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting) {
+            fetchNextPage();
+          }
+        },
+
+        {
+          rootMargin: "100px"
+        }
+      );
+
+    if (node) {
+      observerRef.current.observe(node);
+    }
+  },
+
+  [
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage
+  ]
+);
+
+  
+
   // ── Data slices ────────────────────────────────────────────────────────────
-  const filteredData     = data?.filter((v) => v.tripState !== "CLOSED" && v.tripState !== "CANCELLED").sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)) || [];
-  const closedTrips      = data?.filter((v) => v.tripState === "CLOSED"  || v.tripState === "CANCELLED").sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) || [];
+  const filteredData     = trips?.filter((v) => v.tripState !== "CLOSED" && v.tripState !== "CANCELLED").sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)) || [];
+  const closedTrips      = trips?.filter((v) => v.tripState === "CLOSED"  || v.tripState === "CANCELLED").sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) || [];
   const waitingVehicles  = filteredData.filter((v) => v.destinationFactory?._id === userFactoryId && v.location === "outside_factory" && (v.tripState !== "CLOSED" || v.tripState !== "CANCELLED"));
-  const insideVehicles   = (data || []).filter((v) => v.location === "inside_factory" && v.tripState !== "CLOSED" && v.tripState !== "CANCELLED" && ((v.phase === "ORIGIN" && v.sourceFactory?._id?.toString() === userFactoryId?.toString()) || (v.phase === "DESTINATION" && v.destinationFactory?._id?.toString() === userFactoryId?.toString())));
+  const insideVehicles   = trips?.filter((v) => v.location === "inside_factory" && v.tripState !== "CLOSED" && v.tripState !== "CANCELLED" && ((v.phase === "ORIGIN" && v.sourceFactory?._id?.toString() === userFactoryId?.toString()) || (v.phase === "DESTINATION" && v.destinationFactory?._id?.toString() === userFactoryId?.toString())));
   const enrouteVehicles  = filteredData.filter((v) => v.destinationFactory?._id === userFactoryId && v.location === "enroute");
   const dispatchedVehicles = filteredData.filter((v) => v.sourceFactory?._id?.toString() === userFactoryId?.toString() && v.location === "enroute");
 
@@ -250,7 +316,7 @@ export default function VehicleDashboard() {
     if (filter === "closed")     return closedTrips;
     return allVehicles;
   })();
-
+  
   const filteredVehicles = searchQuery.trim()
     ? baseFiltered.filter((v) => { const vehicleData = v.vehicle || v.vehicleId || {}; return (vehicleData?.vehicleNumber || "").toLowerCase().includes(searchQuery.trim().toLowerCase()); })
     : baseFiltered;
@@ -375,7 +441,7 @@ export default function VehicleDashboard() {
       )}
 
       {/* ── Content ── */}
-      <div style={{ padding: "10px 20px 32px" }}>
+      <div >
         {viewMode === "grid" ? (
           isLoading ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0" }}>
@@ -387,10 +453,27 @@ export default function VehicleDashboard() {
               <div style={{ fontSize: 14, fontWeight: 600 }}>No vehicles found</div>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-              {filteredVehicles.map((v) => (
-                <VehicleCard key={v._id} vehicle={v} onClick={() => setSelectedVehicle(v)} userFactoryId={userFactoryId} factory={factory} />
-              ))}
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  padding: 12,
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fill, minmax(350px, 1fr))",
+                  gap: 12
+                }}
+              > 
+
+              {filteredVehicles.map((v, index) => {
+                const isLast = index === filteredVehicles.length - 1;
+
+                return (
+                  <div ref={isLast ? lastTripElementRef : null} key={v._id} >
+                    <VehicleCard vehicle={v} onClick={() => setSelectedVehicle(v)} userFactoryId={userFactoryId} factory={factory}  />
+                  </div>
+                );
+              })}
             </div>
           )
         ) : (
@@ -401,12 +484,29 @@ export default function VehicleDashboard() {
             onRow={(record) => ({ onClick: () => setSelectedVehicle(record), style: { cursor: "pointer" } })}
             rowClassName={() => "vehicle-table-row"}
             locale={{ emptyText: (<div style={{ padding: "40px 0", border: "1.5px dashed #e5e7eb", color: "#9ca3af", justifyContent: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}><TruckElectric color="blue" size={40} /><div style={{ fontSize: 14, fontWeight: 600 }}>No vehicles found</div></div>) }}
+            
           />
         )}
+
+        {
+          hasNextPage && (
+
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+            >
+              {
+                isFetchingNextPage
+                  ? "Loading..."
+                  : "Load More"
+              }
+            </button>
+          )
+        }
       </div>
 
       {/* ── Modals & Drawers ── */}
-      <VehicleDetailModal vehicle={selectedVehicle} onClose={() => setSelectedVehicle(null)} onRefresh={manualRefetch} userFactoryId={userFactoryId} factory={factory} userRole={userRole} />
+      <VehicleDetailModal vehicle={selectedTrip} selectedTripLoading={selectedTripLoading} onClose={() => setSelectedVehicle(null)} onRefresh={manualRefetch} userFactoryId={userFactoryId} factory={factory} userRole={userRole} />
       <CreateVehicleModal open={entryOpen} onClose={() => setEntryOpen(false)} onRefresh={manualRefetch} />
       <VehicleStatusDrawer open={vehicleDrawer} onClose={() => setVehicleDrawer(false)} />
       <VehicleDrawer refetch={manualRefetch} open={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen((prev) => !prev)} />

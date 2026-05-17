@@ -1789,6 +1789,7 @@ export const getVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId).populate("factory");
     if (!user) throw new Error("User not found");
+    const { tripId } = req.params;
 
     const factoryId = user.factory._id;
 
@@ -1796,19 +1797,27 @@ export const getVehicleTrips = async (req, res) => {
     const last36Hours = new Date(now.getTime() - 36 * 60 * 60 * 1000);
 
     const matchStage = {
+      _id: new mongoose.Types.ObjectId(tripId),
+
       $and: [
+
         {
           $or: [
             { destinationFactoryId: factoryId },
             { sourceFactoryId: factoryId }
           ]
         },
+
         {
           $or: [
             { tripState: { $nin: ["CLOSED", "CANCELLED"] } },
+
             {
               tripState: { $in: ["CLOSED", "CANCELLED"] },
-              createdAt: { $gte: last36Hours }
+
+              createdAt: {
+                $gte: last36Hours
+              }
             }
           ]
         }
@@ -2017,11 +2026,242 @@ export const getVehicleTrips = async (req, res) => {
       { $sort: { createdAt: -1 } }
     ]);
 
-   return res.json(trips);
+   return res.json(trips[0] || null);
 
   } catch (err) {
     console.error("Error fetching vehicle trips:", err);
     return res.status(400).json({ error: err.message });
+  }
+};
+
+// controllers/tripController.js
+
+export const getLiveVehicleTrips = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId)
+      .populate("factory");
+
+    if (!user || !user.factory) {
+
+      return res.status(404).json({
+        success: false,
+        message: "User factory not found"
+      });
+    }
+
+    const factoryId = user.factory._id;
+
+    // =========================
+    // DATE FILTER
+    // =========================
+
+    const now = new Date();
+    const last36Hours = new Date(
+      now.getTime() - (80 * 60 * 60 * 1000)
+    );
+
+    // =========================
+    // PAGINATION
+    // =========================
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // =========================
+    // QUERY
+    // =========================
+
+    const trips = await Trip.find({
+      $and: [
+        {
+          $or: [
+            { sourceFactoryId: factoryId },
+            { destinationFactoryId: factoryId }
+          ]
+        },
+
+        {
+          $or: [
+
+            {
+              tripState: {
+                $nin: ["CLOSED", "CANCELLED"]
+              }
+            },
+
+            {
+              tripState: {
+                $in: ["CLOSED", "CANCELLED"]
+              },
+
+              createdAt: {
+                $gte: last36Hours
+              }
+            }
+          ]
+        }
+      ]
+    })
+
+    // =========================
+    // MINIMAL LIVE CARD FIELDS
+    // =========================
+
+    .select(`
+      type
+      phase
+      location
+      status
+      tripState
+      purpose
+      reason
+      loadStatus
+      externalSource
+      externalDestination
+      materials
+      createdAt
+      startedAt
+      completedAt
+      vehicleId
+      driverId
+      sourceFactoryId
+      destinationFactoryId
+    `)
+
+    // =========================
+    // VEHICLE
+    // =========================
+
+    .populate({
+      path: "vehicleId",
+      select: `
+        vehicleNumber
+        type
+        typeOfVehicle
+      `
+    })
+
+    // =========================
+    // DRIVER
+    // =========================
+
+    .populate({
+      path: "driverId",
+      select: `
+        driverName
+        driverContact
+      `
+    })
+
+    // =========================
+    // SOURCE FACTORY
+    // =========================
+
+    .populate({
+      path: "sourceFactoryId",
+      select: `
+        name
+        location
+      `
+    })
+
+    // =========================
+    // DESTINATION FACTORY
+    // =========================
+
+    .populate({
+      path: "destinationFactoryId",
+      select: `
+        name
+        location
+      `
+    })
+    .sort({
+      createdAt: -1
+    })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+    const formattedTrips = trips.map((trip) => ({
+      _id: trip._id,
+      type: trip.type,
+      phase: trip.phase,
+      location: trip.location,
+      status: trip.status,
+      tripState: trip.tripState,
+      purpose: trip.purpose,
+      reason: trip.reason,
+      loadStatus: trip.loadStatus,
+      externalSource: trip.externalSource,
+      externalDestination: trip.externalDestination,
+      createdAt: trip.createdAt,
+      startedAt: trip.startedAt,
+      completedAt: trip.completedAt,
+      vehicle: trip.vehicleId
+        ? {
+            _id: trip.vehicleId._id,
+            vehicleNumber: trip.vehicleId.vehicleNumber,
+            vehicleType: trip.vehicleId.type,
+            typeOfVehicle: trip.vehicleId.typeOfVehicle
+          }
+        : null,
+
+      driver: trip.driverId
+        ? {
+            _id: trip.driverId._id,
+            name: trip.driverId.driverName,
+            phone: trip.driverId.driverContact
+          }
+        : null,
+
+      sourceFactory: trip.sourceFactoryId
+        ? {
+            _id: trip.sourceFactoryId._id,
+            name: trip.sourceFactoryId.name,
+            location: trip.sourceFactoryId.location
+          }
+        : null,
+
+      destinationFactory: trip.destinationFactoryId
+        ? {
+            _id: trip.destinationFactoryId._id,
+            name: trip.destinationFactoryId.name,
+            location: trip.destinationFactoryId.location
+          }
+        : null,
+
+      material: Array.isArray(trip.materials)
+        ? trip.materials[0] || null
+        : null
+    }));
+
+    // =========================
+    // RESPONSE
+    // =========================
+
+    return res.status(200).json({
+      success: true,
+      page,
+      limit,
+      count: formattedTrips.length,
+      hasMore: formattedTrips.length === limit,
+      trips: formattedTrips
+    });
+
+  } catch (err) {
+
+    console.error(
+      "Error fetching live vehicle trips:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch live vehicle trips",
+      error: err.message
+    });
   }
 };
 

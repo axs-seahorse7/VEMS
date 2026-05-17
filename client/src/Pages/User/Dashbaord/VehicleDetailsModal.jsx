@@ -11,6 +11,7 @@ import {
   Button,
   InputNumber,
   Form ,
+  Spin,
 } from "antd";
 
 const { Option } = Select;
@@ -954,7 +955,7 @@ function WorkflowActions({ vehicle, onAction, userFactoryId, userRole }) {
 }
 
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
-export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userRole }) {
+export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClose, onRefresh,  userRole }) {
   if (!vehicle) return null;
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
   const userFactoryId = user?.factory._id;
@@ -979,6 +980,16 @@ export default function VehicleDetailModal({ vehicle, onClose, onRefresh,  userR
       <div  style={{ background: "#fafafa", borderRadius: 8, padding: "4px 10px" }}>{children}</div>
     </div>
   );
+
+  if(selectedTripLoading) {
+    return (
+      <Modal open={!!vehicle} onClose={onClose} title="Loading trip details..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
+          <Spin size="large" />
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal open={!!vehicle} onClose={onClose} title={`${vehicleData?.vehicleNumber} — Vehicle Details`} width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>

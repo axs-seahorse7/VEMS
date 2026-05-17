@@ -3,7 +3,7 @@ import express from "express";
 import {isAuthenticated} from "../middleware/isAuth/isAuthenticated.js";
 import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, 
     completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination , cancelTrip, getClosedTrips,
-    changeRoute, getVehicleLiveStatus,
+    changeRoute, getVehicleLiveStatus, getLiveVehicleTrips,
 } from "../controllers/trip.contollers.js";
 const router = express.Router();
 
@@ -34,7 +34,9 @@ router.post("/trip/change-route/:tripId", changeRoute);
 
 
 
-router.get("/vehicle/trips", getVehicleTrips);
+router.get("/vehicle/trips/live", getLiveVehicleTrips);
+router.get("/vehicle/trips/:tripId", getVehicleTrips);
+
 router.get("/trip/closed/", getClosedTrips);
 router.get("/vehicle/live-status/:vehicleNumber", getVehicleLiveStatus);
 

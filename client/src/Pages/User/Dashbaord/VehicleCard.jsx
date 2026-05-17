@@ -90,7 +90,7 @@ function InfoRow({ icon, iconColor, label, value }) {
 }
 
 // ─── VehicleCard ──────────────────────────────────────────────────────────────
-export default function VehicleCard({ vehicle, onClick }) {
+export default function VehicleCard({ vehicle, onClick, setSelectedTrip }) {
   const vehicleData  = vehicle.vehicle || {};
   const location     = vehicle.location;
   const phase        = vehicle.phase;
@@ -338,9 +338,6 @@ export default function VehicleCard({ vehicle, onClick }) {
 
             </section>
 
-
-            {(user.factoryId === vehicle.sourceFactoryId ||
-              user.factoryId === vehicle.destinationFactory?._id) && (
               <Tag 
                 style={{
                   fontSize: 9, fontWeight: 700, letterSpacing:0.5
@@ -350,7 +347,6 @@ export default function VehicleCard({ vehicle, onClick }) {
                 >
                 {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
               </Tag>
-            )}
 
           </div>
 
@@ -358,7 +354,7 @@ export default function VehicleCard({ vehicle, onClick }) {
 
           {/* ── Row 3: Info rows ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" color={theme.label} label="Driver" value={vehicle?.driver?.driverName || "—"} />
+            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" color={theme.label} label="Driver" value={ ( <> {vehicle?.driver?.name}  ({vehicle?.driver?.phone}) </>) || "—"} />
             <InfoRow
               icon="ri-truck-fill" iconColor="#ea580c"
               label="Purpose"
@@ -374,12 +370,12 @@ export default function VehicleCard({ vehicle, onClick }) {
               icon="ri-box-1-line"
               iconColor="#059669"
               label="Material"
-              value={materialNames.join(", ") || "Empty"}
+              value={vehicle?.material?.name?? vehicle?.material?.material?? "Empty"}
               />
             <InfoRow
               icon="ri-attachment-2" iconColor="#7c3ae7"
               label="Seal"
-              value={vehicle?.materials[0]?.seal === "sealed"? "Sealed" : "-"}
+              value={vehicle?.material?.seal === "sealed"? "Sealed" : "-"}
             />
             <InfoRow
               icon="ri-time-line" iconColor="#7c3aed"
