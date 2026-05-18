@@ -1065,7 +1065,7 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
 
       {/* Workflow actions */}
       <div style={{ display: "flex", gap: 8, paddingTop: 12, borderTop: "1px solid #f0f0f0", marginTop: 14, flexWrap: "wrap" }}>
-        <WorkflowActions vehicle={vehicle} onAction={() => { onRefresh(); onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
+        <WorkflowActions vehicle={vehicle} onAction={() => { onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
       </div>
 
       
