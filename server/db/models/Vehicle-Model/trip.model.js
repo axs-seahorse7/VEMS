@@ -55,6 +55,8 @@ const TripSchema = new mongoose.Schema({
     index: true,
   },
 
+ 
+
   externalSource: String,   // for external deliveries
   externalDestination: String, // for external deliveries
 
@@ -100,6 +102,8 @@ const TripSchema = new mongoose.Schema({
   materials: [materialSchema],
 
   startedAt: Date,
+  arrivedAt: Date, 
+  checkedInAt: Date, 
   completedAt: Date,
   createdBy: String ,
 
@@ -107,6 +111,8 @@ const TripSchema = new mongoose.Schema({
     status: String,
     location: String,
     Phase: String,
+    actionBy: String,
+    actionLocation: String,
     factoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
     action:{
       type: String,
@@ -127,11 +133,7 @@ const TripSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 
-TripSchema.index(
-  {
-    vehicleId: 1
-  },
-  {
+TripSchema.index({vehicleId: 1},{
     unique: true,
     partialFilterExpression: {
       tripState: {

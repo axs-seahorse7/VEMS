@@ -178,7 +178,7 @@ const SUPPLIERS = [
   { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" }
 ];
 
-export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal }) {
+export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal, onConfirmLoadMaterialAndNewTrip }) {
   const [open, setOpen]       = useState(false);
   const [trip, setTrip]       = useState(null);
   const [step, setStep]       = useState("select");    // "select" | "internal" | "external"
@@ -223,7 +223,7 @@ export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal }) {
 /* ═══════════════════════════════════════════════════════════════
    ChangeRouteModal — the actual modal component
 ═══════════════════════════════════════════════════════════════ */
-export default function ChangeRouteModal({open, trip, step, setStep, selected, setSelected, onClose, onConfirmInternal, onConfirmExternal}) {
+export default function ChangeRouteModal({open, trip, step, setStep, selected, setSelected, onClose, onConfirmInternal, onConfirmExternal, onConfirmLoadMaterialAndNewTrip}) {
   const isInternal = step === "internal";
   const isExternal = step === "external";
   const inSelectStep = step === "select";

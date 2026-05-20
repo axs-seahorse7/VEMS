@@ -661,7 +661,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
     if (externalForm.isInternalShifting && !externalForm.destinationFactoryId) e.destinationFactoryId = "Required";
     if (externalForm.purpose !== "Pickup") {
       if (externalForm.materialType === "RM" && !externalForm.supplier)   e.supplier = "Required";
-      if (["RM","FG","Scrap","NewMachines","Others"].includes(externalForm.materialType) && !externalForm.material) e.material = "Required";
+      if (["RM", "Scrap","NewMachines","Others"].includes(externalForm.materialType) && !externalForm.material) e.material = "Required";
       if (externalForm.materialType === "FG" && !externalForm.customer)   e.customer = "Required";
     }
     const fmtErr = getFormatErrors(externalForm);

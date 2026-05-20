@@ -12,7 +12,6 @@ import DriverTripHistory from "../db/models/Driver-model/driverStats.model.js";
 
 
 
-
 export const getActiveTrip = async (req, res) => {
   try {
     const { vehicleNumber } = req.params;
@@ -169,7 +168,7 @@ const assignDriverToTrip = async ({
   );
 
 };
-
+ 
 
 export const externalVehicleRegister = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
@@ -312,6 +311,8 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
             status: isInternalShifting? "ORIGIN": "ARRIVED",
             location: isInternalShifting? "inside_factory": "outside_factory",
             phase: isInternalShifting? "ORIGIN": "DESTINATION",
+            actionBy: user?.email || "system",
+            actionLocation: user?.workLocation,
             factoryId: isInternalShifting? req.body.sourceFactoryId: user.factory._id || null,
             action: "begin",
             timestamp: new Date(),
@@ -379,16 +380,12 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
       } = req.body;
 
       console.log("Internal Vehicle Register Payload:", req.body);
-      // ========================
-      // 1. VALIDATION
-      // ========================
+      
       if (!vehicleNumber || !driverIdNumber) {
         throw new AppError(" vehicleNumber and driverIdNumber are required", 400);
       }
 
-      // ========================
-      // 2. USER
-      // ========================
+      
       const user = await User.findById(req.userId)
         .populate("factory")
         .session(session);
@@ -397,9 +394,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         throw new AppError("Please login to continue", 400);
       }
 
-      // ========================
-      // 3. VEHICLE (UPSERT)
-      // ========================
+     
       const vehicle = await Vehicle.findOneAndUpdate(
         {
           vehicleNumber
@@ -418,9 +413,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         }
       );
 
-      // ========================
-      // 4. DRIVER (UPSERT)
-      // ========================
+      
       const driver = await Driver.findOneAndUpdate(
         {
           $or: [
@@ -444,9 +437,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         }
       );
 
-      // ========================
-      // 5. VEHICLE CHECK
-      // ========================
+     
       const existingTrip = await Trip.findOne({
         vehicleId: vehicle._id,
         tripState: {
@@ -458,9 +449,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         throw new AppError("Vehicle already on a trip", 400);
       }
 
-      // ========================
-      // 6. CREATE TRIP
-      // ========================
+  
       const tripPayload = {
         vehicleId: vehicle._id,
         driverId: driver._id,
@@ -492,9 +481,11 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         tripHistory: [
           {
             status: "ORIGIN",
-            phase: "ORIGIN",
-            factoryId: user.factory?._id || null,
             location: "inside_factory",
+            phase: "ORIGIN",
+            actionBy: user?.email || "system",
+            actionLocation: user?.workLocation,
+            factoryId: user.factory?._id || null,
             action: "begin",
             timestamp: new Date(),
             segment: {
@@ -529,7 +520,8 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
 
       responseData = {
         success: true,
-        trip: newTrip
+        trip: newTrip,
+        message: `New internal Trip for ${vehicle.vehicleNumber} has been created.`
       };
 
     });
@@ -543,20 +535,19 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
 });
 
 export const checkinVehicle = asyncHandler( async (req, res) => {
-
   const session = await mongoose.startSession();
   let responseData = null;
   try {
-
     let updatedTrip = null;
 
     await session.withTransaction(async () => {
-
       const { tripId } = req.params;
 
-      // ========================
-      // FETCH TRIP
-      // ========================
+      const user = await User.findById(req.userId).populate("factory").session(session);
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
+
       const trip = await Trip.findById(tripId)
         .session(session);
 
@@ -581,13 +572,15 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
           tripId,
           {
             location: "inside_factory",
-            completedAt: new Date(),
+            checkedInAt: new Date(),
             tripState: "ACTIVE",
             $push: {
               tripHistory: {
                 status: trip.status,
                 location: "inside_factory",
                 phase: "DESTINATION",
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
                 factoryId: trip.destinationFactoryId || null,
                 action: "checkin",
                 timestamp: new Date(),
@@ -696,6 +689,8 @@ export const unloadTrip = async (req, res) => {
                 status: trip.status,
                 location: trip.location,
                 phase: "DESTINATION",
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
                 factoryId: trip.destinationFactoryId || user.factory._id || null,
                 action: "unload",
                 timestamp: new Date(),
@@ -739,9 +734,12 @@ export const completeTrip = asyncHandler( async (req, res) => {
     await session.withTransaction(async () => {
       const { tripId } = req.params;
 
-      // ========================
-      // FETCH TRIP
-      // ========================
+      const user = await User.findById(req.userId).populate("factory").session(session);
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
+
+      
       const trip = await Trip.findById(tripId)
         .session(session);
 
@@ -782,6 +780,8 @@ export const completeTrip = asyncHandler( async (req, res) => {
                 status: trip.status,
                 location: trip.location,
                 phase: "DESTINATION",
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
                 factoryId:trip.destinationFactoryId || null,
                 action: "complete",
                 timestamp: new Date(),
@@ -831,13 +831,15 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
     const { tripId } = req.params;
     const trip = await Trip.findById(tripId);
 
+    const user = await User.findById(req.userId).populate("factory");
+    if (!user) {
+      throw new AppError("Please login to continue", 400);
+    }
+
     if (!trip) {
       throw new AppError("Trip not found", 404);
     }
 
-    // ========================
-    // VALIDATION
-    // ========================
     if (trip.tripState === "CLOSED") {
       throw new AppError("Trip already closed", 400);
     }
@@ -859,22 +861,20 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
             tripHistory: {
               status: "IN_TRANSIT",
               location: "enroute",
-              factoryId:trip.sourceFactoryId || null,
               phase: "DESTINATION",
+              actionBy: user?.email || "system",
+              actionLocation: user?.workLocation,
+              factoryId:trip.sourceFactoryId || null,
               action: "checkout",
               timestamp: new Date(),
               segment: {
                 movementType:
-                  trip.type ===
-                  "internal_transfer"
-                    ? "internal"
-                    : "external",
-
-                externalSource:trip.externalSource,
-                externalDestination:trip.externalDestination,
-                sourceFactoryId:trip.sourceFactoryId,
-                destinationFactoryId:trip.destinationFactoryId,
-                startedAt:trip.startedAt
+                  trip.type === "internal_transfer" ? "internal" : "external",
+                  externalSource:trip.externalSource,
+                  externalDestination:trip.externalDestination,
+                  sourceFactoryId:trip.sourceFactoryId,
+                  destinationFactoryId:trip.destinationFactoryId,
+                  startedAt:trip.startedAt,
               }
             }
           }
@@ -916,9 +916,12 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
 
       const { tripId } = req.params;
 
-      // ========================
-      // FETCH TRIP
-      // ========================
+      const user = await User.findById(req.userId).populate("factory").session(session);
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
+
+
       const trip = await Trip.findById(tripId)
         .session(session);
 
@@ -954,26 +957,18 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
               tripHistory: {
                 status: "DESTINATION",
                 location: "outside_factory",
-                factoryId:trip.destinationFactoryId || null,
                 phase: "DESTINATION",
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
+                factoryId:trip.destinationFactoryId || null,
                 action: "closed",
                 timestamp: now,
                 segment: {
-                  movementType:
-                    trip.type ===
-                    "internal_transfer"
-                      ? "internal"
-                      : "external",
-
+                  movementType: trip.type ==="internal_transfer" ? "internal" : "external",
                   externalSource: null,
                   externalDestination:trip.externalDestination ?? null,
                   sourceFactoryId:trip.sourceFactoryId ?? null,
-                  destinationFactoryId:
-                    trip.type ===
-                    "internal_transfer"
-                      ? trip.destinationFactoryId
-                      : null,
-
+                  destinationFactoryId: trip.type === "internal_transfer"? trip.destinationFactoryId : null,
                   startedAt:trip.startedAt,
                   completedAt: now,
                 }
@@ -1075,9 +1070,11 @@ export const markArrived = asyncHandler( async (req, res) => {
   try { 
     const { tripId } = req.params;
 
-    // ========================
-    // FETCH TRIP
-    // ========================
+    const user = await User.findById(req.userId).populate("factory");
+    if (!user) {
+      throw new AppError("Please login to continue", 400);
+    }
+
     const trip = await Trip.findById(tripId);
 
     if (!trip) {
@@ -1103,47 +1100,26 @@ export const markArrived = asyncHandler( async (req, res) => {
         tripId,
         {
           location: "outside_factory",
-
           status: "ARRIVED",
-
           phase: "DESTINATION",
-
+          arrivedAt: new Date(), 
           $push: {
             tripHistory: {
               status: "ARRIVED",
-
               location: "outside_factory",
-
-              factoryId:
-                trip.destinationFactoryId || null,
-
               phase: "DESTINATION",
-
+              actionBy: user?.email || "system",
+              actionLocation: user?.workLocation,
+              factoryId: trip.destinationFactoryId || null,
               action: "arrive",
-
               timestamp: new Date(),
-
               segment: {
-                movementType:
-                  trip.type ===
-                  "internal_transfer"
-                    ? "internal"
-                    : "external",
-
-                externalSource:
-                  trip.externalSource,
-
-                externalDestination:
-                  trip.externalDestination,
-
-                sourceFactoryId:
-                  trip.sourceFactoryId,
-
-                destinationFactoryId:
-                  trip.destinationFactoryId,
-
-                startedAt:
-                  trip.startedAt
+                movementType:trip.type === "internal_transfer" ? "internal" : "external",
+                externalSource: trip.externalSource,
+                externalDestination: trip.externalDestination,
+                sourceFactoryId: trip.sourceFactoryId,
+                destinationFactoryId: trip.destinationFactoryId,
+                startedAt: trip.startedAt
               }
             }
           }
@@ -1158,9 +1134,7 @@ export const markArrived = asyncHandler( async (req, res) => {
     // ========================
     return res.status(200).json({
       success: true,
-
       trip: updatedTrip,
-
       message:
         "Vehicle marked as arrived successfully"
     });
@@ -1186,6 +1160,12 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
     let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
+
+      const user = await User.findById(req.userId).populate("factory").session(session);
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
+
       const trip = await Trip.findById(tripId)
         .session(session);
 
@@ -1221,44 +1201,25 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
           tripId,
           {
             tripState: "CLOSED",
-
             status: "DESTINATION",
-
             completedAt: now,
-
             $push: {
               tripHistory: {
                 status: "DESTINATION",
-
-                location: trip.location,
-
                 phase: "DESTINATION",
-
-                factoryId:
-                  trip.destinationFactoryId || null,
-
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
+                location: trip.location,
+                factoryId: trip.destinationFactoryId || null,
                 action: "closed",
-
                 timestamp: now,
-
                 segment: {
                   movementType: "internal",
-
-                  externalSource:
-                    trip.externalSource,
-
-                  externalDestination:
-                    trip.externalDestination,
-
-                  sourceFactoryId:
-                    trip.sourceFactoryId,
-
-                  destinationFactoryId:
-                    trip.destinationFactoryId,
-
-                  startedAt:
-                    trip.startedAt,
-
+                  externalSource: trip.externalSource,
+                  externalDestination: trip.externalDestination,
+                  sourceFactoryId: trip.sourceFactoryId,
+                  destinationFactoryId: trip.destinationFactoryId,
+                  startedAt: trip.startedAt,
                   completedAt: now
                 }
               }
@@ -1352,6 +1313,11 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
       const { tripId } = req.params;
       const { tripDetails } = req.body;
 
+      const user = await User.findById(req.userId).populate("factory").session(session);
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
+
       if (
         !tripDetails ||
         !tripDetails.material ||
@@ -1388,7 +1354,7 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
               loadStatus: "loaded",
               materials: [
                 {
-                  name: tripDetails?.materialType?? currentTrip.materials[0]?.name ?? "",
+                  name: tripDetails?.materialType?? "",
                   material: tripDetails?.material?? "",
                   quantity: tripDetails.quantity,
                   invoiceNo: tripDetails.invoiceNo,
@@ -1405,6 +1371,8 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
                 status: existingTrip.status,
                 location: existingTrip.location,
                 phase: "DESTINATION",
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
                 factoryId: existingTrip.destinationFactoryId || null,
                 action: "load",
                 timestamp: new Date(),
@@ -1474,8 +1442,13 @@ export const cancelTrip = asyncHandler( async (req, res) => {
     await session.withTransaction(async () => {
       const { tripId } = req.params;
       const {reason} = req.body;
-      const user = await User.findById(req.userId)
+
+      const user = await User.findById(req.userId).populate("factory")
         .session(session);
+
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
 
       const trip = await Trip.findById(tripId)
         .session(session);
@@ -1484,9 +1457,6 @@ export const cancelTrip = asyncHandler( async (req, res) => {
         throw new AppError("Trip not found", 400);
       }
 
-      // ========================
-      // VALIDATION
-      // ========================
       if (
         ["COMPLETED", "CLOSED", "CANCELLED"]
           .includes(trip.tripState)
@@ -1496,9 +1466,7 @@ export const cancelTrip = asyncHandler( async (req, res) => {
 
       const now = new Date();
 
-      // ========================
-      // CANCEL TRIP
-      // ========================
+      
       updatedTrip =
         await Trip.findByIdAndUpdate(
           tripId,
@@ -1511,6 +1479,8 @@ export const cancelTrip = asyncHandler( async (req, res) => {
                 status: "CANCELLED",
                 location: trip.location,
                 phase: trip.phase,
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
                 factoryId: user?.factory || null,
                 action: "cancelled",
                 timestamp: now,
@@ -1594,15 +1564,10 @@ export const changeRoute = asyncHandler( async (req, res) => {
     let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
-      const {
-        newDestinationFactoryId,
-        customer,
-        type
-      } = req.body;
 
-      // ========================
-      // USER
-      // ========================
+      const {newDestinationFactoryId, customer, type } = req.body;
+
+      
       const user = await User.findById(req.userId)
         .populate("factory")
         .session(session);
@@ -1613,9 +1578,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         );
       }
 
-      // ========================
-      // TRIP
-      // ========================
+  
       const trip = await Trip.findById(tripId)
         .session(session);
 
@@ -1623,15 +1586,13 @@ export const changeRoute = asyncHandler( async (req, res) => {
         throw new AppError("Trip not found.");
       }
 
-      // ========================
-      // VALIDATION
-      // ========================
+     
       if (
         ["CLOSED", "CANCELLED"]
           .includes(trip.tripState)
       ) {
         throw new AppError(
-          "Cannot change route of a closed or cancelled trip"
+          "Cannot change route of a closed or cancelled trip", 400
         );
       }
 
@@ -1640,7 +1601,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         !newDestinationFactoryId
       ) {
         throw new AppError(
-          "New destination factory is required for internal transfer"
+          "New destination factory is required for internal transfer", 400
         );
       }
 
@@ -1649,7 +1610,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         !customer
       ) {
         throw new AppError(
-          "Customer is required for external movement"
+          "Customer is required for external movement", 400
         );
       }
 
@@ -1662,7 +1623,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         String(newDestinationFactoryId)
       ) {
         throw new AppError(
-          "Vehicle is already at this factory."
+          "Vehicle is already at this factory.", 400
         );
       }
 
@@ -1687,28 +1648,14 @@ export const changeRoute = asyncHandler( async (req, res) => {
       // ========================
       const segmentData = {
         movementType: type,
-        externalDestination:
-          type === "internal"
-            ? null
-            : customer,
-
-        sourceFactoryId:
-          trip.destinationFactoryId,
-
-        destinationFactoryId:
-          type === "internal"
-            ? newDestinationFactoryId
-            : null,
-
-        startedAt:
-          trip.startedAt,
-
+        externalDestination:type === "internal"? null : customer,
+        sourceFactoryId: trip.destinationFactoryId,
+        destinationFactoryId: type === "internal" ? newDestinationFactoryId : null,
+        startedAt: trip.startedAt,
         completedAt: now
       };
 
-      // ========================
-      // UPDATE TRIP
-      // ========================
+      
       updatedTrip =
         await Trip.findByIdAndUpdate(
           tripId,
@@ -1718,6 +1665,8 @@ export const changeRoute = asyncHandler( async (req, res) => {
               tripHistory: {
                 status: "ROUTE_CHANGED",
                 phase: "ROUTE_UPDATE",
+                actionBy: user?.email || "system",
+                actionLocation: user?.workLocation,
                 location: trip.location || null,
                 factoryId: user.factory._id,
                 action: "route_change",
@@ -1748,7 +1697,225 @@ export const changeRoute = asyncHandler( async (req, res) => {
 
 });
 
-// This endpoint is designed to fetch all relevant trips for a factory, including:
+export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+  let responseData = null;
+
+  try {
+    await session.withTransaction(async () => {
+
+      const { tripId } = req.params;
+      const { newTripDetails } = req.body;
+
+     
+
+      const user = await User.findById(req.userId)
+        .populate("factory")
+        .session(session);
+
+      if (!user) {
+        throw new AppError("Please login to continue", 400);
+      }
+
+      if(user?.factory?._id?.toString() === newTripDetails?.newDestinationFactoryId?.toString()){
+        throw new AppError(
+          "You cannot select your current factory as Destination",
+          400
+        );
+      }
+
+       if(newTripDetails){
+        console.log("New Trip Details:", newTripDetails);
+        console.log("user factory", user.factory._id)
+      //  return res.status(400).json({
+      //     success: false,
+      //     message: "Cheking trip details in console. "
+      //   });
+      }
+
+      const currentTrip = await Trip.findById(tripId).session(session);
+
+      if (!currentTrip) {
+        throw new AppError("Trip not found", 404);
+      }
+
+      // Prevent duplicate operations
+      if (currentTrip.tripState === "COMPLETED") {
+        throw new AppError("Trip already completed", 400);
+      }
+
+      if (currentTrip.location !== "inside_factory") {
+        throw new AppError(
+          "Vehicle must be inside factory to load material",
+          400
+        );
+      }
+
+      
+
+      // CLOSE CURRENT TRIP
+      const updatedTrip = await Trip.findOneAndUpdate(
+        {
+          _id: tripId,
+          loadStatus: "unloaded",
+          tripState: { $nin: ["CLOSED", "CANCELLED"] }
+        },
+        {
+          $set: {
+            tripState: "CLOSED",
+            completedAt: new Date(),
+          },
+          $push: {
+            tripHistory: {
+              status: currentTrip.status,
+              location: currentTrip.location,
+              phase: "DESTINATION",
+              actionBy: user?.email || "system",
+              actionLocation: user?.workLocation,
+              factoryId: user.factory._id,
+              action: "closed",
+              timestamp: new Date(),
+              segment: {
+                movementType: currentTrip.type === "internal_transfer" ? "internal" : "external",
+                externalSource: currentTrip.externalSource,
+                externalDestination: currentTrip.externalDestination,
+                sourceFactoryId: currentTrip.sourceFactoryId,
+                destinationFactoryId: currentTrip.destinationFactoryId,
+                startedAt: currentTrip.startedAt,
+                completedAt: new Date()
+              }
+            }
+            
+          }
+        },
+        {
+          new: true,
+          session
+        }
+      );
+
+      if (!updatedTrip) {
+        throw new AppError(
+          "Trip already closed or not loaded yet, cannot proceed",
+          400
+        );
+      }
+
+
+      
+
+      // CREATE NEW TRIP
+      const newTrip = await Trip.create(
+        [
+          {
+            ...newTripDetails,
+            type: newTripDetails.shipmentType === "internal" ? "internal_transfer" : "external_delivery",
+            purpose: "Delivery",
+            phase: "ORIGIN",
+            location: "inside_factory",
+            status: "ORIGIN",
+            tripState: "ACTIVE",
+            loadStatus: "pending",
+
+            sourceFactoryId: user.factory._id,
+            vehicleId: currentTrip.vehicleId,
+            driverId: currentTrip.driverId,
+            currentFactoryId: user.factory._id,
+            destinationFactoryId: newTripDetails.shipmentType === "internal" ? newTripDetails.newDestinationFactoryId : undefined,
+            externalDestination: newTripDetails.shipmentType === "external" ? newTripDetails.externalDestination : undefined,
+            materials:[
+              {
+                name: newTripDetails.materialType ?? currentTrip.materials[0]?.name ?? "",
+                material: newTripDetails.material ?? "",
+                quantity: newTripDetails.quantity?? 0,
+                invoiceNo: newTripDetails.invoiceNo ?? "",
+                invoiceAmount: newTripDetails.invoiceAmount ?? 0,
+                customer: newTripDetails.customer || "",
+                supplier: newTripDetails.supplier || null,
+                seal: newTripDetails.seal || "sealed",
+              }
+            ],
+
+            tripHistory: [
+              {
+                status: "ORIGIN",
+                location: "inside_factory",
+                phase: "ORIGIN",
+                actionBy: user?.email,
+                actionLocation:user.workLocation,
+                factoryId: user.factory._id,
+                action: "begin",
+                timestamp: new Date(),
+                segment: {
+                  movementType: newTripDetails.shipmentType === "internal" ? "internal" : "external",
+                  externalSource: newTripDetails.shipmentType !== "internal" ? user.factory.name : null,
+                  externalDestination: newTripDetails.shipmentType !== "internal" ? newTripDetails.newDestinationFactoryId : null,
+                  sourceFactoryId: newTripDetails.shipmentType === "internal" ? user.factory._id : null,
+                  destinationFactoryId: newTripDetails.shipmentType === "internal" ? newTripDetails.newDestinationFactoryId : null,
+                  startedAt: new Date() 
+                }
+              }
+            ],
+
+        }
+        ],
+        { session }
+      );
+
+      const driverUpdate = {};
+      if (currentTrip.driverId) {
+        driverUpdate.activeTripId = newTrip[0]._id;
+      }
+      await Driver.findByIdAndUpdate(
+        currentTrip.driverId,
+        {
+          $set: driverUpdate
+        },
+        {
+          session
+        }
+      );
+
+      await Vehicle.findByIdAndUpdate(
+        currentTrip.vehicleId,
+        {
+          currentTrip: newTrip[0]._id
+        },
+        {
+          session
+        }
+      );
+
+
+      responseData = {
+        success: true,
+        trip: updatedTrip,
+        newTrip: newTrip[0],
+        message: "Material loaded, current trip closed, and new trip created successfully"
+      };
+    });
+
+  } catch (err) {
+    console.error(
+      "Error in loadMaterialAndNewtrip:",
+      err
+    );
+    
+    throw new AppError(err.message, 500);
+    
+  } finally {
+    session.endSession();
+  }
+  return res.status(200).json(responseData);
+});
+
+
+
+
+// ========================
+// GET VEHICLE TRIPS
+// ========================
+
 export const getVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId).populate("factory");
@@ -1855,6 +2022,7 @@ export const getVehicleTrips = async (req, res) => {
         }
       },
 
+      
       {
         $lookup: {
           from: "factories",
@@ -1992,8 +2160,6 @@ export const getVehicleTrips = async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 };
-
-// controllers/tripController.js
 
 export const getLiveVehicleTrips = async (req, res) => {
   try {
