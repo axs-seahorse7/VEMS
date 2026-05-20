@@ -130,19 +130,22 @@ export default function LoginPage() {
     if (!password) return setError("Password is required.");
     setLoading(true);
     try {
-      const response = await api.post("/auth/login", { email, password });
-      if (response.data.success) {
+        const response = await api.post("/auth/login", {
+          email,
+          password,
+        });
+
         setMaskedEmail(maskEmail(email));
         setStep(2);
-      } else {
-        setError(response.data.message || "Login failed. Please check your credentials and try again.");
-        message.error(response.data.message || "Login failed. Please check your credentials and try again.");
-      }
-    } catch (error) {
-      setError(error.response?.data?.message || "Login failed. Please check your credentials and try again.");
-      message.error(error.response?.data?.message || "Network error. Please try again.");
-      setError("Network error. Please try again.");
-    } finally {
+
+      } catch (error) {
+        const errMsg =
+          error.response?.data?.message ||
+          "Login failed";
+
+        setError(errMsg);
+        message.error(errMsg);
+      } finally {
       setLoading(false);
     }
   };
