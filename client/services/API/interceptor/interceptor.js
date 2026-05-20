@@ -11,17 +11,26 @@ export const setupInterceptors = () => {
   );
 
   // Response
-  api.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      const status = error.response?.status;
+ api.interceptors.response.use(
+  (response) => response,
 
-      if (status === 401) {
-        console.warn("🔒 Not authenticated");
-        window.location.href = "/login";
-      }
+  (error) => {
+    const status = error.response?.status;
+    const currentPath = window.location.pathname;
 
-      return Promise.reject(error);
+    // Only redirect for protected routes
+    if (
+      status === 401 &&
+      currentPath !== "/login"
+    ) {
+      console.warn("🔒 Session expired");
+
+      localStorage.removeItem("user");
+
+      window.location.href = "/login";
     }
-  );
+
+    return Promise.reject(error);
+  }
+);
 };
