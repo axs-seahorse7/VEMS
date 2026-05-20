@@ -47,7 +47,6 @@ app.use(cookieParser());
 app.use(cors(corsOptions));
 app.use(e.json());
 
-app.use(isAuthenticated)
 app.use(helmet());
 app.use(globalLimiter);
 
