@@ -47,7 +47,6 @@ app.use(cookieParser());
 app.use(cors(corsOptions));
 app.use(e.json());
 
-app.use(isAuthenticated)
 app.use(helmet());
 app.use(globalLimiter);
 
@@ -58,20 +57,20 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (req, res) => {
- return res.send("Welcome to the Vehicle Management System API");
+  return res.send("Welcome to the Vehicle Management System API");
 });
 
 app.get("/api/health", (req, res) => {
- return res.json({ status: "ok" });
+  return res.json({ status: "ok" });
 });
 
 
 
 // app.use((req, res, next) => {
-
-//   console.log({
-//     ip: req.ip,
-//     method: req.method,
+  
+  //   console.log({
+    //     ip: req.ip,
+    //     method: req.method,
 //     url: req.url,
 //     userAgent: req.headers["user-agent"],
 //     xForwardedFor: req.headers["x-forwarded-for"]
@@ -81,6 +80,9 @@ app.get("/api/health", (req, res) => {
 // });
 
 app.use("/api/auth", authRoutes)
+
+
+app.use(isAuthenticated)
 app.use("/api", userRoutes)
 app.use("/api", indexRoutes)
 app.use("/api", vehicleRoutes)

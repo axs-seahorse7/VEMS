@@ -4,8 +4,8 @@ import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
 
 const router = e.Router()
 
-router.get("/me", isAuthenticated, getMe);
 router.post("/login", loginUser);
+router.get("/me", isAuthenticated, getMe);
 router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
 router.post("/logout", isAuthenticated, logoutUser);
