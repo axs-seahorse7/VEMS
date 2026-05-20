@@ -3,19 +3,58 @@ import Driver from "../db/models/Driver-model/driver.model.js";
 // GET /vehicles
 export const getAllVehicles = async (req, res) => {
   try {
-    const { type, typeOfVehicle, isActive, factoryId } = req.query;
+    const {
+      type,
+      typeOfVehicle,
+      isActive,
+      factoryId,
+      search,
+      page  = 1,
+      limit = 20,
+    } = req.query;
+
     const filter = {};
 
-    if (type) filter.type = type;
-    if (typeOfVehicle) filter.typeOfVehicle = typeOfVehicle;
+    if (type)            filter.type          = type;
+    if (typeOfVehicle)   filter.typeOfVehicle = typeOfVehicle;
     if (isActive !== undefined) filter.isActive = isActive === "true";
-    if (factoryId) filter.ownerFactoryId = factoryId;
+    if (factoryId)       filter.ownerFactoryId = factoryId;
 
-    const vehicles = await Vehicle.find(filter)
-      .populate("ownerFactoryId", "name location")
-      .sort({ createdAt: -1 });
+    // Real-time search across key fields
+    if (search && search.trim()) {
+      const re = new RegExp(search.trim(), "i");
+      filter.$or = [
+        { vehicleNumber:   re },
+        { driverName:      re },
+        { driverContact:   re },
+        { transporterName: re },
+        { driverIdNumber:  re },
+      ];
+    }
 
-   return res.status(200).json(vehicles);
+    const pageNum  = Math.max(1, parseInt(page,  10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [vehicles, total] = await Promise.all([
+      Vehicle.find(filter)
+        .populate("ownerFactoryId", "name location")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Vehicle.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      vehicles,
+      pagination: {
+        total,
+        page:     pageNum,
+        limit:    limitNum,
+        pages:    Math.ceil(total / limitNum),
+        hasMore:  pageNum * limitNum < total,
+      },
+    });
   } catch (err) {
     return res.status(500).json({ message: "Failed to fetch vehicles", error: err.message });
   }

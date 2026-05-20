@@ -12,7 +12,14 @@ import {
   checkOut,
   markArrived,
 } from "../controllers/index.controllers.js";
-import { createFactory, getFactoryById, getFactories } from "../controllers/factory.contoller.js";
+import {
+    createFactory,
+    getFactories,
+    getFactoryById,
+    updateFactory,
+    toggleFactoryStatus,
+    deleteFactory,
+} from "../controllers/factory.contoller.js";
 import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
 
 const router = express.Router();
@@ -40,8 +47,14 @@ router.delete("/entry/:id",                   isAuthenticated, deleteEntry);
 router.get("/entry/:id/history",              isAuthenticated, getVanHistory);
 
 // ── Factory ───────────────────────────────────────────────────────────────────
-router.post("/factory",                       isAuthenticated, createFactory);
-router.get("/factory/:id",                    isAuthenticated, getFactoryById);
-router.get("/factories",                      isAuthenticated, getFactories);
+router.post  ("/factory",                isAuthenticated, createFactory);
+router.put   ("/factory/:id",            isAuthenticated, updateFactory);
+router.patch ("/factory/:id/status",     isAuthenticated, toggleFactoryStatus);
+router.delete("/factory/:id",            isAuthenticated, deleteFactory);
+
+
+router.get   ("/factory/:id",            isAuthenticated, getFactoryById);
+router.get   ("/factories",              isAuthenticated, getFactories);
+
 
 export default router;

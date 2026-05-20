@@ -45,11 +45,10 @@ export const loginUser = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ success: false, message: "Email and password are required" });
     }
-
     // Check user
     const user = await User.findOne({ email }).populate("factory", "name location");
     if (!user) {
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
+      return res.status(401).json({ success: false, message: "User not registered" });
     }
 
     console.log("User found for login:", { email: user.email, id: user._id });
@@ -102,7 +101,7 @@ export const verifyOtp = async (req, res) => {
 
     // Check existence
     if (!record) {
-      return res.status(400).json({ success: false, message: " OTP not Matched. Please login again." });
+      return res.status(400).json({ success: false, message: " OTP not Matched. Please resend and continue" });
     }
 
     // Check expiry

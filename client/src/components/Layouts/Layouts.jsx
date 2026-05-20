@@ -138,6 +138,8 @@ function SidebarItem({ item, activePage, onNavigate, collapsed }) {
     setOpen((p) => !p);
   };
 
+  const user = JSON.parse(localStorage.getItem("user"));
+
   return (
     <div>
       <button
@@ -245,6 +247,8 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
     }
   };
 
+  const user = JSON.parse(localStorage.getItem("user"));
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "'Geist', 'DM Sans', 'Segoe UI', sans-serif", background: COLORS.pageBg }}>
       <style>{`
@@ -279,7 +283,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
           </div>
           {!collapsed && (
             <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: -.3 }}>VanTrack</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: -.3 }}>VEMS</div>
               <div style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 500 }}>Admin Console</div>
             </div>
           )}
@@ -354,8 +358,8 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
                   <span style={{ width: 14, height: 14, display: "flex" }}>{Icons.user}</span>
                 </div>
                 <div style={{ textAlign: "left" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111" }}>System Admin</div>
-                  <div style={{ fontSize: 10.5, color: "#9ca3af" }}>admin@vantrack.in</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111" }}>{user?.name}</div>
+                  <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{user?.email}</div>
                 </div>
                 <span style={{ width: 13, height: 13, display: "flex", color: "#9ca3af" }}>{Icons.chevronDown}</span>
               </button>
@@ -370,7 +374,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
                   }}>
                     <div style={{ padding: "8px 12px 10px", borderBottom: "1px solid #f0f0f0", marginBottom: 6 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>System Admin</div>
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>admin@vantrack.in</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{user?.email}</div>
                     </div>
                     <button onClick={()=> handleSignOut()} style={{
                       width: "100%", background: "#fef2f2", border: "none", borderRadius: 8,

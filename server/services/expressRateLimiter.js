@@ -1,11 +1,9 @@
 import rateLimit from "express-rate-limit";
+import {ipKeyGenerator } from "express-rate-limit";
 
 export const globalLimiter = rateLimit({
-
-  windowMs: 15 * 60 * 1000, // 15 min
-
-  max: 1000,
-
+  windowMs: 1 * 60 * 1000, // 1 min
+  max: 5000,
   standardHeaders: true,
 
   legacyHeaders: false,
@@ -16,8 +14,12 @@ export const globalLimiter = rateLimit({
       "Too many requests. Please try again later."
   },
 
-   handler: (req, res) => {
+  keyGenerator: (req) => {
+    console.log("LIMIT USER:", req.userId, "ip:", req.ip, "url:", req.originalUrl);
+    return req.userId || ipKeyGenerator(req);
+  },
 
+   handler: (req, res) => {
     console.log(
       "RATE LIMITED:",
       req.ip,
@@ -33,10 +35,8 @@ export const globalLimiter = rateLimit({
 });
 
 export const authLimiter = rateLimit({
-
-  windowMs: 10 * 60 * 1000,
-
-  max: 5,
+  windowMs: 1 * 60 * 1000,
+  max: 120,
 
   message: {
     success: false,
@@ -58,7 +58,7 @@ export const apiLimiter = rateLimit({
 
 export const heavyLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 10,
+  max: 100,
   message: {
     success: false,
     message:

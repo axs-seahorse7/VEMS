@@ -1,17 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import api from "../../../../../services/API/Api/api";
-import {message} from "antd";
-import { useEffect } from "react";
-
-// ── Seed data (mirrors your User schema) ─────────────────────────────────────
-const SEED_USERS = [
-  { _id: "u1", name: "Arjun Sharma", email: "arjun@vantrack.in", role: "Gate Operator", isSystemAdmin: false, factoryLocation: "NGM", workLocation: "atGate", status: "active", createdAt: "2024-11-01T09:00:00Z" },
-  { _id: "u2", name: "Priya Kulkarni", email: "priya@vantrack.in", role: "Pickup Supervisor", isSystemAdmin: false, factoryLocation: "PGTL", workLocation: "pickupSite", status: "active", createdAt: "2024-12-10T10:30:00Z" },
-  { _id: "u3", name: "Rohit Desai", email: "rohit@vantrack.in", role: "Drop Officer", isSystemAdmin: false, factoryLocation: "NGM", workLocation: "dropSite", status: "blocked", createdAt: "2025-01-05T08:00:00Z" },
-  { _id: "u4", name: "System Admin", email: "admin@vantrack.in", role: "System Admin", isSystemAdmin: true, factoryLocation: "NGM", workLocation: "atGate", status: "active", createdAt: "2024-09-01T07:00:00Z" },
-  { _id: "u5", name: "Meena Patil", email: "meena@vantrack.in", role: "Gate Operator", isSystemAdmin: false, factoryLocation: "PGTL", workLocation: "atGate", status: "active", createdAt: "2025-02-14T11:00:00Z" },
-  { _id: "u6", name: "Kiran Jadhav", email: "kiran@vantrack.in", role: "Pickup Supervisor", isSystemAdmin: false, factoryLocation: "NGM", workLocation: "pickupSite", status: "inactive", createdAt: "2025-03-01T09:45:00Z" },
-];
+import { message } from "antd";
 
 const ROLES = [
   { id: "r1", name: "System Admin", permissions: ["all"] },
@@ -20,16 +9,17 @@ const ROLES = [
   { id: "r4", name: "Drop Officer", permissions: ["van:read", "van:drop"] },
 ];
 
-const fmtDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const fmtDate = (d) =>
+  new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
 // ── Shared UI atoms ───────────────────────────────────────────────────────────
 const Badge = ({ children, color }) => {
   const map = {
-    active: { bg: "#dcfce7", c: "#15803d" },
-    blocked: { bg: "#fef2f2", c: "#dc2626" },
+    active:   { bg: "#dcfce7", c: "#15803d" },
+    blocked:  { bg: "#fef2f2", c: "#dc2626" },
     inactive: { bg: "#f3f4f6", c: "#6b7280" },
-    admin: { bg: "#ede9fe", c: "#6366f1" },
-    default: { bg: "#f0f9ff", c: "#0369a1" },
+    admin:    { bg: "#ede9fe", c: "#6366f1" },
+    default:  { bg: "#f0f9ff", c: "#0369a1" },
   };
   const s = map[color] || map.default;
   return (
@@ -42,15 +32,18 @@ const Badge = ({ children, color }) => {
 const Modal = ({ open, onClose, title, children, width = 520 }) => {
   if (!open) return null;
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.4)",
-      backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-    }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.4)",
+        backdropFilter: "blur(3px)", display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 20,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div style={{
         background: "#fff", borderRadius: 18, width: "100%", maxWidth: width,
         maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column",
-        boxShadow: "0 25px 80px rgba(0,0,0,0.22)",
-        animation: "mu-fadeUp .2s ease",
+        boxShadow: "0 25px 80px rgba(0,0,0,0.22)", animation: "mu-fadeUp .2s ease",
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 16px", borderBottom: "1px solid #f0f0f0" }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#111" }}>{title}</h3>
@@ -62,7 +55,6 @@ const Modal = ({ open, onClose, title, children, width = 520 }) => {
   );
 };
 
-// ── Input helper ──────────────────────────────────────────────────────────────
 const Field = ({ label, children }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
     <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{label}</label>
@@ -70,133 +62,174 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-const inp = (val, set, type = "text", placeholder = "") => (
-  <input type={type} value={val} onChange={(e) => set(e.target.value)} placeholder={placeholder} style={{
-    border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "9px 12px",
-    fontSize: 13.5, color: "#111", background: "#fff", outline: "none", width: "100%",
-    fontFamily: "inherit",
-  }} />
+const inputStyle = {
+  border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "9px 12px",
+  fontSize: 13.5, color: "#111", background: "#fff", outline: "none",
+  width: "100%", fontFamily: "inherit", boxSizing: "border-box",
+};
+
+const selectStyle = {
+  ...inputStyle, cursor: "pointer",
+};
+
+const Inp = ({ value, onChange, type = "text", placeholder = "" }) => (
+  <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
+    placeholder={placeholder} style={inputStyle} />
 );
 
-const sel = (val, set, options) => (
-  <select
-    value={val || ""}   // ✅ important
-    onChange={(e) => {
-      console.log("Selected:", e.target.value); // debug
-      set(e.target.value);
-    }}
-    style={{
-      border: "1.5px solid #e5e7eb",
-      borderRadius: 8,
-      padding: "9px 12px",
-      fontSize: 13.5,
-      color: "#111",
-      background: "#fff",
-      outline: "none",
-      cursor: "pointer",
-      fontFamily: "inherit",
-    }}
-  >
-    <option value="">Select Factory</option> {/* ✅ important */}
-    {options.map((o) => (
-      <option key={o.v} value={o.v}>
-        {o.l}
-      </option>
-    ))}
+const Sel = ({ value, onChange, options, placeholder = "Select…" }) => (
+  <select value={value || ""} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
+    <option value="" disabled>{placeholder}</option>
+    {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
   </select>
 );
 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 function CreateUserModal({ open, onClose, onSave, factories }) {
-  console.log("Factories:", factories);
-  const blank = { name: "", email: "", password: "", factory:null, factoryLocation: "NGM", workLocation: "atGate", isSystemAdmin: false };
+  const blank = { name: "", email: "", password: "", factory: "", workLocation: "atGate", status: "active" };
   const [form, setForm] = useState(blank);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const handleSubmit = async () => {
-        if (!form.name || !form.email || !form.password || !form.factory) return message.error("Please fill all required fields");
-        const payload = {
-          ...form,
-          factory: form.factory || undefined
-        };
-        try {await api.post("/auth/register", payload);
-            onSave({ ...form, _id: "u" + Date.now(), status: "active", createdAt: new Date().toISOString() });
-            message.success("User created successfully");
-            onClose();
-            setForm(blank);
-        } catch (error) {
-            // console.error("Error creating user:", error);
-            message.error("Failed to create user");
-        }
-    };
+    if (!form.name || !form.email || !form.password || !form.factory)
+      return message.error("Please fill all required fields");
+    try {
+      await api.post("/auth/register", form);
+      onSave({ ...form, _id: "u" + Date.now(), status: "active", createdAt: new Date().toISOString() });
+      message.success("User created successfully");
+      onClose();
+      setForm(blank);
+    } catch {
+      message.error("Failed to create user");
+    }
+  };
 
   return (
     <Modal open={open} onClose={() => { onClose(); setForm(blank); }} title="Create New User" width={560}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field label="Full Name">{inp(form.name, (v) => set("name", v), "text", "Enter full name")}</Field>
-        <Field label="Email">{inp(form.email, (v) => set("email", v), "email", "Enter email")}</Field>
-        <Field label="Password">{inp(form.password, (v) => set("password", v), "password", "Enter password")}</Field>
-        <Field label="Factory">{
-          sel(form.factory, (v) => set("factory", v), factories.map((f) => ({ v: f._id, l: f.name })))}
+        <Field label="Full Name *">
+          <Inp value={form.name} onChange={(v) => set("name", v)} placeholder="Enter full name" />
         </Field>
-        <Field label="Work Location">{sel(form.workLocation, (v) => set("workLocation", v), [
-          { v: "atGate", l: "Security Gate" }, { v: "storeSite", l: "Store Site" }, { v: "dispatchSite", l: "Dispatch Site" }
-        ])}</Field>
-        <Field label="Status">{sel(form.status, (v) => set("status", v), [{ v: "active", l: "Active" }, { v: "inactive", l: "Inactive" }])}</Field>
+        <Field label="Email *">
+          <Inp value={form.email} onChange={(v) => set("email", v)} type="email" placeholder="Enter email" />
+        </Field>
+        <Field label="Password *">
+          <Inp value={form.password} onChange={(v) => set("password", v)} type="password" placeholder="Enter password" />
+        </Field>
+        <Field label="Factory *">
+          <Sel value={form.factory} onChange={(v) => set("factory", v)}
+            options={factories.map((f) => ({ v: f._id, l: f.name }))} placeholder="Select Factory" />
+        </Field>
+        <Field label="Work Location">
+          <Sel value={form.workLocation} onChange={(v) => set("workLocation", v)} options={[
+            { v: "atGate", l: "Security Gate" },
+            { v: "storeSite", l: "Store Site" },
+            { v: "dispatchSite", l: "Dispatch Site" },
+            { v: "pickupSite", l: "Pickup Site" },
+          ]} />
+        </Field>
+        <Field label="Status">
+          <Sel value={form.status} onChange={(v) => set("status", v)} options={[
+            { v: "active", l: "Active" },
+            { v: "inactive", l: "Inactive" },
+          ]} />
+        </Field>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
-        <button onClick={handleSubmit} style={{
-          background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff", border: "none",
-          borderRadius: 9, padding: "10px 22px", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
-        }}>Create User</button>
-        <button onClick={() => { onClose(); setForm(blank); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", color: "#374151" }}>Cancel</button>
+        <button onClick={handleSubmit} style={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff", border: "none", borderRadius: 9, padding: "10px 22px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+          Create User
+        </button>
+        <button onClick={() => { onClose(); setForm(blank); }} style={{ background: "#f3f4f6", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", color: "#374151" }}>
+          Cancel
+        </button>
       </div>
     </Modal>
   );
 }
 
 // ── Edit User Modal ───────────────────────────────────────────────────────────
-function EditUserModal({ user, onClose, onSave }) {
-  const [form, setForm] = useState(user || {});
+function EditUserModal({ user, onClose, onSave, factories }) {
+  const [form, setForm] = useState({});
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // Sync form when a different user is opened
+  useEffect(() => {
+    if (user) {
+      setForm({
+        ...user,
+        // factory may be a populated object; keep _id for the select
+        factory: user.factory?._id || user.factory || "",
+      });
+    }
+  }, [user]);
+
+  const handleSave = () => {
+    onSave({ ...form, factory: form.factory });
+    onClose();
+  };
 
   return (
     <Modal open={!!user} onClose={onClose} title={`Edit — ${user?.name}`} width={540}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field label="Full Name">{inp(form.name, (v) => set("name", v))}</Field>
-        <Field label="Email">{inp(form.email, (v) => set("email", v), "email")}</Field>
-        <Field label="Role">{sel(form.role, (v) => set("role", v), ROLES.map((r) => ({ v: r.name, l: r.name })))}</Field>
-        <Field label="Factory Location">{sel(form.factoryLocation, (v) => set("factoryLocation", v), [{ v: "NGM", l: "NGM" }, { v: "PGTL", l: "PGTL" }])}</Field>
-        <Field label="Work Location" >{sel(form.workLocation, (v) => set("workLocation", v), [
-          { v: "atGate", l: "Security Gate" }, { v: "storeSite", l: "Store Site" }, { v: "dispatchSite", l: "Dispatch Site" }, { v: "pickupSite", l: "Pickup Site" }
-        ])}</Field>
-        <Field label="Status">{sel(form.status, (v) => set("status", v), [{ v: "active", l: "Active" }, { v: "blocked", l: "Blocked" }, { v: "inactive", l: "Inactive" }])}</Field>
+        <Field label="Full Name">
+          <Inp value={form.name || ""} onChange={(v) => set("name", v)} />
+        </Field>
+        <Field label="Email">
+          <Inp value={form.email || ""} onChange={(v) => set("email", v)} type="email" />
+        </Field>
+        <Field label="Factory">
+          <Sel value={form.factory || ""} onChange={(v) => set("factory", v)}
+            options={factories.map((f) => ({ v: f._id, l: f.name }))} placeholder="Select Factory" />
+        </Field>
+        <Field label="Work Location">
+          <Sel value={form.workLocation || ""} onChange={(v) => set("workLocation", v)} options={[
+            { v: "atGate", l: "Security Gate" },
+            { v: "storeSite", l: "Store Site" },
+            { v: "dispatchSite", l: "Dispatch Site" },
+            { v: "pickupSite", l: "Pickup Site" },
+          ]} />
+        </Field>
+        <Field label="Status">
+          <Sel value={form.status || ""} onChange={(v) => set("status", v)} options={[
+            { v: "active", l: "Active" },
+            { v: "inactive", l: "Inactive" },
+          ]} />
+        </Field>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
-        <button onClick={() => { onSave(form); onClose(); }} style={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff", border: "none", borderRadius: 9, padding: "10px 22px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Save Changes</button>
-        <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", color: "#374151" }}>Cancel</button>
+        <button onClick={handleSave} style={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff", border: "none", borderRadius: 9, padding: "10px 22px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+          Save Changes
+        </button>
+        <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", color: "#374151" }}>
+          Cancel
+        </button>
       </div>
     </Modal>
   );
 }
 
 // ── Confirm Modal ─────────────────────────────────────────────────────────────
-function ConfirmModal({ open, onClose, onConfirm, title, message, danger }) {
+function ConfirmModal({ open, onClose, onConfirm, title, message: msg, danger }) {
   return (
     <Modal open={open} onClose={onClose} title={title} width={420}>
-      <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, margin: "0 0 20px" }}>{message}</p>
+      <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, margin: "0 0 20px" }}>{msg}</p>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={() => { onConfirm(); onClose(); }} style={{
           background: danger ? "#dc2626" : "linear-gradient(135deg,#6366f1,#4f46e5)",
-          color: "#fff", border: "none", borderRadius: 9, padding: "10px 22px", fontWeight: 700, fontSize: 13.5, cursor: "pointer"
-        }}>{danger ? "Yes, Delete" : "Confirm"}</button>
-        <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", color: "#374151" }}>Cancel</button>
+          color: "#fff", border: "none", borderRadius: 9, padding: "10px 22px",
+          fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+        }}>
+          {danger ? "Yes, Delete" : "Confirm"}
+        </button>
+        <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", color: "#374151" }}>
+          Cancel
+        </button>
       </div>
     </Modal>
   );
 }
 
-// ── User Detail Drawer ────────────────────────────────────────────────────────
+// ── User Detail Modal ─────────────────────────────────────────────────────────
 function UserDetail({ user, onClose }) {
   if (!user) return null;
   const Detail = ({ label, value }) => (
@@ -205,33 +238,30 @@ function UserDetail({ user, onClose }) {
       <span style={{ fontSize: 13.5, fontWeight: 600, color: "#111" }}>{value || "—"}</span>
     </div>
   );
+  const workLabelMap = { atGate: "Security Gate", storeSite: "Store Site", dispatchSite: "Dispatch Site", pickupSite: "Pickup Site" };
   return (
     <Modal open={!!user} onClose={onClose} title="User Details">
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22, paddingBottom: 18, borderBottom: "1px solid #f0f0f0" }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: "50%",
-          background: "linear-gradient(135deg,#6366f1,#818cf8)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontSize: 20, fontWeight: 800,
-        }}>{user.name[0]}</div>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#818cf8)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 20, fontWeight: 800 }}>
+          {user.name[0]}
+        </div>
         <div>
           <div style={{ fontSize: 17, fontWeight: 800, color: "#111" }}>{user.name}</div>
           <div style={{ fontSize: 13, color: "#6b7280" }}>{user.email}</div>
           <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-            <Badge color={user.status}>{user.status}</Badge>
+            <Badge color={user.isBlocked ? "blocked" : user.status}>{user.isBlocked ? "blocked" : user.status}</Badge>
             {user.isSystemAdmin && <Badge color="admin">System Admin</Badge>}
           </div>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Detail label="Factory" value={user.factory?.name || "Not assigned"} />
-        <Detail label="Work Location" value={{ atGate: "Security Gate", storeSite: "Store Site", dispatchSite: "Dispatch Site", pickupSite: "Pickup Site" }[user.workLocation]} />
+        <Detail label="Work Location" value={workLabelMap[user.workLocation]} />
         <Detail label="Member Since" value={fmtDate(user.createdAt)} />
       </div>
     </Modal>
   );
 }
-
 
 // ── Roles Page ────────────────────────────────────────────────────────────────
 function RolesPage() {
@@ -261,8 +291,9 @@ function RolesPage() {
 }
 
 // ── Users List Page ───────────────────────────────────────────────────────────
-function UsersList({ onCreateClick }) {
+function UsersList() {
   const [users, setUsers] = useState([]);
+  const [factories, setFactories] = useState([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFactory, setFilterFactory] = useState("all");
@@ -272,28 +303,89 @@ function UsersList({ onCreateClick }) {
   const [blockUser, setBlockUser] = useState(null);
   const [resetUser, setResetUser] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [factories, setFactories] = useState([]);
-  console.log(users);
+
+  // ── Data fetching ───────────────────────────────────────────────────────────
+  const fetchUsers = async () => {
+    try {
+      const res = await api.get("/users");
+      setUsers(res.data.users);
+    } catch {
+      message.error("Failed to fetch users");
+    }
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  useEffect(() => {
+    api.get("/factories")
+      .then((res) => setFactories(res.data.factories))
+      .catch(() => message.error("Failed to fetch factories"));
+  }, []);
+
+  // ── Filters ─────────────────────────────────────────────────────────────────
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
-    const matchStatus = filterStatus === "all" || u.status === filterStatus;
-    const matchFactory = filterFactory === "all" || u.factoryLocation === filterFactory;
-    return  matchStatus && matchFactory;
+    const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    const matchStatus = filterStatus === "all" || u.status === filterStatus || (filterStatus === "blocked" && u.isBlocked);
+    const matchFactory = filterFactory === "all" || u.factory?.name === filterFactory || u.factory?._id === filterFactory;
+    return matchSearch && matchStatus && matchFactory;
   });
 
-  const toggleBlock = (id) => {
-    setUsers((p) => p.map((u) => u._id === id ? { ...u, status: u.status === "blocked" ? "active" : "blocked" } : u));
-  };
-  const deleteU = (id) => setUsers((p) => p.filter((u) => u._id !== id));
-  const saveEdit = (updated) => setUsers((p) => p.map((u) => u._id === updated._id ? updated : u));
-  const createUser = (u) => setUsers((p) => [...p, u]);
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
+  // Create: just prepend the new user (or refetch)
+  const handleCreate = (newUser) => {
+    setUsers((p) => [newUser, ...p]);
+    fetchUsers(); // refetch to get populated factory
+  };
+
+  // Update: call API, replace in local state
+  const handleUpdateUser = async (form) => {
+    try {
+      const payload = {
+        name: form.name,
+        email: form.email,
+        factoryLocation: form.factoryLocation,
+        workLocation: form.workLocation,
+        factory: form.factory || null,
+        status: form.status,
+      };
+      const res = await api.put(`/user/${form._id}`, payload);
+      setUsers((p) => p.map((u) => u._id === form._id ? res.data.user : u));
+      message.success("User updated successfully");
+    } catch {
+      message.error("Failed to update user");
+    }
+  };
+
+  // Soft delete: call API, remove from local state
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/user/${id}`);
+      setUsers((p) => p.filter((u) => u._id !== id));
+      message.success("User deleted successfully");
+    } catch {
+      message.error("Failed to delete user");
+    }
+  };
+
+  // Block/Unblock: call API, update local state
+  const handleToggleBlock = async (user) => {
+    try {
+      const res = await api.patch(`/user/${user._id}/block`);
+      setUsers((p) => p.map((u) => u._id === user._id ? res.data.user : u));
+      message.success(res.data.message);
+    } catch {
+      message.error("Failed to update block status");
+    }
+  };
+
+  // ── Stats ───────────────────────────────────────────────────────────────────
   const statsBar = [
-    { label: "Total", value: users.length, color: "#6366f1" },
-    { label: "Active", value: users.filter(u => u.status === "active").length, color: "#15803d" },
-    { label: "Blocked", value: users.filter(u => u.status === "blocked").length, color: "#dc2626" },
+    { label: "Total",    value: users.length,                                     color: "#6366f1" },
+    { label: "Active",   value: users.filter(u => u.status === "active" && !u.isBlocked).length, color: "#15803d" },
+    { label: "Blocked",  value: users.filter(u => u.isBlocked).length,            color: "#dc2626" },
     { label: "Inactive", value: users.filter(u => u.status === "inactive").length, color: "#6b7280" },
-    { label: "Admins", value: users.filter(u => u.isSystemAdmin).length, color: "#7c3aed" },
   ];
 
   const ActionBtn = ({ label, color, bg, onClick }) => (
@@ -303,46 +395,7 @@ function UsersList({ onCreateClick }) {
     }}>{label}</button>
   );
 
-  const getUsers = () => {
-    try {
-        api.get("/users").then((res) => {
-            setUsers(res.data.users);
-        }).catch((err) => {            
-            console.error("Error fetching users:", err);
-            message.error("Failed to fetch users");
-        });
-    } catch (error) {        
-        console.error("Error fetching users:", error);
-        message.error("Failed to fetch users");
-    }
-  };
-
-  useEffect (() => {
-    getUsers();
-  }, []);
-
-  useEffect(() => {
-    api.get("/factories").then((res) => {
-      setFactories(res.data.factories);
-    }).catch((err) => {
-      console.error("Error fetching factories:", err);
-      message.error("Failed to fetch factories");
-    }
-    );
-  }, []);
-
-  const handleDelete = async (id) => {
-    try {      
-      await api.delete(`/user/${id}`);
-      deleteU(id);
-      message.success("User deleted successfully");
-    } catch (error) {      
-      console.error("Error deleting user:", error);
-      message.error("Failed to delete user");
-    }
-  };
-
-
+  const workLabelMap = { atGate: "At Gate", storeSite: "Store Site", dispatchSite: "Dispatch Site", pickupSite: "Pickup Site" };
 
   return (
     <>
@@ -355,22 +408,16 @@ function UsersList({ onCreateClick }) {
           <p style={{ fontSize: 13.5, color: "#6b7280", margin: 0 }}>Manage all operator accounts and access control.</p>
         </div>
         <button onClick={() => setCreateOpen(true)} style={{
-          background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff",
-          border: "none", borderRadius: 10, padding: "10px 20px",
-          fontWeight: 700, fontSize: 13.5, cursor: "pointer",
-          display: "flex", alignItems: "center", gap: 7,
-          boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
+          background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff", border: "none",
+          borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 7, boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
         }}>＋ Create User</button>
       </div>
 
       {/* Stats */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
         {statsBar.map((s) => (
-          <div key={s.label} style={{
-            background: "#fff", borderRadius: 12, padding: "14px 20px",
-            border: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 10, flex: "1 1 100px",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.05)"
-          }}>
+          <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "14px 20px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 10, flex: "1 1 100px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
             <span style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</span>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: "#6b7280" }}>{s.label}</span>
           </div>
@@ -379,18 +426,17 @@ function UsersList({ onCreateClick }) {
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍  Search name, email, role…" style={{
-          border: "1.5px solid #e5e7eb", borderRadius: 9, padding: "8px 14px",
-          fontSize: 13.5, color: "#111", background: "#fff", outline: "none", flex: "1 1 200px",
-          fontFamily: "inherit", minWidth: 180,
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍  Search name or email…" style={{
+          border: "1.5px solid #e5e7eb", borderRadius: 9, padding: "8px 14px", fontSize: 13.5,
+          color: "#111", background: "#fff", outline: "none", flex: "1 1 200px", fontFamily: "inherit", minWidth: 180,
         }} />
         {[["all", "All Status"], ["active", "Active"], ["blocked", "Blocked"], ["inactive", "Inactive"]].map(([v, l]) => (
           <button key={v} onClick={() => setFilterStatus(v)} style={{
             border: filterStatus === v ? "1.5px solid #6366f1" : "1.5px solid #e5e7eb",
             background: filterStatus === v ? "#ede9fe" : "#fff",
             color: filterStatus === v ? "#6366f1" : "#374151",
-            borderRadius: 8, padding: "7px 14px", fontSize: 12.5, fontWeight: filterStatus === v ? 700 : 500,
-            cursor: "pointer", fontFamily: "inherit",
+            borderRadius: 8, padding: "7px 14px", fontSize: 12.5,
+            fontWeight: filterStatus === v ? 700 : 500, cursor: "pointer", fontFamily: "inherit",
           }}>{l}</button>
         ))}
         <select value={filterFactory} onChange={(e) => setFilterFactory(e.target.value)} style={{
@@ -398,9 +444,7 @@ function UsersList({ onCreateClick }) {
           fontSize: 12.5, color: "#374151", background: "#fff", cursor: "pointer", fontFamily: "inherit",
         }}>
           <option value="all">All Factories</option>
-          {factories.map((f) => (
-            <option key={f._id} value={f.name}>{f.name}</option>
-          ))}
+          {factories.map((f) => <option key={f._id} value={f._id}>{f.name}</option>)}
         </select>
       </div>
 
@@ -409,50 +453,45 @@ function UsersList({ onCreateClick }) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["User", "Role", "Factory", "Work Location", "Status", "Joined", "Actions"].map((h) => (
+              {["User", "Factory", "Work Location", "Status", "Joined", "Actions"].map((h) => (
                 <th key={h} style={{ padding: "11px 16px", textAlign: "left", fontSize: 11.5, fontWeight: 700, color: "#6b7280", letterSpacing: .5, textTransform: "uppercase", borderBottom: "1px solid #f0f0f0", whiteSpace: "nowrap" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: "40px 20px", color: "#9ca3af", fontSize: 14 }}>No users found</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: "40px 20px", color: "#9ca3af", fontSize: 14 }}>No users found</td></tr>
             ) : filtered.map((u) => (
               <tr key={u._id} style={{ cursor: "pointer", borderBottom: "1px solid #f5f5f5" }}
-                onMouseEnter={(e) => { Array.from(e.currentTarget.cells).forEach(c => c.style.background = "#f8f9ff"); }}
-                onMouseLeave={(e) => { Array.from(e.currentTarget.cells).forEach(c => c.style.background = ""); }}
+                onMouseEnter={(e) => Array.from(e.currentTarget.cells).forEach(c => c.style.background = "#f8f9ff")}
+                onMouseLeave={(e) => Array.from(e.currentTarget.cells).forEach(c => c.style.background = "")}
                 onClick={() => setSelectedUser(u)}>
                 <td style={{ padding: "12px 16px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{
-                      width: 34, height: 34, borderRadius: "50%",
-                      background: u.isSystemAdmin ? "linear-gradient(135deg,#6366f1,#818cf8)" : "linear-gradient(135deg,#e0e7ff,#c7d2fe)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      color: u.isSystemAdmin ? "#fff" : "#6366f1", fontWeight: 800, fontSize: 14, flexShrink: 0,
-                    }}>{u.name[0]}</div>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#e0e7ff,#c7d2fe)", display: "flex", alignItems: "center", justifyContent: "center", color: "#6366f1", fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
+                      {u.name[0]}
+                    </div>
                     <div>
                       <div style={{ fontSize: 13.5, fontWeight: 700, color: "#111" }}>{u.name}</div>
                       <div style={{ fontSize: 11.5, color: "#9ca3af" }}>{u.email}</div>
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{u.role}</span>
-                  {u.isSystemAdmin && <div><Badge color="admin">Admin</Badge></div>}
-                </td>
                 <td style={{ padding: "12px 16px", fontSize: 13, color: "#374151", fontWeight: 600 }}>{u.factory?.name || "Not Assigned"}</td>
-                <td style={{ padding: "12px 16px", fontSize: 12.5, color: "#6b7280" }}>
-                  {{ atGate: "At Gate", pickupSite: "Pickup Site", dropSite: "Drop Site" }[u.workLocation]}
+                <td style={{ padding: "12px 16px", fontSize: 12.5, color: "#6b7280" }}>{workLabelMap[u.workLocation] || u.workLocation}</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <Badge color={u.isBlocked ? "blocked" : u.status}>
+                    {u.isBlocked ? "blocked" : u.status}
+                  </Badge>
                 </td>
-                <td style={{ padding: "12px 16px" }}><Badge color={u.status}>{u.status}</Badge></td>
                 <td style={{ padding: "12px 16px", fontSize: 12, color: "#9ca3af" }}>{fmtDate(u.createdAt)}</td>
                 <td style={{ padding: "12px 16px" }}>
                   <div style={{ display: "flex", gap: 5, flexWrap: "nowrap" }}>
                     <ActionBtn label="Edit" color="#6366f1" bg="#ede9fe" onClick={() => setEditUser(u)} />
                     <ActionBtn
-                      label={u.status === "blocked" ? "Unblock" : "Block"}
-                      color={u.status === "blocked" ? "#15803d" : "#92400e"}
-                      bg={u.status === "blocked" ? "#dcfce7" : "#fef9c3"}
+                      label={u.isBlocked ? "Unblock" : "Block"}
+                      color={u.isBlocked ? "#15803d" : "#92400e"}
+                      bg={u.isBlocked ? "#dcfce7" : "#fef9c3"}
                       onClick={() => setBlockUser(u)}
                     />
                     <ActionBtn label="Reset PW" color="#0369a1" bg="#e0f2fe" onClick={() => setResetUser(u)} />
@@ -472,8 +511,21 @@ function UsersList({ onCreateClick }) {
 
       {/* Modals */}
       <UserDetail user={selectedUser} onClose={() => setSelectedUser(null)} />
-      <EditUserModal user={editUser} onClose={() => setEditUser(null)} onSave={saveEdit} />
-      <CreateUserModal factories={factories} open={createOpen} onClose={() => setCreateOpen(false)} onSave={createUser} />
+
+      <CreateUserModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSave={handleCreate}
+        factories={factories}
+      />
+
+      <EditUserModal
+        user={editUser}
+        onClose={() => setEditUser(null)}
+        onSave={handleUpdateUser}
+        factories={factories}
+      />
+
       <ConfirmModal
         open={!!deleteUser} onClose={() => setDeleteUser(null)}
         onConfirm={() => handleDelete(deleteUser._id)}
@@ -481,14 +533,18 @@ function UsersList({ onCreateClick }) {
         message={`Are you sure you want to permanently delete "${deleteUser?.name}"? This action cannot be undone.`}
         danger
       />
+
       <ConfirmModal
         open={!!blockUser} onClose={() => setBlockUser(null)}
-        onConfirm={() => toggleBlock(blockUser._id)}
-        title={blockUser?.status === "blocked" ? "Unblock User" : "Block User"}
-        message={blockUser?.status === "blocked"
-          ? `Unblock "${blockUser?.name}"? They will regain access to the system.`
-          : `Block "${blockUser?.name}"? They won't be able to log in until unblocked.`}
+        onConfirm={() => handleToggleBlock(blockUser)}
+        title={blockUser?.isBlocked ? "Unblock User" : "Block User"}
+        message={
+          blockUser?.isBlocked
+            ? `Unblock "${blockUser?.name}"? They will regain access to the system.`
+            : `Block "${blockUser?.name}"? They won't be able to log in until unblocked.`
+        }
       />
+
       <ConfirmModal
         open={!!resetUser} onClose={() => setResetUser(null)}
         onConfirm={() => {}}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import api from "../../../../../services/API/Api/api"; // adjust path as needed
 
 const VEHICLE_TYPES = [
@@ -17,53 +17,164 @@ const VEHICLE_TYPES = [
 
 const OWNERSHIP_TYPES = ["internal", "external"];
 
-const typeIcon = Object.fromEntries(VEHICLE_TYPES.map(t => [t.v, t.icon]));
+const typeIcon  = Object.fromEntries(VEHICLE_TYPES.map(t => [t.v, t.icon]));
 const typeLabel = Object.fromEntries(VEHICLE_TYPES.map(t => [t.v, t.l]));
 
+const LIMIT = 20;
+
 const defaultForm = {
-  vehicleNumber:  "",
-  type:           "internal",
-  typeOfVehicle:  "truck",
-  ownerFactoryId: "",
-  driverName:     "",
-  driverContact:  "",
-  transporterName:"",
-  driverIdNumber: "",
-  PUCExpiry:      "",
-  isActive:       true,
+  vehicleNumber:   "",
+  type:            "internal",
+  typeOfVehicle:   "truck",
+  ownerFactoryId:  "",
+  driverName:      "",
+  driverContact:   "",
+  transporterName: "",
+  driverIdNumber:  "",
+  PUCExpiry:       "",
+  isActive:        true,
 };
 
 export default function ManageVehicles() {
-  const [vehicles,        setVehicles]        = useState([]);
-  const [factories,       setFactories]       = useState([]);
-  const [loading,         setLoading]         = useState(true);
-  const [formOpen,        setFormOpen]        = useState(false);
-  const [editingVehicle,  setEditingVehicle]  = useState(null);
-  const [form,            setForm]            = useState(defaultForm);
-  const [submitting,      setSubmitting]      = useState(false);
-  const [error,           setError]           = useState("");
-  const [success,         setSuccess]         = useState("");
+  // ── vehicle list state ──
+  const [vehicles,   setVehicles]   = useState([]);
+  const [page,       setPage]       = useState(1);
+  const [hasMore,    setHasMore]    = useState(true);
+  const [listLoading,setListLoading]= useState(false);
+  const [initLoading,setInitLoading]= useState(true);
+
+  // ── stats (total counts independent of current page) ──
+  const [stats, setStats] = useState({ total:0, active:0, internal:0, external:0, pucExpiring:0 });
+
+  // ── factories ──
+  const [factories, setFactories] = useState([]);
+
+  // ── filters ──
   const [search,          setSearch]          = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType,      setFilterType]      = useState("all");
   const [filterOwnership, setFilterOwnership] = useState("all");
 
-  useEffect(() => { fetchAll(); }, []);
+  // ── form / modal ──
+  const [formOpen,       setFormOpen]       = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState(null);
+  const [form,           setForm]           = useState(defaultForm);
+  const [submitting,     setSubmitting]     = useState(false);
+  const [error,          setError]          = useState("");
+  const [success,        setSuccess]        = useState("");
 
-  const fetchAll = async () => {
-    setLoading(true);
+  // ── sentinel ref for IntersectionObserver ──
+  const sentinelRef = useRef(null);
+  const observerRef = useRef(null);
+
+  // ── Debounce search input (300 ms) ──
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // ── Whenever filters change, reset list and reload from page 1 ──
+  useEffect(() => {
+    setVehicles([]);
+    setPage(1);
+    setHasMore(true);
+  }, [debouncedSearch, filterType, filterOwnership]);
+
+  // ── Fetch a page of vehicles ──
+  const fetchVehicles = useCallback(async (pageNum) => {
+    if (listLoading) return;
+    setListLoading(true);
     try {
-      const [vRes, fRes] = await Promise.all([
-        api.get("/vehicles"),
-        api.get("/factories"),
-      ]);
-      setVehicles(vRes.data);
-      setFactories(fRes.data.factories);
+      const params = {
+        page:  pageNum,
+        limit: LIMIT,
+        ...(debouncedSearch   ? { search:        debouncedSearch }   : {}),
+        ...(filterType        !== "all" ? { typeOfVehicle: filterType }        : {}),
+        ...(filterOwnership   !== "all" ? { type:          filterOwnership }   : {}),
+      };
+      const res = await api.get("/vehicles", { params });
+      const { vehicles: incoming, pagination } = res.data;
+      setVehicles(prev => pageNum === 1 ? incoming : [...prev, ...incoming]);
+      setHasMore(pagination.hasMore);
+      if (pageNum === 1) setInitLoading(false);
     } catch {
-      setError("Failed to load data.");
+      setError("Failed to load vehicles.");
+      setInitLoading(false);
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
+  }, [debouncedSearch, filterType, filterOwnership]); // eslint-disable-line
+
+  // ── Trigger fetch when page changes ──
+  useEffect(() => {
+    fetchVehicles(page);
+  }, [page, fetchVehicles]);
+
+  // ── Fetch stats + factories once on mount ──
+  useEffect(() => {
+    const fetchMeta = async () => {
+      try {
+        const [fRes, allRes] = await Promise.all([
+          api.get("/factories"),
+          api.get("/vehicles", { params: { limit: 1 } }), // just for total
+        ]);
+        setFactories(fRes.data.factories);
+        // fetch each ownership count for stats bar
+        const [actRes, intRes, extRes, pucRes] = await Promise.all([
+          api.get("/vehicles", { params: { isActive: true,     limit: 1 } }),
+          api.get("/vehicles", { params: { type: "internal",   limit: 1 } }),
+          api.get("/vehicles", { params: { type: "external",   limit: 1 } }),
+          api.get("/vehicles", { params: { limit: 1000 } }),      // for PUC calc
+        ]);
+        const allVehicles = pucRes.data.vehicles;
+        const pucExpiring = allVehicles.filter(v => {
+          if (!v.PUCExpiry) return false;
+          const d = Math.ceil((new Date(v.PUCExpiry) - Date.now()) / 86400000);
+          return d >= 0 && d <= 30;
+        }).length;
+        setStats({
+          total:       allRes.data.pagination.total,
+          active:      actRes.data.pagination.total,
+          internal:    intRes.data.pagination.total,
+          external:    extRes.data.pagination.total,
+          pucExpiring,
+        });
+      } catch { /* stats are non-critical */ }
+    };
+    fetchMeta();
+  }, []);
+
+  // ── IntersectionObserver for infinite scroll ──
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !listLoading) {
+          setPage(prev => prev + 1);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    if (sentinelRef.current) observerRef.current.observe(sentinelRef.current);
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, listLoading]);
+
+  // ── Helpers ──
+  const getFactoryName = (id) => {
+    if (!id) return "—";
+    const f = factories.find(f => f._id === (id?._id || id));
+    return f ? f.name : "Unknown";
   };
+
+  const pucStatus = (expiry) => {
+    if (!expiry) return { label: "—", color: "#9ca3af", bg: "#f3f4f6" };
+    const days = Math.ceil((new Date(expiry) - Date.now()) / 86400000);
+    if (days < 0)   return { label: "Expired",       color: "#dc2626", bg: "#fef2f2" };
+    if (days <= 30) return { label: `${days}d left`, color: "#d97706", bg: "#fef3c7" };
+    return               { label: "Valid",            color: "#16a34a", bg: "#dcfce7" };
+  };
+
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const openCreate = () => {
     setEditingVehicle(null);
@@ -83,7 +194,6 @@ export default function ManageVehicles() {
       driverContact:   v.driverContact   || "",
       transporterName: v.transporterName || "",
       driverIdNumber:  v.driverIdNumber  || "",
-      // format Date → "YYYY-MM-DD" for <input type="date">
       PUCExpiry:       v.PUCExpiry ? new Date(v.PUCExpiry).toISOString().split("T")[0] : "",
       isActive:        v.isActive,
     });
@@ -109,7 +219,10 @@ export default function ManageVehicles() {
         setSuccess("Vehicle registered successfully.");
       }
       setFormOpen(false);
-      fetchAll();
+      // Reset list so updated data shows from top
+      setVehicles([]);
+      setPage(1);
+      setHasMore(true);
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       setError(err?.response?.data?.message || "Something went wrong.");
@@ -118,34 +231,7 @@ export default function ManageVehicles() {
     }
   };
 
-  const getFactoryName = (id) => {
-    if (!id) return "—";
-    const f = factories.find(f => f._id === (id?._id || id));
-    return f ? f.name : "Unknown";
-  };
-
-  const filtered = vehicles.filter(v => {
-    const matchSearch =
-      v.vehicleNumber.toLowerCase().includes(search.toLowerCase()) ||
-      (v.driverName      || "").toLowerCase().includes(search.toLowerCase()) ||
-      (v.transporterName || "").toLowerCase().includes(search.toLowerCase()) ||
-      getFactoryName(v.ownerFactoryId).toLowerCase().includes(search.toLowerCase());
-    const matchKind      = filterType      === "all" || v.typeOfVehicle === filterType;
-    const matchOwnership = filterOwnership === "all" || v.type          === filterOwnership;
-    return matchSearch && matchKind && matchOwnership;
-  });
-
-  // PUC status helper
-  const pucStatus = (expiry) => {
-    if (!expiry) return { label: "—", color: "#9ca3af", bg: "#f3f4f6" };
-    const days = Math.ceil((new Date(expiry) - Date.now()) / 86400000);
-    if (days < 0)  return { label: "Expired",          color: "#dc2626", bg: "#fef2f2" };
-    if (days <= 30) return { label: `${days}d left`,   color: "#d97706", bg: "#fef3c7" };
-    return               { label: "Valid",              color: "#16a34a", bg: "#dcfce7" };
-  };
-
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
+  // ── Render ──
   return (
     <div style={styles.page}>
 
@@ -165,15 +251,11 @@ export default function ManageVehicles() {
       {/* ── Stats ── */}
       <div style={styles.statsRow}>
         {[
-          { label: "Total",    value: vehicles.length,                                    color: "#0f172a" },
-          { label: "Active",   value: vehicles.filter(v => v.isActive).length,            color: "#16a34a" },
-          { label: "Internal", value: vehicles.filter(v => v.type === "internal").length, color: "#2563eb" },
-          { label: "External", value: vehicles.filter(v => v.type === "external").length, color: "#9333ea" },
-          { label: "PUC Expiring", value: vehicles.filter(v => {
-              if (!v.PUCExpiry) return false;
-              const d = Math.ceil((new Date(v.PUCExpiry) - Date.now()) / 86400000);
-              return d >= 0 && d <= 30;
-            }).length, color: "#d97706" },
+          { label: "Total",        value: stats.total,       color: "#0f172a" },
+          { label: "Active",       value: stats.active,      color: "#16a34a" },
+          { label: "Internal",     value: stats.internal,    color: "#2563eb" },
+          { label: "External",     value: stats.external,    color: "#9333ea" },
+          { label: "PUC Expiring", value: stats.pucExpiring, color: "#d97706" },
         ].map(s => (
           <div key={s.label} style={styles.statCard}>
             <span style={{ ...styles.statNum, color: s.color }}>{s.value}</span>
@@ -192,10 +274,14 @@ export default function ManageVehicles() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button style={styles.clearBtn} onClick={() => setSearch("")}>✕</button>
+          )}
         </div>
         <div style={styles.filterTabs}>
           {["all", "internal", "external"].map(t => (
-            <button key={t} style={{ ...styles.tab, ...(filterOwnership === t ? styles.tabActive : {}) }}
+            <button key={t}
+              style={{ ...styles.tab, ...(filterOwnership === t ? styles.tabActive : {}) }}
               onClick={() => setFilterOwnership(t)}>
               {t === "all" ? "All Ownership" : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
@@ -203,7 +289,8 @@ export default function ManageVehicles() {
         </div>
         <div style={styles.filterTabs}>
           {["all", ...VEHICLE_TYPES.map(t => t.v)].map(t => (
-            <button key={t} style={{ ...styles.tab, ...(filterType === t ? styles.tabActive : {}) }}
+            <button key={t}
+              style={{ ...styles.tab, ...(filterType === t ? styles.tabActive : {}) }}
               onClick={() => setFilterType(t)}>
               {t === "all" ? "All Kinds" : `${typeIcon[t]} ${typeLabel[t]}`}
             </button>
@@ -213,64 +300,86 @@ export default function ManageVehicles() {
 
       {/* ── Table ── */}
       <div style={styles.tableWrap}>
-        {loading ? (
+        {initLoading ? (
           <div style={styles.emptyState}>Loading vehicles…</div>
-        ) : filtered.length === 0 ? (
+        ) : vehicles.length === 0 && !listLoading ? (
           <div style={styles.emptyState}>No vehicles found.</div>
         ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                {["Vehicle No.", "Ownership", "Kind", "Driver", "Transporter", "Factory", "PUC", "Status", ""].map(h => (
-                  <th key={h} style={styles.th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((v, i) => {
-                const puc = pucStatus(v.PUCExpiry);
-                return (
-                  <tr key={v._id} style={{ ...styles.tr, background: i % 2 === 0 ? "#fff" : "#f9fafb" }}>
-                    <td style={styles.td}>
-                      <span style={styles.vehicleNum}>{v.vehicleNumber}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ ...styles.badge, ...typeBadge(v.type) }}>{v.type}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.vehicleKind}>
-                        {typeIcon[v.typeOfVehicle] || "🚗"} {typeLabel[v.typeOfVehicle] || v.typeOfVehicle}
-                      </span>
-                    </td>
-                    <td style={styles.td}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>{v.driverName || "—"}</div>
-                      {v.driverContact && <div style={{ fontSize: 11, color: "#6b7280" }}>{v.driverContact}</div>}
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ fontSize: 13, color: "#374151" }}>{v.transporterName || "—"}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.factoryChip}>{getFactoryName(v.ownerFactoryId)}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ ...styles.pucChip, background: puc.bg, color: puc.color }}>
-                        {puc.label}
-                      </span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ ...styles.dot, background: v.isActive ? "#22c55e" : "#e5e7eb" }} />
-                      <span style={{ fontSize: 13, color: v.isActive ? "#15803d" : "#9ca3af" }}>
-                        {v.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td style={styles.td}>
-                      <button style={styles.editBtn} onClick={() => openEdit(v)}>Edit</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  {["Vehicle No.", "Ownership", "Kind", "Driver", "Transporter", "Factory", "PUC", "Status", ""].map(h => (
+                    <th key={h} style={styles.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vehicles.map((v, i) => {
+                  const puc = pucStatus(v.PUCExpiry);
+                  return (
+                    <tr key={v._id} style={{ ...styles.tr, background: i % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                      <td style={styles.td}>
+                        <span style={styles.vehicleNum}>{v.vehicleNumber}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ ...styles.badge, ...typeBadge(v.type) }}>{v.type}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.vehicleKind}>
+                          {typeIcon[v.typeOfVehicle] || "🚗"} {typeLabel[v.typeOfVehicle] || v.typeOfVehicle}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>{v.driverName || "—"}</div>
+                        {v.driverContact && <div style={{ fontSize: 11, color: "#6b7280" }}>{v.driverContact}</div>}
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ fontSize: 13, color: "#374151" }}>{v.transporterName || "—"}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.factoryChip}>{getFactoryName(v.ownerFactoryId)}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ ...styles.pucChip, background: puc.bg, color: puc.color }}>
+                          {puc.label}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ ...styles.dot, background: v.isActive ? "#22c55e" : "#e5e7eb" }} />
+                        <span style={{ fontSize: 13, color: v.isActive ? "#15803d" : "#9ca3af" }}>
+                          {v.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <button style={styles.editBtn} onClick={() => openEdit(v)}>Edit</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* ── Infinite scroll sentinel ── */}
+            <div ref={sentinelRef} style={{ height: 1 }} />
+
+            {/* ── Loading more indicator ── */}
+            {listLoading && !initLoading && (
+              <div style={styles.loadingMore}>
+                <span style={styles.loadingDots}>
+                  <span /><span /><span />
+                </span>
+                Loading more vehicles…
+              </div>
+            )}
+
+            {/* ── End of list ── */}
+            {!hasMore && vehicles.length > 0 && (
+              <div style={styles.endOfList}>
+                ✓ All {vehicles.length} vehicles loaded
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -407,6 +516,14 @@ export default function ManageVehicles() {
           </div>
         </div>
       )}
+
+      {/* ── Dot-pulse keyframes ── */}
+      <style>{`
+        @keyframes dotPulse {
+          0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+          40%            { opacity: 1;   transform: scale(1);   }
+        }
+      `}</style>
     </div>
   );
 }
@@ -513,10 +630,11 @@ const styles = {
     transform: "translateY(-50%)",
     fontSize: 18,
     color: "#9ca3af",
+    pointerEvents: "none",
   },
   searchInput: {
     width: "100%",
-    padding: "9px 12px 9px 36px",
+    padding: "9px 36px 9px 36px",
     border: "1px solid #e5e7eb",
     borderRadius: 8,
     fontSize: 14,
@@ -524,6 +642,19 @@ const styles = {
     outline: "none",
     boxSizing: "border-box",
     color: "#111",
+  },
+  clearBtn: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: "none",
+    border: "none",
+    color: "#9ca3af",
+    cursor: "pointer",
+    fontSize: 12,
+    padding: "2px 4px",
+    lineHeight: 1,
   },
   filterTabs: {
     display: "flex",
@@ -643,6 +774,33 @@ const styles = {
     cursor: "pointer",
     color: "#374151",
   },
+  loadingMore: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: "16px 0",
+    fontSize: 13,
+    color: "#9ca3af",
+  },
+  loadingDots: {
+    display: "inline-flex",
+    gap: 4,
+    "& span": {
+      width: 6,
+      height: 6,
+      borderRadius: "50%",
+      background: "#9ca3af",
+      animation: "dotPulse 1.4s ease-in-out infinite",
+    },
+  },
+  endOfList: {
+    textAlign: "center",
+    padding: "14px 0",
+    fontSize: 12,
+    color: "#9ca3af",
+    borderTop: "1px solid #f3f4f6",
+  },
   overlay: {
     position: "fixed",
     inset: 0,
@@ -737,7 +895,7 @@ const styles = {
     alignItems: "center",
     cursor: "pointer",
     fontWeight: 500,
-    marginTop: 22,        // align roughly with adjacent date input
+    marginTop: 22,
   },
   modalFooter: {
     display: "flex",
