@@ -51,6 +51,10 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "User not registered" });
     }
 
+    if(user.isBlocked){
+      return res.status(403).json({ success: false, message: "Your account is blocked. Please contact support." });
+    }
+
     console.log("User found for login:", { email: user.email, id: user._id });
 
     // Compare password
@@ -58,7 +62,7 @@ export const loginUser = async (req, res) => {
 
     if (!isMatch) {
       console.warn(`Invalid password attempt for email: ${email}`);
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
+      return res.status(401).json({ success: false, message: "Invalid Password" });
     }
 
     // Generate 6-digit OTP
@@ -90,6 +94,7 @@ export const loginUser = async (req, res) => {
 // STEP 2: Verify OTP → issue token
 // POST /auth/verify-otp
 // ─────────────────────────────────────────
+
 export const verifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;

@@ -18,7 +18,7 @@ export default function AvgTripsPerDaySection({ params }) {
       .catch(() => setError("Failed to load avg trips data."))
       .finally(() => setLoading(false));
   }, [JSON.stringify(params)]);
-
+console.log("Avg Trips/Day data:", data);
   // Transform for ParetoChart: needs { vehicleNumber, count, cumPct }
   // For avg trips we map avg → count field so ParetoChart renders avg values
   const pgAvg    = (data?.pgAvgPareto    ?? []).map(r => ({ ...r, count: r.avg }));

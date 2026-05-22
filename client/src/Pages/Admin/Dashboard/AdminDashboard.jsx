@@ -1,31 +1,18 @@
-// AdminDashboard.jsx  — Overview / Analytics Landing Page
+// VehiclePerformanceDashboard.jsx
+// Mirrors the "Overall Performance Dashboard" screenshot using real fleet data.
+// API: GET /api/analytics/vehicle-dashboard?vehicleId=<id>&period=week|today|month|quarter
+
 import { useState, useEffect, useRef } from "react";
-import api from "../../../../services/API/Api/api"; // adjust path as needed
+import api from "../../../../services/API/Api/api"; // adjust path
+import {Divider} from "antd";
 
-// ── Route map for upcoming feature cards ───────────────────────────────────
-const FEATURE_ROUTES = {
-  "Real-time Van Tracking":    "/admin/analytics/van-tracking",
-  "Factory KPI Trends":        "/admin/analytics/factory-kpi",
-  "Driver Analytics":          "/admin/analytics/driver-analytics",
-  "PUC Compliance Reports":    "/admin/analytics/puc-compliance",
-  "Route Heatmaps":            "/admin/analytics/route-heatmaps",
-  "Predictive Alerts":         "/admin/analytics/predictive-alerts",
-};
-
-const TILES = [
-  { label: "Real-time Van Tracking",  icon: "🚛", eta: "Q3 2025", status: "building",  desc: "Live GPS positions and ETA for every vehicle on the road." },
-  { label: "Factory KPI Trends",      icon: "📈", eta: "Q3 2025", status: "building",  desc: "Throughput, turnaround time and capacity metrics per factory." },
-  { label: "Driver Analytics",        icon: "👤", eta: "Q4 2025", status: "planned",   desc: "Trip history, punctuality score and safety ratings per driver." },
-  { label: "PUC Compliance Reports",  icon: "📋", eta: "Q4 2025", status: "planned",   desc: "Expiry calendar, bulk renewal reminders and compliance %."},
-  { label: "Route Heatmaps",          icon: "🗺️", eta: "Q1 2026", status: "research",  desc: "Visual heat maps of high-frequency corridors and bottlenecks." },
-  { label: "Predictive Alerts",       icon: "🔔", eta: "Q1 2026", status: "research",  desc: "ML-powered anomaly detection and maintenance forecasts." },
+// ── period options ────────────────────────────────────────────────────────────
+const PERIODS = [
+  { key: "today",   label: "Today" },
+  { key: "week",    label: "Week till date" },
+  { key: "month",   label: "Month till date" },
+  { key: "quarter", label: "Quarter" },
 ];
-
-const STATUS_META = {
-  building:  { label: "Building",  bg: "#dbeafe", color: "#1d4ed8" },
-  planned:   { label: "Planned",   bg: "#ede9fe", color: "#6d28d9" },
-  research:  { label: "Research",  bg: "#fef3c7", color: "#b45309" },
-};
 
 const VEHICLE_ICONS = {
   truck: "🚛", miniTruck: "🚚", containerTruck: "🚛", mixerTruck: "🚜",
@@ -33,279 +20,965 @@ const VEHICLE_ICONS = {
   ambulance: "🚑", van: "🚐", trailer: "🚋",
 };
 
-const PERIODS = [
-  { key: "today", label: "Today" },
-  { key: "week",  label: "Last 7 Days" },
-  { key: "month", label: "Last 30 Days" },
-];
+// ── colour palette (teal-based, matches screenshot) ───────────────────────────
+const C = {
+  teal:     "#0d9488",
+  tealLight:"#ccfbf1",
+  tealMid:  "#5eead4",
+  slate:    "#94a3b8",
+  slateLight:"#e2e8f0",
+  red:      "#fca5a5",
+  redDark:  "#ef4444",
+  bg:       "#f8fafc",
+  card:     "#ffffff",
+  border:   "#e5e7eb",
+  text:     "#0f172a",
+  muted:    "#64748b",
+  micro:    "#94a3b8",
+};
 
-// ── Mini horizontal bar chart ──────────────────────────────────────────────
-function TripBar({ count, max, color }) {
-  const pct = max > 0 ? Math.round((count / max) * 100) : 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Tiny SVG Donut
+// ─────────────────────────────────────────────────────────────────────────────
+function Donut({ segments, size = 120, stroke = 14, label, sublabel }) {
+  const r   = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const cx   = size / 2;
+  let offset = 0;
+  // start from top
+  const startRotate = -90;
+
   return (
-    <div style={{ flex: 1, height: 6, background: "#f1f5f9", borderRadius: 99, overflow: "hidden" }}>
-      <div style={{
-        width: `${pct}%`, height: "100%", borderRadius: 99,
-        background: color,
-        transition: "width 0.7s cubic-bezier(.4,0,.2,1)",
-      }} />
+    <svg width={size} height={size} style={{ display: "block" }}>
+      {/* track */}
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke={C.slateLight} strokeWidth={stroke} />
+      {segments.map((seg, i) => {
+        const dash = (seg.pct / 100) * circ;
+        const gap  = circ - dash;
+        const el = (
+          <circle
+            key={i}
+            cx={cx} cy={cx} r={r}
+            fill="none"
+            stroke={seg.color}
+            strokeWidth={stroke}
+            strokeDasharray={`${dash} ${gap}`}
+            strokeDashoffset={-(offset / 100) * circ}
+            transform={`rotate(${startRotate} ${cx} ${cx})`}
+            style={{ transition: "stroke-dasharray 0.8s ease" }}
+          />
+        );
+        offset += seg.pct;
+        return el;
+      })}
+      {/* centre label */}
+      {label !== undefined && (
+        <>
+          <text x={cx} y={cx - 4} textAnchor="middle" dominantBaseline="middle"
+            style={{ fontSize: size * 0.17, fontWeight: 800, fill: C.text, fontFamily: "'DM Sans', sans-serif" }}>
+            {label}
+          </text>
+          {sublabel && (
+            <text x={cx} y={cx + size * 0.14} textAnchor="middle"
+              style={{ fontSize: size * 0.1, fill: C.muted, fontFamily: "'DM Sans', sans-serif" }}>
+              {sublabel}
+            </text>
+          )}
+        </>
+      )}
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mini Area Sparkline (SVG)
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// AreaSparkline — responsive, with factory-breakdown tooltip on hover
+// ─────────────────────────────────────────────────────────────────────────────
+function AreaSparkline({ data, height = 70, color = C.teal }) {
+  const containerRef = useRef(null);
+  const [width,   setWidth]   = useState(0);
+  const [tooltip, setTooltip] = useState(null); // { x, y, day }
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    ro.observe(containerRef.current);
+    setWidth(containerRef.current.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+
+  const pts = (() => {
+    if (!data || data.length === 0 || width === 0) return [];
+    const vals = data.map(d => d.count);
+    const max  = Math.max(...vals, 1);
+    return data.map((d, i) => {
+      const x = data.length === 1 ? width / 2 : (i / (data.length - 1)) * width;
+      const y = height - (d.count / max) * (height - 10) - 5;
+      return { x, y, ...d };
+    });
+  })();
+
+  const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+  const areaPath = pts.length ? `${linePath} L${width},${height} L0,${height} Z` : "";
+  const gradId   = `sparkGrad-${color.replace("#", "")}`;
+
+  // Find nearest point by mouse X
+  const handleMouseMove = (e) => {
+    if (!pts.length) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    let   best = 0;
+    let   bestDist = Infinity;
+    pts.forEach((p, i) => {
+      const d = Math.abs(p.x - mx);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    const p = pts[best];
+    setTooltip({ svgX: p.x, svgY: p.y, day: p });
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height, display: "block", position: "relative" }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setTooltip(null)}
+    >
+      {width > 0 && (
+        <>
+          <svg
+            width={width}
+            height={height}
+            style={{ display: "block", overflow: "visible" }}
+          >
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor={color} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+
+            {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
+            {linePath && (
+              <path d={linePath} fill="none" stroke={color}
+                strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            )}
+
+            {/* regular dots */}
+            {pts.map((p, i) =>
+              p.count > 0 ? (
+                <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} />
+              ) : null
+            )}
+
+            {/* hover crosshair */}
+            {tooltip && (
+              <>
+                <line
+                  x1={tooltip.svgX} y1={0}
+                  x2={tooltip.svgX} y2={height}
+                  stroke={color} strokeWidth={1}
+                  strokeDasharray="3 3" opacity={0.5}
+                />
+                <circle
+                  cx={tooltip.svgX} cy={tooltip.svgY}
+                  r={5} fill={color}
+                  stroke="#fff" strokeWidth={2}
+                />
+              </>
+            )}
+          </svg>
+
+          {/* ── Tooltip bubble ── */}
+          {tooltip && (
+            <TooltipBubble
+              day={tooltip.day}
+              svgX={tooltip.svgX}
+              svgY={tooltip.svgY}
+              containerWidth={width}
+              color={color}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-// ── Leaderboard card ───────────────────────────────────────────────────────
-function LeaderboardChart() {
-  const [period,      setPeriod]      = useState("today");
-  const [data,        setData]        = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState("");
+// ─────────────────────────────────────────────────────────────────────────────
+// Tooltip bubble — factory breakdown for the hovered day
+// ─────────────────────────────────────────────────────────────────────────────
+function TooltipBubble({ day, svgX, svgY, containerWidth, color }) {
+  const TIP_W  = 200;
+  const OFFSET = 12;
 
-  useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await api.get("/analytics/vehicle-trip-leaderboard", { params: { period, limit: 8 } });
-        setData(res.data.leaderboard);
-      } catch {
-        setError("Could not load leaderboard.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
-  }, [period]);
+  // flip left when near right edge
+  const left = svgX + TIP_W + OFFSET > containerWidth
+    ? svgX - TIP_W - OFFSET
+    : svgX + OFFSET;
 
-  const max = data.length > 0 ? data[0].tripCount : 1;
-
-  const medalColor = (i) => ["#f59e0b", "#94a3b8", "#cd7c3a"][i] ?? null;
+  // sort factories desc
+  const factories = [...(day.factories ?? [])].sort((a, b) => b.count - a.count);
 
   return (
-    <div style={s.card}>
-      {/* Card header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 20 }}>🏆</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", fontFamily: "'Sora', sans-serif" }}>
-              Vehicle Trip Leaderboard
-            </span>
-          </div>
-          <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
-            Ranked by closed trips in the selected period
-          </p>
-        </div>
-        {/* Period toggle */}
-        <div style={{ display: "flex", gap: 3, background: "#f1f5f9", borderRadius: 8, padding: 3 }}>
-          {PERIODS.map(p => (
-            <button key={p.key}
-              style={{ ...s.periodBtn, ...(period === p.key ? s.periodBtnActive : {}) }}
-              onClick={() => setPeriod(p.key)}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+    <div style={{
+      position:   "absolute",
+      top:        Math.max(0, svgY - 12),
+      left,
+      width:      TIP_W,
+      background: "#fff",
+      border:     `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding:    "10px 12px",
+      boxShadow:  "0 4px 20px rgba(0,0,0,0.10)",
+      pointerEvents: "none",
+      zIndex:     50,
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
+      {/* Date + total */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>
+          {new Date(day.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+        </span>
+        <span style={{
+          fontSize: 11, fontWeight: 800,
+          background: color + "18", color,
+          borderRadius: 6, padding: "2px 8px",
+        }}>
+          {day.count} trip{day.count !== 1 ? "s" : ""}
+        </span>
       </div>
 
-      {/* Body */}
-      {loading ? (
-        <div style={s.chartSkeleton}>
-          {[...Array(5)].map((_, i) => (
-            <div key={i} style={{ ...s.skeletonRow, opacity: 1 - i * 0.15 }}>
-              <div style={{ ...s.skeletonPill, width: 28 }} />
-              <div style={{ ...s.skeletonPill, width: 90 }} />
-              <div style={{ flex: 1, height: 6, background: "#e2e8f0", borderRadius: 99 }} />
-              <div style={{ ...s.skeletonPill, width: 32 }} />
-            </div>
-          ))}
-        </div>
-      ) : error ? (
-        <div style={{ textAlign: "center", padding: 32, color: "#ef4444", fontSize: 13 }}>{error}</div>
-      ) : data.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🚫</div>
-          <div style={{ fontSize: 13, color: "#94a3b8" }}>No closed trips found for this period.</div>
-        </div>
+      {/* Factory rows */}
+      {factories.length === 0 ? (
+        <div style={{ fontSize: 11, color: C.muted }}>No trips</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {data.map((row, i) => {
-            const medal = medalColor(i);
-            const barColor = i === 0 ? "#f59e0b" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c3a" : "#6366f1";
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {factories.slice(0, 5).map((f, i) => {
+            const barPct = day.count > 0 ? (f.count / day.count) * 100 : 0;
             return (
-              <div key={row.vehicleId} style={s.leaderRow}>
-                {/* Rank */}
-                <div style={{ ...s.rankBadge, ...(medal ? { background: medal + "22", color: medal } : {}) }}>
-                  {medal ? ["🥇","🥈","🥉"][i] : `#${i+1}`}
+              <div key={i}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, marginBottom: 2 }}>
+                  <span style={{ color: C.text, fontWeight: 600, maxWidth: 130,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.factoryName}
+                  </span>
+                  <span style={{ color: C.muted, fontWeight: 700, flexShrink: 0, marginLeft: 6 }}>
+                    {f.count}
+                  </span>
                 </div>
-                {/* Vehicle info */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 130, flex: "0 0 auto" }}>
-                  <span style={{ fontSize: 16 }}>{VEHICLE_ICONS[row.typeOfVehicle] ?? "🚗"}</span>
-                  <div>
-                    <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12, color: "#0f172a", letterSpacing: "0.04em" }}>
-                      {row.vehicleNumber}
-                    </div>
-                    {row.factoryName && (
-                      <div style={{ fontSize: 10, color: "#94a3b8" }}>{row.factoryName}</div>
-                    )}
-                  </div>
-                </div>
-                {/* Bar */}
-                <TripBar count={row.tripCount} max={max} color={barColor} />
-                {/* Count badge */}
-                <div style={{ ...s.tripCountBadge, background: barColor + "18", color: barColor }}>
-                  {row.tripCount} trip{row.tripCount !== 1 ? "s" : ""}
+                {/* mini inline bar */}
+                <div style={{ height: 4, background: C.slateLight, borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{
+                    width: `${barPct}%`, height: "100%",
+                    background: color, borderRadius: 99,
+                  }} />
                 </div>
               </div>
             );
           })}
+          {factories.length > 5 && (
+            <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
+              +{factories.length - 5} more factories
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ── Feature card ───────────────────────────────────────────────────────────
-function FeatureCard({ tile, index }) {
-  const [hovered, setHovered] = useState(false);
-  const route = FEATURE_ROUTES[tile.label];
-  const meta  = STATUS_META[tile.status];
+// ─────────────────────────────────────────────────────────────────────────────
+// Vehicle Usage card — replace the old card with this
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// FactoryBarChart
+// X-axis: factory names  |  Y-axis: 0 → max trips
+// Hover: tooltip with factory name + exact count
+// ─────────────────────────────────────────────────────────────────────────────
+function FactoryBarChart({ data, color }) {
+  const containerRef = useRef(null);
+  const [width,   setWidth]   = useState(0);
+  const [tooltip, setTooltip] = useState(null);
 
-  const handleClick = () => {
-    window.open(route, "_blank", "noopener,noreferrer");
-  };
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
+    ro.observe(containerRef.current);
+    setWidth(containerRef.current.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: C.muted }}>
+        No data for this period
+      </div>
+    );
+  }
+
+  // layout constants
+  const PADDING_LEFT  = 38;
+  const PADDING_RIGHT = 0;
+  const PADDING_TOP   = 16;
+  const PADDING_BOT   = 56;
+  const HEIGHT        = 250;
+  const chartW = Math.max(0, width - PADDING_LEFT - PADDING_RIGHT);
+  const chartH = HEIGHT - PADDING_TOP - PADDING_BOT;
+
+  const maxVal  = Math.max(...data.map(d => d.count), 1);
+  const yTicks  = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * maxVal));
+
+  const groupW  = chartW / data.length;
+  const barW    = Math.max(6, Math.min(40, groupW * 0.55));
+
+  const barX = (i) => PADDING_LEFT + i * groupW + groupW / 2 - barW / 2;
+  const barH = (v) => Math.max(2, (v / maxVal) * chartH);
+  const barY = (v) => PADDING_TOP + chartH - barH(v);
 
   return (
-    <div
-      onClick={handleClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        ...s.featureCard,
-        transform:  hovered ? "translateY(-3px)" : "translateY(0)",
-        boxShadow:  hovered
-          ? "0 8px 28px rgba(99,102,241,0.13), 0 2px 8px rgba(0,0,0,0.06)"
-          : "0 1px 4px rgba(0,0,0,0.05)",
-        borderColor: hovered ? "#c7d2fe" : "#e5e7eb",
-        cursor: "pointer",
-        animationDelay: `${index * 60}ms`,
-      }}
-      title={`Open ${tile.label}`}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <span style={{ fontSize: 30, lineHeight: 1 }}>{tile.icon}</span>
-        <span style={{ ...s.statusChip, background: meta.bg, color: meta.color }}>{meta.label}</span>
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginTop: 12, lineHeight: 1.35, fontFamily: "'Sora', sans-serif" }}>
-        {tile.label}
-      </div>
-      <p style={{ fontSize: 12, color: "#6b7280", margin: "6px 0 0", lineHeight: 1.6 }}>
-        {tile.desc}
-      </p>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
-        <div style={{ ...s.etaChip }}>
-          ETA {tile.eta}
+    <div ref={containerRef} style={{ width: "100%", position: "relative" }}>
+      {width > 0 && (
+        <svg
+          width={width}
+          height={HEIGHT}
+          style={{ display: "block", overflow: "visible" }}
+          onMouseLeave={() => setTooltip(null)}
+        >
+          <defs>
+            <linearGradient id={`barGrad-${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor={color} stopOpacity="1"   />
+              <stop offset="100%" stopColor={color} stopOpacity="0.55" />
+            </linearGradient>
+          </defs>
+
+          {/* Y grid lines + labels */}
+          {yTicks.map((tick, i) => {
+            const cy = PADDING_TOP + chartH - (tick / maxVal) * chartH;
+            return (
+              <g key={i}>
+                <line
+                  x1={PADDING_LEFT} y1={cy}
+                  x2={PADDING_LEFT + chartW} y2={cy}
+                  stroke={C.slateLight} strokeWidth={1}
+                  strokeDasharray={tick === 0 ? "none" : "3 3"}
+                />
+                <text
+                  x={PADDING_LEFT - 5} y={cy + 4}
+                  textAnchor="end"
+                  style={{ fontSize: 9, fill: C.micro, fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  {tick}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Bars */}
+          {data.map((item, i) => {
+            const bx        = barX(i);
+            const bh        = barH(item.count);
+            const by        = barY(item.count);
+            const isHovered = tooltip?.item?.factoryName === item.factoryName;
+            const gradId    = `barGrad-${color.replace("#","")}`;
+
+            return (
+              <g
+                key={i}
+                onMouseMove={() => setTooltip({ x: bx + barW / 2, y: by, item })}
+                style={{ cursor: "pointer" }}
+              >
+                {/* invisible wide hover zone */}
+                <rect
+                  x={PADDING_LEFT + i * groupW} y={PADDING_TOP}
+                  width={groupW} height={chartH}
+                  fill="transparent"
+                />
+                {/* bar */}
+                <rect
+                  x={bx} y={by}
+                  width={barW} height={bh}
+                  rx={4} ry={4}
+                  fill={isHovered ? color : `url(#${gradId})`}
+                  opacity={tooltip && !isHovered ? 0.35 : 1}
+                  style={{ transition: "opacity 0.15s" }}
+                />
+                {/* count label above bar */}
+                {bh > 16 && (
+                  <text
+                    x={bx + barW / 2} y={by - 5}
+                    textAnchor="middle"
+                    style={{ fontSize: 9, fontWeight: 700, fill: color, fontFamily: "'DM Sans', sans-serif" }}
+                  >
+                    {item.count}
+                  </text>
+                )}
+                {/* X-axis factory label (rotated) */}
+                <text
+                  x={bx + barW / 2}
+                  y={PADDING_TOP + chartH + 10}
+                  textAnchor="end"
+                  transform={`rotate(-38, ${bx + barW / 2}, ${PADDING_TOP + chartH + 10})`}
+                  style={{
+                    fontSize:   Math.max(8, Math.min(11, groupW * 0.28)),
+                    fill:       isHovered ? color : C.muted,
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontWeight: isHovered ? 700 : 400,
+                    transition: "fill 0.15s",
+                  }}
+                >
+                  {item.factoryName.length > 14
+                    ? item.factoryName.slice(0, 13) + "…"
+                    : item.factoryName}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Y axis */}
+          <line
+            x1={PADDING_LEFT} y1={PADDING_TOP}
+            x2={PADDING_LEFT} y2={PADDING_TOP + chartH}
+            stroke={C.slateLight} strokeWidth={1.5}
+          />
+          {/* X axis */}
+          <line
+            x1={PADDING_LEFT}          y1={PADDING_TOP + chartH}
+            x2={PADDING_LEFT + chartW} y2={PADDING_TOP + chartH}
+            stroke={C.slateLight} strokeWidth={1.5}
+          />
+        </svg>
+      )}
+
+      {/* Tooltip */}
+      {tooltip && width > 0 && (
+        <div style={{
+          position:      "absolute",
+          top:           Math.max(0, tooltip.y - 8),
+          left:          tooltip.x + 170 + 10 > width ? tooltip.x - 170 - 10 : tooltip.x + 10,
+          width:         170,
+          background:    "#fff",
+          border:        `1px solid ${C.border}`,
+          borderRadius:  10,
+          padding:       "10px 12px",
+          boxShadow:     "0 4px 20px rgba(0,0,0,0.10)",
+          pointerEvents: "none",
+          zIndex:        50,
+          fontFamily:    "'DM Sans', sans-serif",
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, lineHeight: 1.3 }}>
+            {tooltip.item.factoryName}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
+            <span style={{ fontSize: 14, fontWeight: 800, color }}>
+              {tooltip.item.count}
+            </span>
+            <span style={{ fontSize: 11, color: C.muted }}>
+              trip{tooltip.item.count !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
-        <span style={{ fontSize: 12, color: hovered ? "#6366f1" : "#d1d5db", fontWeight: 600, transition: "color 0.2s" }}>
-          Open →
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VehicleUsageCard
+// ─────────────────────────────────────────────────────────────────────────────
+function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
+  const [mode, setMode] = useState("closed"); // "closed" | "cancelled"
+
+  const chartData  = mode === "closed"
+    ? (vehicleUsage.factoryChart?.closed    ?? [])
+    : (vehicleUsage.factoryChart?.cancelled ?? []);
+
+  const chartColor = mode === "closed" ? C.teal : "#EA5252";
+  const totalShown = chartData.reduce((s, d) => s + d.count, 0);
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <CardLabel>Vehicle — Factory Flow</CardLabel>
+          
+        </div>
+
+        {/* Dropdown */}
+        <div style={{ position: "relative" }}>
+          <select
+            value={mode}
+            onChange={e => setMode(e.target.value)}
+            style={{
+              appearance:        "none",
+              WebkitAppearance:  "none",
+              background:        "#fff",
+              border:            `1.5px solid ${chartColor}`,
+              borderRadius:      8,
+              padding:           "6px 28px 6px 10px",
+              fontSize:          12,
+              fontWeight:        700,
+              color:             chartColor,
+              cursor:            "pointer",
+              outline:           "none",
+              fontFamily:        "'DM Sans', sans-serif",
+              transition:        "border-color 0.2s, color 0.2s",
+            }}
+          >
+            <option value="closed">✓  Completed Trips</option>
+            <option value="cancelled">✕  Cancelled Trips</option>
+          </select>
+          <span style={{
+            position:      "absolute",
+            right:         8, top: "50%",
+            transform:     "translateY(-50%)",
+            pointerEvents: "none",
+            fontSize:      10,
+            color:         chartColor,
+          }}>▾</span>
+        </div>
+      </div>
+
+      {/* Big number */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <BigNumber style={{ color: chartColor }}>{totalShown}</BigNumber>
+        <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+          {mode === "closed" ? "completed" : "cancelled"} trips
+          {" · "}
+          {chartData.length} factor{chartData.length !== 1 ? "ies" : "y"}
         </span>
+      </div>
+
+      {/* Bar chart */}
+      <FactoryBarChart data={chartData} color={chartColor} />
+        <div style={{ fontSize: 11, color: C.muted, marginTop: -16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}> 
+          {mode === "closed"
+            ? "Distribution of completed trips across factories"
+            : "Distribution of cancelled trips across factories"}
+        </div>
+      
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Horizontal bar (for idle analysis / driver behavior)
+// ─────────────────────────────────────────────────────────────────────────────
+function HBar({ label, value, max = 100, color = C.teal, suffix = "" }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 4 }}>
+        <span style={{ fontWeight: 600 }}>{label}</span>
+        <span style={{ fontWeight: 700, color: C.text }}>{value}{suffix}</span>
+      </div>
+      <div style={{ height: 7, background: C.slateLight, borderRadius: 99, overflow: "hidden" }}>
+        <div style={{
+          width: `${pct}%`, height: "100%", borderRadius: 99,
+          background: color,
+          transition: "width 0.9s cubic-bezier(.4,0,.2,1)",
+        }} />
       </div>
     </div>
   );
 }
 
-// ── Main dashboard ─────────────────────────────────────────────────────────
-export default function AdminDashboard() {
+// ─────────────────────────────────────────────────────────────────────────────
+// Vertical bar (driver behavior — mimics screenshot bar chart)
+// ─────────────────────────────────────────────────────────────────────────────
+function VBarGroup({ bars }) {
+  const max = Math.max(...bars.map(b => b.value), 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90, marginTop: 8 }}>
+      {bars.map((b, i) => {
+        const pct = (b.value / max) * 100;
+        return (
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: 5 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{b.value}%</div>
+            <div style={{ width: "100%", display: "flex", alignItems: "flex-end", height: 64 }}>
+              <div style={{
+                width: "100%",
+                height: `${pct}%`,
+                minHeight: 4,
+                background: b.color,
+                borderRadius: "4px 4px 0 0",
+                transition: "height 0.9s ease",
+              }} />
+            </div>
+            <div style={{ fontSize: 9.5, color: C.muted, textAlign: "center", lineHeight: 1.3 }}>{b.label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stat mini-cell (used in left panel grid)
+// ─────────────────────────────────────────────────────────────────────────────
+function StatCell({ label, value, accent = false }) {
+  return (
+    <div style={{
+      background: accent ? C.tealLight : "#f8fafc",
+      border: `1px solid ${accent ? C.tealMid : C.border}`,
+      borderRadius: 10, padding: "10px 12px",
+    }}>
+      <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: accent ? C.teal : C.text, fontFamily: "'DM Sans', sans-serif" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delta badge (green up / red down)
+// ─────────────────────────────────────────────────────────────────────────────
+function Delta({ val }) {
+  const up = val >= 0;
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700,
+      color: up ? "#059669" : C.redDark,
+      background: up ? "#d1fae5" : "#fee2e2",
+      borderRadius: 5, padding: "2px 6px", marginLeft: 6,
+    }}>
+      {up ? "▲" : "▼"} {Math.abs(val)}%
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skeleton loader
+// ─────────────────────────────────────────────────────────────────────────────
+function Skeleton({ w = "100%", h = 16, r = 6, style = {} }) {
+  return (
+    <div style={{
+      width: w, height: h, borderRadius: r,
+      background: "linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)",
+      backgroundSize: "200% 100%",
+      animation: "shimmer 1.4s infinite",
+      ...style,
+    }} />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+function Card({ children, style = {} }) {
+  return (
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: "18px 20px",
+      boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function CardLabel({ children }) {
+  return (
+    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>
+      {children}
+    </div>
+  );
+}
+
+function BigNumber({ children, style = {} }) {
+  return (
+    <div style={{ fontSize: 32, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", lineHeight: 1.1, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }) {
+  const [period,    setPeriod]    = useState("week");
+  const [vehicleId, setVehicleId] = useState(propVehicleId ?? null);
+  const [data,      setData]      = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState("");
+
+  // Auto-resolve top vehicle if no vehicleId prop provided
+  useEffect(() => {
+    if (propVehicleId) { setVehicleId(propVehicleId); return; }
+    api.get("/analytics/vehicle-dashboard/top")
+      .then(r => setVehicleId(r.data.vehicleId))
+      .catch(() => setError("Could not resolve top vehicle."));
+  }, [propVehicleId]);
+
+  useEffect(() => {
+    if (!vehicleId) return;
+    setLoading(true); setError("");
+    api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period } })
+      .then(r => { setData(r.data); setLoading(false); })
+      .catch(() => { setError("Failed to load dashboard data."); setLoading(false); });
+  }, [vehicleId, period]);
+
+  // ── loading skeleton ────────────────────────────────────────────────────
+  if (loading) return (
+    <div style={s.page}>
+      <style>{keyframes}</style>
+      <div style={s.topBar}>
+        <Skeleton w={200} h={20} />
+        <Skeleton w={160} h={32} r={8} />
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: "20px 0 18px", fontFamily: "'DM Sans', sans-serif" }}>
+        Overall Performance Dashboard
+      </div>
+      <div style={s.grid}>
+        <Skeleton h={460} r={14} style={{ gridColumn: "span 1" }} />
+        <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+          {[...Array(6)].map((_, i) => <Skeleton key={i} h={210} r={14} />)}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 400 }}>
+      <div style={{ textAlign: "center", color: C.redDark, fontSize: 14 }}>{error}</div>
+    </div>
+  );
+
+  if (!data) return null;
+
+  const { vehicle, weeklyStats, stateOfHealth, driverBehavior, vehicleUsage, idleAnalysis, tripTypeSplit, availability } = data;
+
+  // ── derive a fake-previous-period delta (±) for display ──────────────────
+  // Since we don't have historical comparison, we show absolute metrics.
+  const sohDelta = +(stateOfHealth.sohPct - 80).toFixed(1); // 80% baseline
+
   return (
     <div style={s.page}>
+      <style>{keyframes}</style>
 
-      {/* ── Leaderboard at top ── */}
-      <LeaderboardChart />
+      {/* ── top breadcrumb bar ── */}
+      <div style={s.topBar}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
+          <button style={s.backBtn} onClick={() => window.history.back()}>←</button>
+          <span style={{ fontWeight: 600 }}>Fleet</span>
+          <span style={{ color: C.slate }}>»</span>
+          <span style={{ fontWeight: 700, color: C.text }}>{vehicle.vehicleNumber}</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Period</span>
+          <div style={{ display: "flex", gap: 2, background: "#f1f5f9", borderRadius: 8, padding: 3 }}>
+            {PERIODS.map(p => (
+              <button key={p.key}
+                style={{ ...s.periodBtn, ...(period === p.key ? s.periodBtnActive : {}) }}
+                onClick={() => setPeriod(p.key)}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button style={s.shareBtn}>↑ Share</button>
+          <button style={s.downloadBtn}>⬇ Download</button>
+        </div>
+      </div>
 
-      {/* ── Hero banner ── */}
-      <div style={s.hero}>
-        {/* Subtle dot-grid bg */}
-        <div style={s.heroDotGrid} />
-        <div style={s.heroAccentBlob1} />
-        <div style={s.heroAccentBlob2} />
+      {/* ── page title ── */}
+      <div style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: "18px 0 16px", fontFamily: "'DM Sans', sans-serif" }}>
+        Overall Performance Dashboard
+      </div>
 
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <div style={s.heroPill}>
-            <span style={s.heroPillDot} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", letterSpacing: .6, textTransform: "uppercase" }}>
-              Analytics Dashboard — In Progress
+      {/* ── main grid ── */}
+      <div style={s.grid}>
+
+        {/* ════ LEFT PANEL — Weekly Stats ════ */}
+        <Card style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
+           <span className="block" > Weekly Stats  </span> 
+            <span className="text-yellow-500 mt-2" > High Performed Vehicle </span> 
+          </div>
+
+          {/* vehicle image placeholder + info */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{
+              width: 72, height: 52, background: C.slateLight, borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0,
+            }}>
+              {VEHICLE_ICONS[vehicle.typeOfVehicle] ?? "🚛"}
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{vehicle.vehicleNumber}</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
+                {vehicle.model ?? vehicle.vehicleNumber}
+              </div>
+              <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
+                {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Fleet" : "External"}
+              </div>
+              <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
+                Updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+              </div>
+            </div>
+          </div>
+
+          {/* 2-col stat grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <StatCell label="Active Since"     value={weeklyStats.activeSince} />
+            <StatCell label="Total Trips"      value={weeklyStats.totalClosedTrips.toLocaleString("en-IN")} />
+            <StatCell label="Period Trips"     value={weeklyStats.periodTrips} accent />
+            <StatCell label="Completed"        value={weeklyStats.periodClosed} accent />
+            <StatCell label="Avg / Day"        value={`${weeklyStats.avgTripsPerDay} trips`} />
+            <StatCell label="Est. Trip Hours"  value={`${weeklyStats.totalTripHours}h`} />
+          </div>
+
+          {/* active status */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            background: vehicle.isActive ? "#f0fdf4" : "#fef2f2",
+            border: `1px solid ${vehicle.isActive ? "#bbf7d0" : "#fecaca"}`,
+            borderRadius: 8, padding: "8px 12px",
+          }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: vehicle.isActive ? "#22c55e" : C.redDark, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: vehicle.isActive ? "#15803d" : C.redDark }}>
+              {vehicle.isActive ? "Vehicle Active" : "Vehicle Inactive"}
             </span>
           </div>
 
-          <h1 style={s.heroTitle}>
-            Powerful Fleet Insights<br />
-            <span style={{ color: "#6366f1" }}>coming your way.</span>
-          </h1>
-          <p style={s.heroSub}>
-            We're building a best-in-class analytics layer — live vehicle tracking,
-            factory KPIs, compliance reports and route intelligence, all unified.
-          </p>
 
-          <div style={{ display: "flex", gap: 12, marginTop: 28, flexWrap: "wrap" }}>
-            <button style={s.heroPrimaryBtn}>🔔 Notify Me</button>
-            <button style={s.heroSecondaryBtn}>View Roadmap →</button>
-          </div>
-        </div>
-      </div>
+        </Card>
+          {/* ── Row 1, Col 3: Vehicle Usage (area chart) ── */}
+          <VehicleUsageCard
+            vehicle={vehicle}
+            weeklyStats={weeklyStats}
+            vehicleUsage={vehicleUsage}
+          />
 
-      {/* ── Features grid ── */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={s.sectionTitle}>What's coming</h2>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>{TILES.length} features planned</span>
-        </div>
-        <div style={s.featureGrid}>
-          {TILES.map((t, i) => <FeatureCard key={t.label} tile={t} index={i} />)}
-        </div>
-      </div>
+          <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
-      {/* ── Progress ── */}
-      <div style={s.progressCard}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif" }}>
-              Overall Build Progress
+            <Card>
+              <CardLabel>State Of Health (Internal & External)</CardLabel>
+              <BigNumber style={{ color: stateOfHealth.totalIssues > 0 ? C.redDark : C.teal }}>
+                {stateOfHealth.totalIssues > 0
+                  ? `${stateOfHealth.totalIssues} Trip${stateOfHealth.totalIssues !== 1 ? "s" : ""} cancelled`
+                  : "All Clear"}
+              </BigNumber>
+              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
+                This period
+                <Delta val={sohDelta} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <Donut
+                  size={110} stroke={14}
+                  label={`${stateOfHealth.sohPct}%`}
+                  sublabel="SOH"
+                  segments={stateOfHealth.segments.map(s => ({ pct: s.pct, color: s.color }))}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {stateOfHealth.segments.map(seg => (
+                    <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 3, background: seg.color, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{seg.label}</div>
+                        <div style={{ fontSize: 10, color: C.muted }}>{seg.value} trips ({seg.pct}%)</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {/* ── Row 1, Col 2: Driver Behavior (vertical bars) ── */}
+            <Card>
+              <CardLabel>Trip Execution</CardLabel>
+              <BigNumber>{driverBehavior.onTimePct}%</BigNumber>
+              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 4px" }}>
+                Completion rate
+                <Delta val={+(driverBehavior.onTimePct - 75).toFixed(0)} />
+              </div>
+              <VBarGroup bars={driverBehavior.bars} />
+            </Card>
+
+
+            <Card>
+              <CardLabel>Trip Type Split</CardLabel>
+              <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", marginTop: 12 }}>
+                {tripTypeSplit.donuts.map(d => (
+                  <div key={d.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                    <Donut
+                      size={72} stroke={10}
+                      label={`${d.pct}%`}
+                      segments={[
+                        { pct: d.pct,       color: d.color },
+                        { pct: 100 - d.pct, color: C.slateLight },
+                      ]}
+                    />
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: C.text }}>{d.label}</div>
+                    <div style={{ fontSize: 10, color: C.muted }}>{d.value} trips</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+        </div>
+
+        {/* ════ RIGHT 3-col grid ════ */}
+        <div style={{ gridColumn:  "span 3", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
+
+          <Card>
+            <CardLabel>Fleet Availability</CardLabel>
+            <BigNumber style={{ color: C.teal }}>{availability.overallPct}%</BigNumber>
+            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
+              High-utilisation days
+              <Delta val={+(availability.overallPct - 60).toFixed(0)} />
             </div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-              Core infrastructure complete · UI components in progress · Analytics engine pending
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {availability.tiers.map(tier => (
+                <div key={tier.label} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "#f8fafc", borderRadius: 8, padding: "7px 10px",
+                  border: `1px solid ${C.border}`,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: tier.color }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.label}</span>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.pct}%</div>
+                    <div style={{ fontSize: 10, color: C.muted }}>{tier.range}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-          <span style={{ fontSize: 22, fontWeight: 800, color: "#6366f1", fontFamily: "'Sora', sans-serif" }}>32%</span>
-        </div>
-        <div style={s.progressTrack}>
-          <div style={s.progressFill} />
-        </div>
-        <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
-          {[
-            { label: "Infrastructure", pct: 100, color: "#22c55e" },
-            { label: "UI Components",  pct: 55,  color: "#6366f1" },
-            { label: "Analytics Engine", pct: 10, color: "#f59e0b" },
-          ].map(item => (
-            <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color }} />
-              <span style={{ color: "#374151", fontWeight: 600 }}>{item.label}</span>
-              <span style={{ color: "#94a3b8" }}>{item.pct}%</span>
+          </Card>
+
+          <Card>
+            <CardLabel>Idle Analysis</CardLabel>
+            <BigNumber style={{ color: idleAnalysis.idleDayPct > 40 ? C.redDark : C.teal }}>
+              {idleAnalysis.idleDayPct}%
+            </BigNumber>
+            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
+              Days with zero trips
+              <Delta val={+(30 - idleAnalysis.idleDayPct).toFixed(0)} />
             </div>
-          ))}
+            {idleAnalysis.bars.map(b => (
+              <HBar key={b.label} label={b.label} value={b.value} max={b.max} color={b.color} suffix=" days" />
+            ))}
+          </Card>
+
         </div>
+
+        
       </div>
+      {/* end main grid */}
 
-      {/* Keyframes */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&display=swap');
-
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(14px); }
-          to   { opacity: 1; transform: translateY(0);    }
-        }
-        .feature-card-enter {
-          animation: fadeSlideUp 0.4s ease both;
-        }
-      `}</style>
     </div>
   );
 }
@@ -314,228 +987,77 @@ export default function AdminDashboard() {
 const s = {
   page: {
     fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
-    background: "#f4f5f7",
+    background: C.bg,
     minHeight: "100vh",
-    padding: "28px 32px",
-    maxWidth: 1100,
-    margin: "0 auto",
+    padding: "5px 15px",
+    // maxWidth: 1200,
+    // margin: "0 auto",
     boxSizing: "border-box",
+    borderRadius: 14,
   },
-
-  // ── Leaderboard ──
-  card: {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    padding: "24px 26px",
-    marginBottom: 24,
-    boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+  topBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  backBtn: {
+    background: "#f1f5f9",
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    width: 30, height: 30,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 14, cursor: "pointer", color: C.text, fontWeight: 700,
   },
   periodBtn: {
-    padding: "5px 12px",
-    fontSize: 11.5,
+    padding: "5px 11px",
+    fontSize: 11,
     fontWeight: 600,
     border: "none",
     borderRadius: 6,
     background: "transparent",
-    color: "#6b7280",
+    color: C.muted,
     cursor: "pointer",
     whiteSpace: "nowrap",
     transition: "all 0.15s",
   },
   periodBtnActive: {
     background: "#fff",
-    color: "#0f172a",
+    color: C.text,
     boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
   },
-  leaderRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "8px 10px",
-    borderRadius: 10,
-    transition: "background 0.15s",
-    cursor: "default",
-  },
-  rankBadge: {
-    width: 28,
-    height: 28,
+  shareBtn: {
+    padding: "7px 14px",
+    fontSize: 12, fontWeight: 600,
+    border: `1px solid ${C.border}`,
     borderRadius: 8,
-    background: "#f1f5f9",
-    color: "#6b7280",
-    fontSize: 12,
-    fontWeight: 800,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  tripCountBadge: {
-    fontSize: 11,
-    fontWeight: 700,
-    padding: "3px 9px",
-    borderRadius: 20,
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  },
-  chartSkeleton: { display: "flex", flexDirection: "column", gap: 10 },
-  skeletonRow: {
-    display: "flex", alignItems: "center", gap: 12,
-    padding: "8px 10px",
-  },
-  skeletonPill: {
-    height: 14, borderRadius: 6, background: "#e2e8f0", flexShrink: 0,
-  },
-
-  // ── Hero ──
-  hero: {
     background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 20,
-    padding: "44px 48px",
-    marginBottom: 24,
-    position: "relative",
-    overflow: "hidden",
-    boxShadow: "0 2px 20px rgba(0,0,0,0.04)",
+    color: C.text,
+    cursor: "pointer",
   },
-  heroDotGrid: {
-    position: "absolute",
-    inset: 0,
-    backgroundImage: "radial-gradient(circle, #e5e7eb 1px, transparent 1px)",
-    backgroundSize: "20px 20px",
-    opacity: 0.6,
-    pointerEvents: "none",
-  },
-  heroAccentBlob1: {
-    position: "absolute",
-    top: -80, right: -80, width: 300, height: 300,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%)",
-    pointerEvents: "none",
-  },
-  heroAccentBlob2: {
-    position: "absolute",
-    bottom: -60, left: 60, width: 200, height: 200,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%)",
-    pointerEvents: "none",
-  },
-  heroPill: {
-    display: "inline-flex", alignItems: "center", gap: 8,
-    background: "#ede9fe",
-    border: "1px solid #c4b5fd",
-    borderRadius: 20, padding: "5px 14px", marginBottom: 20,
-  },
-  heroPillDot: {
-    width: 7, height: 7, borderRadius: "50%", background: "#6366f1", display: "inline-block",
-  },
-  heroTitle: {
-    fontFamily: "'Sora', 'DM Sans', sans-serif",
-    fontSize: "clamp(24px, 3vw, 34px)",
-    fontWeight: 800,
-    color: "#0f172a",
-    margin: "0 0 12px",
-    lineHeight: 1.2,
-    letterSpacing: "-0.5px",
-  },
-  heroSub: {
-    fontSize: 15,
-    color: "#6b7280",
-    maxWidth: 500,
-    lineHeight: 1.7,
-    margin: 0,
-  },
-  heroPrimaryBtn: {
-    background: "#6366f1",
-    color: "#fff",
+  downloadBtn: {
+    padding: "7px 14px",
+    fontSize: 12, fontWeight: 700,
     border: "none",
-    borderRadius: 10,
-    padding: "11px 22px",
-    fontSize: 13.5,
-    fontWeight: 700,
+    borderRadius: 8,
+    background: C.teal,
+    color: "#fff",
     cursor: "pointer",
-    boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
-    transition: "transform 0.15s, box-shadow 0.15s",
+    boxShadow: "0 2px 8px rgba(13,148,136,0.3)",
   },
-  heroSecondaryBtn: {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    padding: "11px 22px",
-    fontSize: 13.5,
-    fontWeight: 600,
-    cursor: "pointer",
-    color: "#374151",
-    transition: "border-color 0.15s",
-  },
-
-  // ── Feature grid ──
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 800,
-    color: "#6b7280",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    margin: 0,
-  },
-  featureGrid: {
+  grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+    gridTemplateColumns: "280px 1fr",
     gap: 14,
-    marginBottom: 24,
-  },
-  featureCard: {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    padding: "20px 22px",
-    display: "flex",
-    flexDirection: "column",
-    transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
-    animation: "fadeSlideUp 0.4s ease both",
-    userSelect: "none",
-  },
-  statusChip: {
-    fontSize: 10,
-    fontWeight: 700,
-    padding: "3px 9px",
-    borderRadius: 6,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    flexShrink: 0,
-  },
-  etaChip: {
-    display: "inline-flex",
-    alignItems: "center",
-    background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
-    borderRadius: 6,
-    padding: "3px 9px",
-    fontSize: 11,
-    fontWeight: 700,
-    color: "#15803d",
-  },
-
-  // ── Progress card ──
-  progressCard: {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    padding: "22px 26px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-    marginBottom: 8,
-  },
-  progressTrack: {
-    background: "#f1f5f9",
-    borderRadius: 8,
-    height: 8,
-    overflow: "hidden",
-  },
-  progressFill: {
-    width: "32%",
-    height: "100%",
-    background: "linear-gradient(90deg, #6366f1, #818cf8)",
-    borderRadius: 8,
-    transition: "width 1s ease",
+    alignItems: "start",
   },
 };
+
+const keyframes = `
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+`;

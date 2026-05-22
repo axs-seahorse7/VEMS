@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema({
     otpExpiry:{
         type:Date,
     },
+    
     isSystemAdmin:{
         type:Boolean,
         default:false

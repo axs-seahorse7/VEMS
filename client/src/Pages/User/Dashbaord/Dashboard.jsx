@@ -531,8 +531,16 @@ export default function VehicleDashboard() {
 
   const pickupVehicles   = allVehicles.filter((v) => v.purpose === "Pickup");
   const deliveryVehicles = allVehicles.filter((v) => v.purpose === "Delivery");
-  const FGVehicles = allVehicles.filter((v) => Array.isArray(v.materials) && v.materials.filter((m) => m && (m.material || m.material?.name)).some((m) => typeof m.material === "string" ? m.material === "FG" : m.material?.name === "FG"));
-  const RMVehicles = allVehicles.filter((v) => Array.isArray(v.materials) && v.materials.filter((m) => m && (m.material || m.material?.name)).some((m) => typeof m.material === "string" ? m.material === "RM" : m.material?.name === "RM"));
+
+  const hasMaterial = (vehicle, materialName) => {
+    return (
+      vehicle?.material?.material === materialName ||
+      vehicle?.material?.name === materialName
+    );
+  };
+
+  const FGVehicles = allVehicles.filter((v) => hasMaterial(v, "FG"));
+  const RMVehicles = allVehicles.filter((v) => hasMaterial(v, "RM"));
 
   const segCounts = { all: allVehicles.length, waiting: waitingVehicles.length, pickup: pickupVehicles.length, delivery: deliveryVehicles.length, FG: FGVehicles.length, RM: RMVehicles.length, inside: insideVehicles.length, enroute: enrouteVehicles.length, dispatched: dispatchedVehicles.length, closed: closedTrips.length };
 
@@ -687,8 +695,8 @@ export default function VehicleDashboard() {
         <KpiCard label="Waiting"      value={waitingVehicles.length}    color="#f59e0b" icon={Icon.clock}    active={filter === "waiting"}    onClick={() => setFilter("waiting")} />
         <KpiCard label="Inside"       value={insideVehicles.length}     color="#10b981" icon={Icon.truck}    active={filter === "inside"}     onClick={() => setFilter("inside")} />
         <KpiCard label="Upcoming"     value={enrouteVehicles.length}    color="#3b82f6" icon={Icon.map}      active={filter === "enroute"}    onClick={() => setFilter("enroute")} />
-        <KpiCard label="FG Vehicles"  value={FGVehicles.length}         color="#79AE6F" icon={Icon.alert}    active={filter === "fg"}         onClick={() => setFilter("fg")} />
-        <KpiCard label="RM Vehicles"  value={RMVehicles.length}         color="#66D0BC" icon={Icon.alert}    active={filter === "rm"}         onClick={() => setFilter("rm")} />
+        <KpiCard label="FG Vehicles"  value={FGVehicles.length}         color="#79AE6F" icon={Icon.alert}    active={filter === "FG"}         onClick={() => setFilter("FG")} />
+        <KpiCard label="RM Vehicles"  value={RMVehicles.length}         color="#66D0BC" icon={Icon.alert}    active={filter === "RM"}         onClick={() => setFilter("RM")} />
         <KpiCard label="Pickups"      value={pickupVehicles.length}     color="purple"  icon={Icon.package}  active={filter === "pickup"}     onClick={() => setFilter("pickup")} />
         <KpiCard label="Deliveries"   value={deliveryVehicles.length}   color="#ec4899" icon={Icon.location} active={filter === "delivery"}   onClick={() => setFilter("delivery")} />
         <KpiCard label="Dispatched"   value={dispatchedVehicles.length} color="#059669" icon={Icon.dispatch} active={filter === "dispatched"} onClick={() => setFilter((f) => f === "dispatched" ? "all" : "dispatched")} />
