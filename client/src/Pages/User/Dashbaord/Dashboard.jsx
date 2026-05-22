@@ -539,8 +539,8 @@ export default function VehicleDashboard() {
     );
   };
 
-  const FGVehicles = allVehicles.filter((v) => hasMaterial(v, "FG"));
-  const RMVehicles = allVehicles.filter((v) => hasMaterial(v, "RM"));
+  const FGVehicles = allVehicles?.filter((v) => hasMaterial(v, "FG"));
+  const RMVehicles = allVehicles?.filter((v) => hasMaterial(v, "RM"));
 
   const segCounts = { all: allVehicles.length, waiting: waitingVehicles.length, pickup: pickupVehicles.length, delivery: deliveryVehicles.length, FG: FGVehicles.length, RM: RMVehicles.length, inside: insideVehicles.length, enroute: enrouteVehicles.length, dispatched: dispatchedVehicles.length, closed: closedTrips.length };
 
