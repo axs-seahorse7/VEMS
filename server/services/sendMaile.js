@@ -13,7 +13,7 @@ export const sendMail = async ({to, type, payload }) => {
     const { subject, html } = template(payload);
 
     const mailOptions = {
-      from: process.env.NODE_MAILER_USER,
+      from: `"PG Group - VEMS" <${process.env.NODE_MAILER_USER}>`,
       to,
       subject,
       html,
