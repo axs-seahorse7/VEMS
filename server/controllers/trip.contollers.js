@@ -1,17 +1,22 @@
 import mongoose from "mongoose";
+
+// models
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
 import VehicleState from "../db/models/Vehicle-Model/vehicleState.model.js";
 import Trip from "../db/models/Vehicle-Model/trip.model.js";
 import GateLog from "../db/models/Vehicle-Model/gate.model.js";
 import User from "../db/models/User-Model/user.model.js";
 import Driver from "../db/models/Driver-model/driver.model.js";
-import AppError from "../utils/AppError.js";
-import asyncHandler from "../middleware/Asynct-handler/asyncHandler.js";
+import tripSegment from "../db/models/Vehicle-Model/tripSegment.model.js";
 import DriverTripHistory from "../db/models/Driver-model/driverStats.model.js";
 
+// utils
+import AppError from "../utils/AppError.js";
+import asyncHandler from "../middleware/Asynct-handler/asyncHandler.js";
+import {alertMailSender, ALERT_TYPES} from "../services/alertMailSender.js";
 
 
-
+// these controllers are not in use curremtly, and will remove later, 
 export const getActiveTrip = async (req, res) => {
   try {
     const { vehicleNumber } = req.params;
@@ -328,12 +333,29 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         ]
       };
 
+   
+
       let newTrip = await Trip.create(
         [tripPayload],
         { session }
       );
 
       newTrip = newTrip[0];
+
+      await tripSegment.create([{
+        tripId: newTrip._id,
+        triptype: "EXTERNAL",
+        segmentNumber: 1,
+        externalSource: newTrip.externalSource?? null,
+        externalDestination: newTrip.externalDestination?? null,
+        sourceFactoryId: newTrip.sourceFactoryId?? null,
+        destinationFactoryId: newTrip.destinationFactoryId?? null,
+        vehicleId: newTrip.vehicleId,
+        driverId: newTrip.driverId,
+
+        startedAt: newTrip.startedAt,
+        completedAt: null,
+      }], { session });
 
       // ========================
       // 6. ASSIGN RELATIONS
@@ -505,6 +527,21 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
       );
 
       newTrip = newTrip[0];
+
+      await tripSegment.create([{
+        tripId: newTrip._id,
+        triptype:"INTERNAL",
+        segmentNumber: 1,
+        externalSource: newTrip.externalSource?? null,
+        externalDestination: newTrip.externalDestination?? null,
+        sourceFactoryId: newTrip.sourceFactoryId?? null,
+        destinationFactoryId: newTrip.destinationFactoryId?? null,
+        vehicleId: newTrip.vehicleId,
+        driverId: newTrip.driverId,
+
+        startedAt: newTrip.startedAt,
+        completedAt: null,
+      }], { session });
 
       await assignDriverToTrip({
         driverId: driver._id,
@@ -1436,21 +1473,28 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
 export const cancelTrip = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
+  let user = null;
+  let trip = null;
+  let updatedTrip = null;
+
   try {
 
-    let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
       const {reason} = req.body;
 
-      const user = await User.findById(req.userId).populate("factory")
+      user = await User.findById(req.userId).populate("factory")
         .session(session);
 
       if (!user) {
         throw new AppError("Please login to continue", 400);
       }
 
-      const trip = await Trip.findById(tripId)
+     trip = await Trip.findById(tripId)
+        .populate("driverId", "driverName driverContact")
+        .populate("vehicleId", "vehicleNumber type ")
+        .populate("sourceFactoryId", "name location")
+        .populate("destinationFactoryId", "name location")
         .session(session);
 
       if (!trip) {
@@ -1467,8 +1511,7 @@ export const cancelTrip = asyncHandler( async (req, res) => {
       const now = new Date();
 
       
-      updatedTrip =
-        await Trip.findByIdAndUpdate(
+      updatedTrip =await Trip.findByIdAndUpdate(
           tripId,
           {
             tripState: "CANCELLED",
@@ -1525,7 +1568,6 @@ export const cancelTrip = asyncHandler( async (req, res) => {
       // RELEASE VEHICLE
       // ========================
       if (trip.vehicleId) {
-
         await Vehicle.findByIdAndUpdate(
           trip.vehicleId,
           {
@@ -1537,8 +1579,31 @@ export const cancelTrip = asyncHandler( async (req, res) => {
           }
         );
       }
-
+      
     });
+    
+    const mailResult = await alertMailSender({
+       to: process.env.ALERT_EMAIL_RECEIVER,
+       alertType: ALERT_TYPES.TRIP_CANCELLED,
+       payload: {
+         trip: updatedTrip,
+         reason: updatedTrip.reason,
+         cancelledBy: user?.email || "system",
+         driverName: trip.driverId?.driverName || "",
+         driverContact: trip.driverId?.driverContact || "",
+         vehicleNumber: trip.vehicleId?.vehicleNumber || "",
+         vehicleType: trip.vehicleId?.type || "",
+         cancelledAt: updatedTrip.completedAt,
+         startedAt: updatedTrip.startedAt,
+         sourceFactory: trip.sourceFactoryId?.name || trip.externalSource || "",
+         destinationFactory: trip.destinationFactoryId?.name || trip.externalDestination || "",
+         sourceFactoryLocation: trip.sourceFactoryId?.location || "",
+         destinationFactoryLocation: trip.destinationFactoryId?.location || "",
+       }
+     });
+
+     console.log("MAIL RESULT:", mailResult);
+
 
     // ========================
     // RESPONSE
@@ -1548,6 +1613,12 @@ export const cancelTrip = asyncHandler( async (req, res) => {
       trip: updatedTrip,
       message:"Trip cancelled successfully"
     };
+  } catch (err) {
+    console.error("Error in cancelTrip:", err);
+    return res.status(500).json({
+      success:false,
+      message: err.message
+   });
 
   } finally {
    await session.endSession();
@@ -1682,6 +1753,28 @@ export const changeRoute = asyncHandler( async (req, res) => {
         );
 
     });
+
+    const existingSegments = await tripSegment.find({ tripId: updatedTrip._id }).session(session);
+
+    let segmentCounter = null;
+    if(existingSegments){
+      segmentCounter = existingSegments.length + 1;
+    }
+
+    await tripSegment.create([{
+        tripId: updatedTrip._id,
+        triptype: updatedTrip.type === "internal_transfer"? "INTERNAL": "EXTERNAL",
+        segmentNumber: segmentCounter || 1,
+        externalSource: updatedTrip.externalSource?? null,
+        externalDestination: updatedTrip.externalDestination?? null,
+        sourceFactoryId: updatedTrip.sourceFactoryId?? null,
+        destinationFactoryId: updatedTrip.destinationFactoryId?? null,
+        vehicleId: updatedTrip.vehicleId,
+        driverId: updatedTrip.driverId,
+
+        startedAt: updatedTrip.startedAt,
+        completedAt: null,
+      }], { session });
 
     tripDetails = {
       trip: updatedTrip,
@@ -1863,9 +1956,11 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
       );
 
       const driverUpdate = {};
+
       if (currentTrip.driverId) {
         driverUpdate.activeTripId = newTrip[0]._id;
       }
+
       await Driver.findByIdAndUpdate(
         currentTrip.driverId,
         {
@@ -1876,15 +1971,28 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
         }
       );
 
-      await Vehicle.findByIdAndUpdate(
-        currentTrip.vehicleId,
-        {
+      await Vehicle.findByIdAndUpdate( currentTrip.vehicleId, {
           currentTrip: newTrip[0]._id
         },
         {
           session
         }
       );
+
+      await tripSegment.create([{
+        tripId: newTrip[0]._id,
+        triptype: newTrip[0].type === "internal_transfer"? "INTERNAL": "EXTERNAL",
+        segmentNumber: 1,
+        externalSource: newTrip[0].externalSource?? null,
+        externalDestination: newTrip[0].externalDestination?? null,
+        sourceFactoryId: newTrip[0].sourceFactoryId?? null,
+        destinationFactoryId: newTrip[0].destinationFactoryId?? null,
+        vehicleId: newTrip[0].vehicleId,
+        driverId: newTrip[0].driverId,
+
+        startedAt: newTrip[0].startedAt,
+        completedAt: null,
+      }], { session });
 
 
       responseData = {
@@ -1893,6 +2001,7 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
         newTrip: newTrip[0],
         message: "Material loaded, current trip closed, and new trip created successfully"
       };
+
     });
 
   } catch (err) {

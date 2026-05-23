@@ -716,6 +716,53 @@ export const getVehicleDashboard = async (req, res) => {
       else lowDays++;
     }
 
+    // ── 10. Waiting Analysis ─────────────────────────────────────────────────────
+    const WAIT_THRESHOLD_MS = 4 * 60 * 60 * 1000; // 4 hours in ms
+    const waitCutoff = new Date(now - WAIT_THRESHOLD_MS);
+
+    const [outsideWaiting, insideWaiting, totalArrived, totalCheckedIn] = await Promise.all([
+      // Outside waiting: ARRIVED but not checked-in, stuck > 4hrs
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        status: "ARRIVED",
+        location: "outside_factory",
+        arrivedAt: { $lte: waitCutoff },
+        checkedInAt: null,
+      }),
+
+      // Inside waiting: checked-in but not unloaded/completed, stuck > 4hrs
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        location: "inside_factory",
+        checkedInAt: { $lte: waitCutoff },
+        loadStatus: { $in: ["pending"] }, 
+        completedAt: null,
+      }),
+
+      // Denominator for outside %: all arrived (checked-in or not)
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        status: "ARRIVED",
+        arrivedAt: { $gte: since, $lte: now },
+      }),
+
+      // Denominator for inside %: all checked-in
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        checkedInAt: { $gte: since, $lte: now },
+      }),
+
+   
+    ]);
+
+    const outsideWaitPct     = totalArrived    ? +((outsideWaiting / totalArrived)    * 100).toFixed(1) : 0;
+    const insideWaitPct      = totalCheckedIn  ? +((insideWaiting  / totalCheckedIn)  * 100).toFixed(1) : 0;
+    const totalWaiting       = outsideWaiting + insideWaiting;
+    const congestionRatioPct = totalActiveTrips ? +((totalWaiting / totalActiveTrips) * 100).toFixed(1) : 0;
+
+    // health zone: green < 10, yellow 10-20, red > 20
+    const congestionZone = congestionRatioPct < 10 ? "green" : congestionRatioPct <= 20 ? "yellow" : "red";
+
 
     const goodPct   = +((goodDays   / days) * 100).toFixed(1);
     const medPct    = +((mediumDays / days) * 100).toFixed(1);
@@ -821,6 +868,29 @@ export const getVehicleDashboard = async (req, res) => {
           { label: "Medium",       range: "1–2 trips/day",  pct: medPct,    color: "#94a3b8", days: mediumDays },
           { label: "High Priority",range: "0 trips/day",    pct: lowPriPct, color: "#fca5a5", days: lowDays    },
         ],
+      },
+
+      waitingAnalysis: {
+        outsideWaiting: {
+          count:       outsideWaiting,
+          total:       totalArrived,
+          pct:         outsideWaitPct,
+          label:       "Outside Gate",
+          description: "Arrived but not checked-in > 4hrs",
+        },
+        insideWaiting: {
+          count:      insideWaiting,
+          total:      totalCheckedIn,
+          pct:        insideWaitPct,
+          label:      "Inside Plant",
+          description:"Checked-in but operations not performed by 4hrs",
+        },
+        congestion: {
+          totalWaiting,
+          totalActiveTrips,
+          pct:  congestionRatioPct,
+          zone: congestionZone,     // "green" | "yellow" | "red"
+        },
       },
     });
   } catch (err) {

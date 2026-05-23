@@ -103,7 +103,10 @@ const TripSchema = new mongoose.Schema({
 
   startedAt: Date,
   arrivedAt: Date, 
-  checkedInAt: Date, 
+  checkedInAt: {
+    type: Date,
+    default: null,
+  }, 
   completedAt: Date,
   createdBy: String ,
 

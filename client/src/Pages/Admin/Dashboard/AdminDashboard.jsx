@@ -290,14 +290,7 @@ function TooltipBubble({ day, svgX, svgY, containerWidth, color }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Vehicle Usage card — replace the old card with this
-// ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// FactoryBarChart
-// X-axis: factory names  |  Y-axis: 0 → max trips
-// Hover: tooltip with factory name + exact count
-// ─────────────────────────────────────────────────────────────────────────────
+
 function FactoryBarChart({ data, color }) {
   const containerRef = useRef(null);
   const [width,   setWidth]   = useState(0);
@@ -500,7 +493,7 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
   const totalShown = chartData.reduce((s, d) => s + d.count, 0);
 
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: 10,}}>
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
@@ -562,6 +555,261 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
             : "Distribution of cancelled trips across factories"}
         </div>
       
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WaitingAnalysisCard
+// Graph 1 — Operational Bottleneck (horizontal bar)
+// Graph 2 — Overall Congestion Gauge (donut)
+// Paste this component into VehiclePerformanceDashboard.jsx
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Zone colour map ───────────────────────────────────────────────────────────
+const ZONE_COLOR = {
+  green:  { fill: "#0d9488", bg: "#ccfbf1", border: "#5eead4", text: "#0f766e", label: "Healthy"  },
+  yellow: { fill: "#eab308", bg: "#fef9c3", border: "#fde047", text: "#854d0e", label: "Moderate" },
+  red:    { fill: "#ef4444", bg: "#fee2e2", border: "#fca5a5", text: "#991b1b", label: "Critical" },
+};
+
+// ── Congestion donut gauge ────────────────────────────────────────────────────
+function CongestionGauge({ pct, zone }) {
+  const SIZE   = 130;
+  const STROKE = 14;
+  const r      = (SIZE - STROKE) / 2;
+  const circ   = 2 * Math.PI * r;
+  const cx     = SIZE / 2;
+  const zc     = ZONE_COLOR[zone] ?? ZONE_COLOR.green;
+
+  // Zone thresholds drawn as background arc segments (grey track then coloured fill)
+  const fillDash = Math.min((pct / 100) * circ, circ);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      <div style={{ position: "relative" }}>
+        <svg width={SIZE} height={SIZE} style={{ display: "block" }}>
+          {/* grey track */}
+          <circle cx={cx} cy={cx} r={r} fill="none" stroke={C.slateLight} strokeWidth={STROKE} />
+          {/* coloured fill */}
+          <circle
+            cx={cx} cy={cx} r={r} fill="none"
+            stroke={zc.fill}
+            strokeWidth={STROKE}
+            strokeDasharray={`${fillDash} ${circ}`}
+            strokeDashoffset={0}
+            transform={`rotate(-90 ${cx} ${cx})`}
+            style={{ transition: "stroke-dasharray 1s ease, stroke 0.4s ease" }}
+          />
+          {/* centre text */}
+          <text x={cx} y={cx - 6} textAnchor="middle" dominantBaseline="middle"
+            style={{ fontSize: 22, fontWeight: 800, fill: zc.fill, fontFamily: "'DM Sans', sans-serif" }}>
+            {pct}%
+          </text>
+          <text x={cx} y={cx + 14} textAnchor="middle"
+            style={{ fontSize: 10, fill: C.muted, fontFamily: "'DM Sans', sans-serif" }}>
+            congestion
+          </text>
+        </svg>
+      </div>
+
+      {/* zone badge */}
+      <div style={{
+        background: zc.bg, border: `1px solid ${zc.border}`,
+        borderRadius: 20, padding: "4px 14px",
+        fontSize: 11, fontWeight: 700, color: zc.text,
+        letterSpacing: 0.3,
+      }}>
+        {zc.label}
+      </div>
+
+      {/* threshold legend */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
+        {[
+          { zone: "green",  label: "Healthy",  range: "< 10%"   },
+          { zone: "yellow", label: "Moderate", range: "10 – 20%" },
+          { zone: "red",    label: "Critical",  range: "> 20%"   },
+        ].map(t => {
+          const tc = ZONE_COLOR[t.zone];
+          const isActive = t.zone === zone;
+          return (
+            <div key={t.zone} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "5px 8px", borderRadius: 7,
+              background: isActive ? tc.bg : "transparent",
+              border: `1px solid ${isActive ? tc.border : "transparent"}`,
+              transition: "background 0.3s",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: tc.fill }} />
+                <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? tc.text : C.muted }}>
+                  {t.label}
+                </span>
+              </div>
+              <span style={{ fontSize: 10, color: isActive ? tc.text : C.micro, fontWeight: 600 }}>
+                {t.range}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Bottleneck horizontal bar ─────────────────────────────────────────────────
+function BottleneckBar({ label, pct, count, total, color, description }) {
+  const isRed = pct >= 20;
+  const barColor = isRed ? "#ef4444" : pct >= 10 ? "#eab308" : color;
+
+  return (
+    <div style={{
+      background: "#f8fafc",
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: "12px 14px",
+    }}>
+      {/* header row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{label}</div>
+          <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{description}</div>
+        </div>
+        <div style={{
+          fontSize: 18, fontWeight: 800,
+          color: barColor,
+          background: barColor + "18",
+          borderRadius: 8, padding: "3px 10px",
+          lineHeight: 1.4,
+        }}>
+          {pct}%
+        </div>
+      </div>
+
+      {/* bar track */}
+      <div style={{ height: 8, background: C.slateLight, borderRadius: 99, overflow: "hidden", marginBottom: 6 }}>
+        <div style={{
+          width: `${Math.min(pct, 100)}%`,
+          height: "100%",
+          borderRadius: 99,
+          background: barColor,
+          transition: "width 1s cubic-bezier(.4,0,.2,1)",
+        }} />
+      </div>
+
+      {/* count detail */}
+      <div style={{ fontSize: 10, color: C.muted }}>
+        <span style={{ fontWeight: 700, color: barColor }}>{count}</span>
+        {" waiting "}
+        <span style={{ fontWeight: 600, color: C.text }}>{total}</span>
+        {" total "}
+      </div>
+    </div>
+  );
+}
+
+// ── Main card ─────────────────────────────────────────────────────────────────
+function WaitingAnalysisCard({ waitingAnalysis }) {
+  if (!waitingAnalysis) return null;
+
+  const { outsideWaiting, insideWaiting, congestion } = waitingAnalysis;
+
+  // Which stage is the bigger bottleneck?
+  const bottleneckStage = outsideWaiting.pct >= insideWaiting.pct
+    ? "Outside Gate"
+    : "Inside Plant";
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* ── Card header ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <CardLabel>Waiting Analysis</CardLabel>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+            Vehicles stuck &gt; 4 hrs · Threshold: 4h
+          </div>
+        </div>
+        {/* bottleneck callout */}
+        <div style={{
+          background: "#fff7ed",
+          border: "1px solid #fed7aa",
+          borderRadius: 8,
+          padding: "5px 12px",
+          fontSize: 11,
+          fontWeight: 700,
+          color: "#c2410c",
+        }}>
+          ⚠ Bottleneck: {bottleneckStage}
+        </div>
+      </div>
+
+      {/* ── Two-column layout: bars left, gauge right ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 20,
+        alignItems: "start",
+      }}>
+
+        {/* Graph 1 — Bottleneck bars */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
+            letterSpacing: 0.5, marginBottom: 2 }}>
+            Graph 1 — Operational Bottleneck
+          </div>
+
+          <BottleneckBar
+            label={outsideWaiting.label}
+            description={outsideWaiting.description}
+            pct={outsideWaiting.pct}
+            count={outsideWaiting.count}
+            total={outsideWaiting.total}
+            color={C.teal}
+          />
+
+          <BottleneckBar
+            label={insideWaiting.label}
+            description={insideWaiting.description}
+            pct={insideWaiting.pct}
+            count={insideWaiting.count}
+            total={insideWaiting.total}
+            color={C.teal}
+          />
+
+          {/* formula note */}
+          <div style={{
+            background: "#f1f5f9",
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            padding: "8px 12px",
+            fontSize: 10,
+            color: C.muted,
+            lineHeight: 1.7,
+          }}>
+            <span style={{ fontWeight: 700, color: C.text }}>Outside % </span>
+            = waiting outside ÷ all arrived × 100
+            <br />
+            <span style={{ fontWeight: 700, color: C.text }}>Inside % </span>
+            = waiting inside ÷ all checked-in × 100
+          </div>
+        </div>
+
+        {/* Graph 2 — Congestion gauge */}
+        <div style={{ minWidth: 150 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
+            letterSpacing: 0.5, marginBottom: 10, textAlign: "center" }}>
+            Graph 2 — System Health
+          </div>
+          <CongestionGauge pct={congestion.pct} zone={congestion.zone} />
+          <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+            {congestion.totalWaiting} waiting
+            <br />
+            of {congestion.totalActiveTrips} active trips
+          </div>
+        </div>
+
+      </div>
     </Card>
   );
 }
@@ -800,182 +1048,191 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
       {/* ── main grid ── */}
       <div style={s.grid}>
 
-        {/* ════ LEFT PANEL — Weekly Stats ════ */}
-        <Card style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
-           <span className="block" > Weekly Stats  </span> 
-            <span className="text-yellow-500 mt-2" > High Performed Vehicle </span> 
-          </div>
 
-          {/* vehicle image placeholder + info */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{
-              width: 72, height: 52, background: C.slateLight, borderRadius: 8,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0,
-            }}>
-              {VEHICLE_ICONS[vehicle.typeOfVehicle] ?? "🚛"}
+        <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr 1fr",  gap: 14 }}>
+
+          <Card style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14,  }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
+            <span className="block" > Weekly Stats  </span> 
+              <span className="text-yellow-500 mt-2" > High Performed Vehicle </span> 
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{vehicle.vehicleNumber}</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
-                {vehicle.model ?? vehicle.vehicleNumber}
+
+            {/* vehicle image placeholder + info */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{
+                width: 72, height: 52, background: C.slateLight, borderRadius: 8,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0,
+              }}>
+                {VEHICLE_ICONS[vehicle.typeOfVehicle] ?? "🚛"}
               </div>
-              <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
-                {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Fleet" : "External"}
-              </div>
-              <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
-                Updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-              </div>
-            </div>
-          </div>
-
-          {/* 2-col stat grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <StatCell label="Active Since"     value={weeklyStats.activeSince} />
-            <StatCell label="Total Trips"      value={weeklyStats.totalClosedTrips.toLocaleString("en-IN")} />
-            <StatCell label="Period Trips"     value={weeklyStats.periodTrips} accent />
-            <StatCell label="Completed"        value={weeklyStats.periodClosed} accent />
-            <StatCell label="Avg / Day"        value={`${weeklyStats.avgTripsPerDay} trips`} />
-            <StatCell label="Est. Trip Hours"  value={`${weeklyStats.totalTripHours}h`} />
-          </div>
-
-          {/* active status */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            background: vehicle.isActive ? "#f0fdf4" : "#fef2f2",
-            border: `1px solid ${vehicle.isActive ? "#bbf7d0" : "#fecaca"}`,
-            borderRadius: 8, padding: "8px 12px",
-          }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: vehicle.isActive ? "#22c55e" : C.redDark, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: vehicle.isActive ? "#15803d" : C.redDark }}>
-              {vehicle.isActive ? "Vehicle Active" : "Vehicle Inactive"}
-            </span>
-          </div>
-
-
-        </Card>
-          {/* ── Row 1, Col 3: Vehicle Usage (area chart) ── */}
-          <VehicleUsageCard
-            vehicle={vehicle}
-            weeklyStats={weeklyStats}
-            vehicleUsage={vehicleUsage}
-          />
-
-          <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
-
-            <Card>
-              <CardLabel>State Of Health (Internal & External)</CardLabel>
-              <BigNumber style={{ color: stateOfHealth.totalIssues > 0 ? C.redDark : C.teal }}>
-                {stateOfHealth.totalIssues > 0
-                  ? `${stateOfHealth.totalIssues} Trip${stateOfHealth.totalIssues !== 1 ? "s" : ""} cancelled`
-                  : "All Clear"}
-              </BigNumber>
-              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
-                This period
-                <Delta val={sohDelta} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <Donut
-                  size={110} stroke={14}
-                  label={`${stateOfHealth.sohPct}%`}
-                  sublabel="SOH"
-                  segments={stateOfHealth.segments.map(s => ({ pct: s.pct, color: s.color }))}
-                />
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {stateOfHealth.segments.map(seg => (
-                    <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: 3, background: seg.color, flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{seg.label}</div>
-                        <div style={{ fontSize: 10, color: C.muted }}>{seg.value} trips ({seg.pct}%)</div>
-                      </div>
-                    </div>
-                  ))}
+              <div>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{vehicle.vehicleNumber}</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
+                  {vehicle.model ?? vehicle.vehicleNumber}
+                </div>
+                <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
+                  {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Fleet" : "External"}
+                </div>
+                <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
+                  Updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                 </div>
               </div>
-            </Card>
+            </div>
 
-            {/* ── Row 1, Col 2: Driver Behavior (vertical bars) ── */}
-            <Card>
-              <CardLabel>Trip Execution</CardLabel>
-              <BigNumber>{driverBehavior.onTimePct}%</BigNumber>
-              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 4px" }}>
-                Completion rate
-                <Delta val={+(driverBehavior.onTimePct - 75).toFixed(0)} />
-              </div>
-              <VBarGroup bars={driverBehavior.bars} />
-            </Card>
+            {/* 2-col stat grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <StatCell label="Active Since"     value={weeklyStats.activeSince} />
+              <StatCell label="Total Trips"      value={weeklyStats.totalClosedTrips.toLocaleString("en-IN")} />
+              <StatCell label="Period Trips"     value={weeklyStats.periodTrips} accent />
+              <StatCell label="Completed"        value={weeklyStats.periodClosed} accent />
+              <StatCell label="Avg / Day"        value={`${weeklyStats.avgTripsPerDay} trips`} />
+              <StatCell label="Est. Trip Hours"  value={`${weeklyStats.totalTripHours}h`} />
+            </div>
+
+            {/* active status */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: vehicle.isActive ? "#f0fdf4" : "#fef2f2",
+              border: `1px solid ${vehicle.isActive ? "#bbf7d0" : "#fecaca"}`,
+              borderRadius: 8, padding: "8px 12px",
+            }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: vehicle.isActive ? "#22c55e" : C.redDark, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: vehicle.isActive ? "#15803d" : C.redDark }}>
+                {vehicle.isActive ? "Vehicle Active" : "Vehicle Inactive"}
+              </span>
+            </div>
 
 
-            <Card>
-              <CardLabel>Trip Type Split</CardLabel>
-              <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", marginTop: 12 }}>
-                {tripTypeSplit.donuts.map(d => (
-                  <div key={d.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                    <Donut
-                      size={72} stroke={10}
-                      label={`${d.pct}%`}
-                      segments={[
-                        { pct: d.pct,       color: d.color },
-                        { pct: 100 - d.pct, color: C.slateLight },
-                      ]}
-                    />
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: C.text }}>{d.label}</div>
-                    <div style={{ fontSize: 10, color: C.muted }}>{d.value} trips</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+          </Card>
+
+          <div style={{ gridColumn: "span 2" }}>   {/* ← wrapping div */}
+            <VehicleUsageCard
+              vehicle={vehicle}
+              weeklyStats={weeklyStats}
+              vehicleUsage={vehicleUsage}
+            />
+          </div>
 
         </div>
 
-        {/* ════ RIGHT 3-col grid ════ */}
-        <div style={{ gridColumn:  "span 3", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
+        <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
           <Card>
-            <CardLabel>Fleet Availability</CardLabel>
-            <BigNumber style={{ color: C.teal }}>{availability.overallPct}%</BigNumber>
-            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
-              High-utilisation days
-              <Delta val={+(availability.overallPct - 60).toFixed(0)} />
+            <CardLabel>State Of Health (Internal & External)</CardLabel>
+            <BigNumber style={{ color: stateOfHealth.totalIssues > 0 ? C.redDark : C.teal }}>
+              {stateOfHealth.totalIssues > 0
+                ? `${stateOfHealth.totalIssues} Trip${stateOfHealth.totalIssues !== 1 ? "s" : ""} cancelled`
+                : "All Clear"}
+            </BigNumber>
+            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
+              This period
+              <Delta val={sohDelta} />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {availability.tiers.map(tier => (
-                <div key={tier.label} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "#f8fafc", borderRadius: 8, padding: "7px 10px",
-                  border: `1px solid ${C.border}`,
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: tier.color }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.label}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <Donut
+                size={110} stroke={14}
+                label={`${stateOfHealth.sohPct}%`}
+                sublabel="SOH"
+                segments={stateOfHealth.segments.map(s => ({ pct: s.pct, color: s.color }))}
+              />
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {stateOfHealth.segments.map(seg => (
+                  <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 3, background: seg.color, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{seg.label}</div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{seg.value} trips ({seg.pct}%)</div>
+                    </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.pct}%</div>
-                    <div style={{ fontSize: 10, color: C.muted }}>{tier.range}</div>
-                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* ── Row 1, Col 2: Driver Behavior (vertical bars) ── */}
+          <Card>
+            <CardLabel>Trip Execution</CardLabel>
+            <BigNumber>{driverBehavior.onTimePct}%</BigNumber>
+            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 4px" }}>
+              Completion rate
+              <Delta val={+(driverBehavior.onTimePct - 75).toFixed(0)} />
+            </div>
+            <VBarGroup bars={driverBehavior.bars} />
+          </Card>
+
+
+          <Card>
+            <CardLabel>Trip Type Split</CardLabel>
+            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", marginTop: 12 }}>
+              {tripTypeSplit.donuts.map(d => (
+                <div key={d.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <Donut
+                    size={72} stroke={10}
+                    label={`${d.pct}%`}
+                    segments={[
+                      { pct: d.pct,       color: d.color },
+                      { pct: 100 - d.pct, color: C.slateLight },
+                    ]}
+                  />
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: C.text }}>{d.label}</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>{d.value} trips</div>
                 </div>
               ))}
             </div>
           </Card>
 
-          <Card>
-            <CardLabel>Idle Analysis</CardLabel>
-            <BigNumber style={{ color: idleAnalysis.idleDayPct > 40 ? C.redDark : C.teal }}>
-              {idleAnalysis.idleDayPct}%
-            </BigNumber>
-            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
-              Days with zero trips
-              <Delta val={+(30 - idleAnalysis.idleDayPct).toFixed(0)} />
-            </div>
-            {idleAnalysis.bars.map(b => (
-              <HBar key={b.label} label={b.label} value={b.value} max={b.max} color={b.color} suffix=" days" />
-            ))}
-          </Card>
-
         </div>
 
-        
+        <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <WaitingAnalysisCard waitingAnalysis={data.waitingAnalysis} />
+        </div>
+
+          {/* ════ RIGHT 3-col grid ════ */}
+          <div style={{ gridColumn:  "span 3", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
+
+            <Card>
+              <CardLabel>Fleet Availability</CardLabel>
+              <BigNumber style={{ color: C.teal }}>{availability.overallPct}%</BigNumber>
+              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
+                High-utilisation days
+                <Delta val={+(availability.overallPct - 60).toFixed(0)} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                {availability.tiers.map(tier => (
+                  <div key={tier.label} style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    background: "#f8fafc", borderRadius: 8, padding: "7px 10px",
+                    border: `1px solid ${C.border}`,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: tier.color }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.label}</span>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.pct}%</div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{tier.range}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card>
+              <CardLabel>Idle Analysis</CardLabel>
+              <BigNumber style={{ color: idleAnalysis.idleDayPct > 40 ? C.redDark : C.teal }}>
+                {idleAnalysis.idleDayPct}%
+              </BigNumber>
+              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
+                Days with zero trips
+                <Delta val={+(30 - idleAnalysis.idleDayPct).toFixed(0)} />
+              </div>
+              {idleAnalysis.bars.map(b => (
+                <HBar key={b.label} label={b.label} value={b.value} max={b.max} color={b.color} suffix=" days" />
+              ))}
+            </Card>
+
+          </div>
+
       </div>
       {/* end main grid */}
 

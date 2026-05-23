@@ -1,7 +1,6 @@
 // services/mail/templates.js
 
-export const emailTemplates = {
-  OTP: ({ name, otp }) => ({
+export const emailTemplates = {OTP: ({ name, otp }) => ({
     subject: "Your VEMS Verification Code",
     html: `
         <!DOCTYPE html>
