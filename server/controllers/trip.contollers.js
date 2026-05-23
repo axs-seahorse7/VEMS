@@ -1583,7 +1583,7 @@ export const cancelTrip = asyncHandler( async (req, res) => {
     });
     
     const mailResult = await alertMailSender({
-       to: process.env.ALERT_EMAIL_RECEIVER,
+       to: process.env.ALERT_EMAIL_RECEIVER || "sonu.pgtel@gmail.com",
        alertType: ALERT_TYPES.TRIP_CANCELLED,
        payload: {
          trip: updatedTrip,
