@@ -304,6 +304,12 @@ function TypeBadge({ type }) {
 function TripTimeline({ tripHistory }) {
   if (!Array.isArray(tripHistory) || tripHistory.length === 0) return null;
 
+  const locationMap = {
+      atGate: "Gate",
+      storeSite: "Store",
+      dispatchSite: "Dispatch",
+    };
+
   return (
     <div style={{  marginTop: 14, borderTop: "1px solid #f0f0f0", paddingTop: 10,  }}>
       {/* Section heading */}
@@ -322,14 +328,14 @@ function TripTimeline({ tripHistory }) {
             return (
               <div key={entry._id || idx} style={{ display: "flex", alignItems: "flex-start" }}>
                 {/* Step column */}
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 110 }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 110,  }}>
                   {/* Dot */}
                   <div style={{ width: 22, height: 22, borderRadius: "50%", background: meta.color + "18", border: `2px solid ${meta.color}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, zIndex: 1 }}>
                     <i className={meta.icon} style={{ fontSize: 9.5, color: meta.color }} />
                   </div>
                   {/* Action label */}
-                  <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, marginTop: 4, textAlign: "center", lineHeight: 1.2 }}>
-                    {meta.label} { entry.actionLocation && ("," + entry.actionLocation === "atGate" ? "Gate" : entry.actionLocation === "storeSite" ? "Store" : entry.actionLocation === "dispatchSite" ? "Dispatch" : "") }
+                  <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, marginTop: 4, textAlign: "center", lineHeight: 1.2}}>
+                    {meta.label} {locationMap[entry.actionLocation] ? ` (${locationMap[entry.actionLocation]})`: ""}
                   </span>
                   {/* Status */}
                   <span style={{ fontSize: 9, color: "black", marginTop: 2, textAlign: "center", lineHeight: 1.2, fontWeight: 500 }}>
@@ -343,7 +349,7 @@ function TripTimeline({ tripHistory }) {
 
                 {/* Connector line */}
                 {!isLast && (
-                  <div style={{ width: 24, height: 2, marginTop: 10, flexShrink: 0, background: `linear-gradient(90deg, ${meta.color}70, ${nextMeta.color}70)`, borderRadius: 2 }} />
+                  <div style={{ width: 50, height: 2, marginTop: 10, flexShrink: 0, background: `linear-gradient(90deg, ${meta.color}70, ${nextMeta.color}70)`, borderRadius: 2 }} />
                 )}
               </div>
             );

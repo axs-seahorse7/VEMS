@@ -2,6 +2,8 @@
 
 import Trip from "../db/models/Vehicle-Model/trip.model.js";
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
+import TripSegment from "../db/models/Vehicle-Model/tripSegment.model.js";
+import Driver from "../db/models/Driver-model/driver.model.js";
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 // Max individual vehicles shown in any Pareto / ranked chart.
@@ -513,21 +515,7 @@ const periodBounds = (period = "week") => {
 };
  
  
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/analytics/vehicle-dashboard?vehicleId=<id>&period=week
-//
-// Response shape (mirrors the screenshot sections):
-// {
-//   vehicle         – static vehicle info
-//   weeklyStats     – left-panel metrics
-//   stateOfHealth   – donut: closed/open/cancelled trip health
-//   driverBehavior  – bar: on-time start, smooth runs, idle ratio
-//   vehicleUsage    – area sparkline: trips per day for the period
-//   idleAnalysis    – horizontal bars: active vs idle days
-//   tripTypeSplit   – 3 donuts: internal / external / mixed
-//   availability    – Good / Medium / HighPriority trip-completion tiers
-// }
-// ─────────────────────────────────────────────────────────────────────────────
+
 export const getVehicleDashboard = async (req, res) => {
   try {
     const { vehicleId, period = "week" } = req.query;
@@ -723,7 +711,7 @@ export const getVehicleDashboard = async (req, res) => {
     const [outsideWaiting, insideWaiting, totalArrived, totalCheckedIn] = await Promise.all([
       // Outside waiting: ARRIVED but not checked-in, stuck > 4hrs
       Trip.countDocuments({
-        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        tripState: { $in: ["ACTIVE"] },
         status: "ARRIVED",
         location: "outside_factory",
         arrivedAt: { $lte: waitCutoff },
@@ -767,6 +755,107 @@ export const getVehicleDashboard = async (req, res) => {
     const goodPct   = +((goodDays   / days) * 100).toFixed(1);
     const medPct    = +((mediumDays / days) * 100).toFixed(1);
     const lowPriPct = +((lowDays    / days) * 100).toFixed(1);
+
+
+    // ── 11. Driver-wise Trip Analytics ──────────────────────────────────────────
+    const driverStats = await TripSegment.aggregate([
+        // ── 1. Only segments in the period with a driver assigned ─────────────────
+        {
+          $match: {
+            driverId:  { $ne: null },
+            createdAt: { $gte: since, $lte: now },
+          },
+        },
+
+        // ── 2. Deduplicate: one row per (driver, trip) pair ───────────────────────
+        //    A driver may appear in multiple segments of the same trip.
+        //    We only want to count each trip once per driver.
+        {
+          $group: {
+            _id: { driverId: "$driverId", tripId: "$tripId" },
+          },
+        },
+
+        // ── 3. Populate the Trip to read its authoritative tripState ──────────────
+        {
+          $lookup: {
+            from:         "trips",          // MongoDB collection name
+            localField:   "_id.tripId",
+            foreignField: "_id",
+            as:           "trip",
+          },
+        },
+        { $unwind: { path: "$trip", preserveNullAndEmptyArrays: true } },
+
+        // ── 4. Roll up to driver level using Trip.tripState ───────────────────────
+        {
+          $group: {
+            _id:       "$_id.driverId",
+            total:     { $sum: 1 },
+            completed: {
+              $sum: {
+                $cond: [{ $eq: ["$trip.tripState", "CLOSED"] }, 1, 0],
+              },
+            },
+            cancelled: {
+              $sum: {
+                $cond: [{ $eq: ["$trip.tripState", "CANCELLED"] }, 1, 0],
+              },
+            },
+            active: {
+              $sum: {
+                $cond: [
+                  { $in: ["$trip.tripState", ["ACTIVE", "COMPLETED"]] }, // COMPLETED = arrived, not closed yet
+                  1, 0,
+                ],
+              },
+            },
+          },
+        },
+
+        // ── 5. Join driver info ───────────────────────────────────────────────────
+        {
+          $lookup: {
+            from:         "drivers",
+            localField:   "_id",
+            foreignField: "_id",
+            as:           "d",
+          },
+        },
+
+        // ── 6. Shape the output ───────────────────────────────────────────────────
+        {
+          $project: {
+            _id:        0,
+            driverId:   "$_id",
+            driverName: {
+              $ifNull: [{ $arrayElemAt: ["$d.driverName", 0] }, "Unknown Driver"],
+            },
+            driverContact: {
+              $ifNull: [{ $arrayElemAt: ["$d.driverContact", 0] }, "N/A"],
+            },
+            total:     1,
+            completed: 1,
+            cancelled: 1,
+            active:    1,
+            completionRate: {
+              $cond: [
+                { $gt: ["$total", 0] },
+                {
+                  $round: [
+                    { $multiply: [{ $divide: ["$completed", "$total"] }, 100] },
+                    1,
+                  ],
+                },
+                0,
+              ],
+            },
+          },
+        },
+
+        { $sort: { completed: -1 } },
+        { $limit: 20 },
+      ]);
  
     return res.json({
       period,
@@ -889,7 +978,17 @@ export const getVehicleDashboard = async (req, res) => {
           totalWaiting,
           totalActiveTrips,
           pct:  congestionRatioPct,
-          zone: congestionZone,     // "green" | "yellow" | "red"
+          zone: congestionZone,
+        },
+      },
+
+      driverAnalytics: {
+        drivers: driverStats,
+        totals: {
+          totalDrivers:    driverStats.length,
+          totalCompleted:  driverStats.reduce((s, d) => s + d.completed, 0),
+          totalCancelled:  driverStats.reduce((s, d) => s + d.cancelled, 0),
+          totalActive:     driverStats.reduce((s, d) => s + d.active,    0),
         },
       },
     });
@@ -898,7 +997,196 @@ export const getVehicleDashboard = async (req, res) => {
     return res.status(500).json({ message: "Vehicle dashboard failed", error: err.message });
   }
 };
-  
+
+
+
+export const driverSearch = async (req, res) => {
+  try {
+    const { q = "", startDate, endDate } = req.query;
+
+    if (!q.trim()) {
+      return res.status(400).json({ message: "Search query (q) is required" });
+    }
+
+    // ── Date bounds ──────────────────────────────────────────────────────────
+    const now   = new Date();
+    const since = startDate
+      ? new Date(startDate)
+      : (() => { const d = new Date(now); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
+    const until = endDate
+      ? (() => { const d = new Date(endDate); d.setHours(23,59,59,999); return d; })()
+      : now;
+
+    // ── 1. Find matching drivers ─────────────────────────────────────────────
+    // Match against: driverName (case-insensitive), driverContact, licenseNumber
+    const term  = q.trim();
+    const regex = new RegExp(term, "i");
+
+    const drivers = await Driver.find({
+      $or: [
+        { driverName:    regex },
+        { driverContact: regex },
+        { licenseNumber: regex },
+        { driverIdNumber: regex },
+      ],
+    })
+      .limit(10)
+      .lean();
+
+    if (drivers.length === 0) {
+      return res.json({ drivers: [], message: "No drivers found" });
+    }
+
+    // ── 2. For each matched driver fetch their trip stats ────────────────────
+    const driverIds = drivers.map(d => d._id);
+
+    const segmentStats = await TripSegment.aggregate([
+      {
+        $match: {
+          driverId:  { $in: driverIds },
+          createdAt: { $gte: since, $lte: until },
+        },
+      },
+      // deduplicate: one row per (driver, trip)
+      {
+        $group: {
+          _id: { driverId: "$driverId", tripId: "$tripId" },
+        },
+      },
+      // join Trip for authoritative tripState
+      {
+        $lookup: {
+          from:         "trips",
+          localField:   "_id.tripId",
+          foreignField: "_id",
+          as:           "trip",
+        },
+      },
+      { $unwind: { path: "$trip", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "factories",
+          localField: "trip.sourceFactoryId",
+          foreignField: "_id",
+          as: "sourceFactory"
+        }
+        },
+        {
+        $unwind: {
+          path: "$sourceFactory", preserveNullAndEmptyArrays: true
+        }
+        },
+        {
+        $lookup: {
+          from: "factories",
+          localField: "trip.destinationFactoryId",
+          foreignField: "_id",
+          as: "destinationFactory"
+        }
+        },
+        {
+        $unwind: {
+          path: "$destinationFactory", preserveNullAndEmptyArrays: true
+        }
+        },
+      // roll up per driver
+      {
+        $group: {
+          _id:       "$_id.driverId",
+          total:     { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ["$trip.tripState", "CLOSED"]    }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ["$trip.tripState", "CANCELLED"] }, 1, 0] } },
+          active:    { $sum: { $cond: [{ $in: ["$trip.tripState", ["ACTIVE","COMPLETED"]] }, 1, 0] } },
+          // collect trip details for the timeline
+          trips: {
+            $push: {
+              tripId:        "$trip._id",
+              tripState:     "$trip.tripState",
+              type:          "$trip.type",
+              externalSource: "$trip.externalSource",
+              externalDestination: "$trip.externalDestination",
+               sourceFactory: {
+                _id: "$sourceFactory._id",
+                name: "$sourceFactory.name",
+                location: "$sourceFactory.location"
+              },
+
+              destinationFactory: {
+                _id: "$destinationFactory._id",
+                name: "$destinationFactory.name",
+                location: "$destinationFactory.location"
+              },
+              startedAt:     "$trip.startedAt",
+              completedAt:   "$trip.completedAt",
+              createdAt:     "$trip.createdAt",
+            },
+            
+          },
+        },
+      },
+    ]);
+
+    // index stats by driverId string for O(1) lookup
+    const statsMap = {};
+    segmentStats.forEach(s => { statsMap[String(s._id)] = s; });
+
+    // ── 3. Merge driver info + stats ─────────────────────────────────────────
+    const result = drivers.map(driver => {
+      const stats = statsMap[String(driver._id)] ?? {
+        total: 0, completed: 0, cancelled: 0, active: 0, trips: [],
+      };
+
+      const completionRate = stats.total > 0
+        ? +((stats.completed / stats.total) * 100).toFixed(1)
+        : 0;
+
+      // sort trips newest first
+      const sortedTrips = (stats.trips ?? [])
+        .filter(t => t.tripId) // remove nulls
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      return {
+        driverId:      driver._id,
+        driverName:    driver.driverName,
+        driverContact: driver.driverContact,
+        licenseNumber: driver.licenseNumber,
+        driverIdType:  driver.driverIdType,
+        driverIdNumber:driver.driverIdNumber,
+        isAssigned:    !!driver.assignedVehicle,
+        assignedVehicle: driver.assignedVehicle,
+        hasActiveTrip: !!driver.activeTripId,
+        // lifetime stats from driver.stats field
+        lifetimeStats: {
+          totalTrips:    driver.stats?.totalTrips    ?? 0,
+          totalDistance: driver.stats?.totalDistance ?? 0,
+          totalTime:     driver.stats?.totalTime     ?? 0,
+        },
+        // period stats from segments
+        periodStats: {
+          total:          stats.total,
+          completed:      stats.completed,
+          cancelled:      stats.cancelled,
+          active:         stats.active,
+          completionRate,
+        },
+        recentTrips: sortedTrips.slice(0, 20),
+      };
+    });
+
+    return res.json({
+      query: term,
+      since,
+      until,
+      drivers: result,
+    });
+
+  } catch (err) {
+    console.error("Driver search error:", err);
+    return res.status(500).json({ message: "Driver search failed", error: err.message });
+  }
+};
+
  
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/analytics/vehicle-dashboard/top

@@ -57,8 +57,8 @@ const TripSchema = new mongoose.Schema({
 
  
 
-  externalSource: String,   // for external deliveries
-  externalDestination: String, // for external deliveries
+  externalSource: String,  
+  externalDestination: String, 
 
   sourceFactoryId: {
     type: mongoose.Schema.Types.ObjectId,

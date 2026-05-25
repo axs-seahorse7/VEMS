@@ -1018,6 +1018,8 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
           }
         );
 
+        
+
       // ========================
       // RELEASE DRIVER
       // ========================
@@ -1057,7 +1059,6 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
       // RELEASE VEHICLE
       // ========================
       if (trip.vehicleId) {
-
         await Vehicle.findByIdAndUpdate(
           trip.vehicleId,
           {
@@ -1071,6 +1072,8 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
       }
 
     });
+
+
 
     // ========================
     // RESPONSE
@@ -2838,9 +2841,7 @@ export const getClosedTrips = async (req, res) => {
       });
     }
 
-    /* ── Per-vehicle / per-driver breakdowns ─────────────────── */
-    // Only built on page 1 alongside stats; subsequent pages return empty stats
-    // so the UI can keep the stats it already received from page 1.
+    
     let stats = { totalTrips: 0, uniqueVehicleCount: 0, uniqueDriverCount: 0, perVehicle: [], perDriver: [] };
 
     if (!cursorDate && statsResult.length > 0) {
@@ -2877,12 +2878,12 @@ export const getClosedTrips = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      count: trips.length,          // trips in THIS page
-      data: trips,                  // ← same shape your UI already consumes
-      stats,                        // ← populated on page 1; empty object on subsequent pages
+      count: trips.length,       
+      data: trips,          
+      stats,                   
       pagination: {
-        hasMore,                    // true → more trips exist; trigger next fetch on scroll
-        nextCursor,                 // send back as ?cursor= on the next request
+        hasMore,                    
+        nextCursor,                
         limit: PAGE_LIMIT,
       },
       dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },

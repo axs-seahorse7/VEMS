@@ -1,5 +1,6 @@
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
 import Driver from "../db/models/Driver-model/driver.model.js";
+import User from "../db/models/User-Model/user.model.js";
 // GET /vehicles
 export const getAllVehicles = async (req, res) => {
   try {
@@ -223,7 +224,6 @@ export const lookupDriver = async (req, res) => {
 export const getAvailableVehicles = async (req, res) => {
   try {
     const { type, typeOfVehicle, page = 1, limit = 50 } = req.query;
-    
     const filter = {
       isActive: true,
       type: { $in: ["internal"] },
@@ -250,6 +250,7 @@ export const getAvailableVehicles = async (req, res) => {
         .lean(),
       Vehicle.countDocuments(filter),
     ]);
+
  
     return res.status(200).json({
       success: true,

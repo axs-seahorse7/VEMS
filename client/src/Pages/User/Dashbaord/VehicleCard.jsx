@@ -101,8 +101,9 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   // A card is "overdue" when: still waiting outside AND has been waiting > 4 hrs
   const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
   const isWaitingInside    = location === "inside_factory" && vehicle.type === "external_delivery" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
-  const waitingHrs   = hoursWaiting(vehicle?.createdAt);
-  const isOverdue    = isWaiting && waitingHrs >= 4 || isWaitingInside && waitingHrs >= 4;
+  const waitingHrs   = hoursWaiting(vehicle?.arrivedAt);
+  const insideWaitingHrs   = hoursWaiting(vehicle?.checkedInAt);
+  const isOverdue    = isWaiting && waitingHrs >= 4 || isWaitingInside && insideWaitingHrs >= 4;
   
   // ── Shake toggle: fires every 30 s, active for ~1 s ─────────────────────
   const [shaking, setShaking] = useState(false);
