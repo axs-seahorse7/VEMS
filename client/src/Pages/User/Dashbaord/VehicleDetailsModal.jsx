@@ -326,7 +326,7 @@ function TripTimeline({ tripHistory }) {
             const nextMeta = !isLast ? resolveAction(tripHistory[idx + 1]) : null;
 
             return (
-              <div key={entry._id || idx} style={{ display: "flex", alignItems: "flex-start" }}>
+              <div key={entry._id || idx} style={{ display: "flex", alignItems: "flex-start", position:"relative", paddingBottom:10 }}>
                 {/* Step column */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 110,  }}>
                   {/* Dot */}
@@ -349,7 +349,7 @@ function TripTimeline({ tripHistory }) {
 
                 {/* Connector line */}
                 {!isLast && (
-                  <div style={{ width: 50, height: 2, marginTop: 10, flexShrink: 0, background: `linear-gradient(90deg, ${meta.color}70, ${nextMeta.color}70)`, borderRadius: 2 }} />
+                  <div style={{ position:"absolute", top:0, left:65, width: 90, height: 2, marginTop: 10, flexShrink: 0, background: `linear-gradient(90deg, ${meta.color}70, ${nextMeta.color}70)`, borderRadius: 2 }} />
                 )}
               </div>
             );
@@ -771,9 +771,9 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
         isInsideFactory && phase !== "ORIGIN" &&
         destId === userFactoryId && loadStatus !== "unloaded" &&
         isNotClosedOrCancelled,
-      label: "Next Trip → ",
+      label: (loadStatus === "pending" || loadStatus !== "loaded")? `Change route without ${trip.purpose === "Pickup"? "Load" : "Unload → "} `: "Move to Next Factory → ",
       confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
-      color: "#3a64c7",
+      color: (loadStatus === "pending" || loadStatus !== "loaded")? "#db4116" : "#3a64c7",
       onConfirm: () =>  openChangeRouteModal(trip),
     },
 

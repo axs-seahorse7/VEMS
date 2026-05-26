@@ -1709,6 +1709,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
       const updatePayload = {
         type:type === "external"? "external_delivery": "internal_transfer",
         purpose: trip.loadStatus === "loaded" && trip.purpose === "Pickup" ? "Delivery" : trip.purpose,
+        loadStatus: trip.loadStatus === "loaded"? "pending" : trip.loadStatus,
         externalDestination:type === "external"? customer: null,
         sourceFactoryId:user.factory._id,
         destinationFactoryId:type === "internal"? newDestinationFactoryId: null,
