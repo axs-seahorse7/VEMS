@@ -9,6 +9,7 @@ import User from "../db/models/User-Model/user.model.js";
 import Driver from "../db/models/Driver-model/driver.model.js";
 import tripSegment from "../db/models/Vehicle-Model/tripSegment.model.js";
 import DriverTripHistory from "../db/models/Driver-model/driverStats.model.js";
+import {AlertEmailUsers} from "../db/models/Alert-Users/alertEmailUsers.model.js";
 
 // utils
 import AppError from "../utils/AppError.js";
@@ -289,6 +290,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         type: isInternalShifting? "internal_transfer" : "external_delivery",
         phase: isInternalShifting ? "ORIGIN" : "DESTINATION",
         location: isInternalShifting ? "inside_factory" : "outside_factory",
+        arrivedAt: isInternalShifting? null : new Date(),
         externalSource: isInternalShifting ? null : req.body.source,
         sourceFactoryId: isInternalShifting ? user.factory._id: null,
         destinationFactoryId: isInternalShifting? req.body.destinationFactoryId: req.body.sourceFactoryId,
@@ -569,6 +571,208 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
   }
 
   return res.status(201).json(responseData);
+});
+
+export const updateVehicleTrip = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+  let responseData = null;
+
+  try {
+    await session.withTransaction(async () => {
+      const { tripId } = req.params;
+
+      // ========================
+      // 1. FIND TRIP
+      // ========================
+      const trip = await Trip.findById(tripId)
+        .populate("vehicleId")
+        .populate("driverId")
+        .session(session);
+
+      if (!trip) {
+        throw new AppError("Trip not found", 404);
+      }
+
+      // ========================
+      // 2. PHASE CHECK — only ORIGIN
+      // ========================
+      if (( trip.type === "internal_transfer" && trip.phase !== "ORIGIN") || (trip.type === "external_delivery" && trip.phase !== "DESTINATION")) {
+        throw new AppError("Trip can only be updated at the appropriate phase", 400);
+      }
+
+      // ========================
+      // 3. 15 MIN WINDOW CHECK
+      // ========================
+      const now = new Date();
+      const startedAt = new Date(trip.startedAt);
+      const diffInMinutes = (now - startedAt) / 1000 / 60;
+
+      if (diffInMinutes > 15) {
+        throw new AppError("Trip can no longer be updated. The 15-minute edit window has expired", 400);
+      }
+
+      // ========================
+      // 4. TYPE-BASED LOCK CHECK
+      // ========================
+      if (trip.type === "internal_transfer") {
+        // Lock after checkout — status moves away from ORIGIN after checkout
+        const hasCheckedOut = trip.tripHistory.some(
+          (h) => h.status !== "ORIGIN" && h.action !== "begin"
+        );
+        if (hasCheckedOut) {
+          throw new AppError("Internal transfer cannot be updated after checkout", 400);
+        }
+      }
+
+      if (trip.type === "external_delivery") {
+        // Lock after checkin — checkin sets location to inside_factory
+        const hasCheckedIn = trip.tripHistory.some(
+          (h) => h.location === "inside_factory"
+        );
+        if (hasCheckedIn) {
+          throw new AppError("External delivery cannot be updated after check-in", 400);
+        }
+      }
+
+      // ========================
+      // 5. BUILD UPDATE PAYLOAD
+      // ========================
+      const {
+        driverName,
+        driverContact,
+        driverIdType,
+        driverIdNumber,
+        licenseNumber,
+        typeOfVehicle,
+        purpose,
+        materialType,
+        material,
+        quantity,
+        invoiceNo,
+        invoiceAmount,
+        unit,
+        seal,
+        customer,
+        supplier,
+        destinationFactoryId,
+        source,
+      } = req.body;
+
+      // Update driver if driver fields provided
+      // ========================
+      // 5. HANDLE DRIVER UPDATE
+      // ========================
+      if (driverName || driverContact || driverIdNumber || licenseNumber) {
+
+        const newIdNumber  = driverIdNumber  || trip.driverId.driverIdNumber;
+        const newLicense   = licenseNumber   || trip.driverId.licenseNumber;
+        const isSameDriver = String(trip.driverId.driverIdNumber) === String(newIdNumber);
+
+        if (isSameDriver) {
+          // Same driver — safe to update in-place
+          await Driver.findByIdAndUpdate(
+            trip.driverId._id,
+            {
+              $set: {
+                ...(driverName    && { driverName }),
+                ...(driverContact && { driverContact }),
+                ...(driverIdType  && { driverIdType }),
+                ...(driverIdNumber && { driverIdNumber }),
+                ...(licenseNumber  && { licenseNumber }),
+                ...(typeOfVehicle  && { typeOfVehicle }),
+              }
+            },
+            { session }
+          );
+        } else {
+          // Different ID number — find existing or create new driver
+          const existingDriver = await Driver.findOne({
+            $or: [
+              { driverIdNumber: newIdNumber },
+              ...(newLicense ? [{ licenseNumber: newLicense }] : [])
+            ]
+          }).session(session);
+
+          if (existingDriver) {
+            // Reassign trip to this existing driver
+            await Trip.findByIdAndUpdate(
+              tripId,
+              { $set: { driverId: existingDriver._id } },
+              { session }
+            );
+          } else {
+            // Create a brand new driver record
+            const newDriver = await Driver.create([{
+              driverName:    driverName    || trip.driverId.driverName,
+              driverContact: driverContact || trip.driverId.driverContact,
+              driverIdType:  driverIdType  || trip.driverId.driverIdType,
+              driverIdNumber: newIdNumber,
+              licenseNumber:  newLicense,
+              ...(typeOfVehicle && { typeOfVehicle }),
+            }], { session });
+
+            // Reassign trip to the new driver
+            await Trip.findByIdAndUpdate(
+              tripId,
+              { $set: { driverId: newDriver[0]._id } },
+              { session }
+            );
+          }
+        }
+      }
+
+      // Build trip-level updates
+      const tripUpdates = {
+        ...(purpose && { purpose }),
+        ...(destinationFactoryId && { destinationFactoryId }),
+        ...(source && { externalSource: source }),
+      };
+
+      // Build material update (update first material entry)
+      const materialUpdate = {
+        ...(materialType && { "materials.0.name": materialType }),
+        ...(material && { "materials.0.material": material }),
+        ...(quantity !== undefined && { "materials.0.quantity": quantity }),
+        ...(invoiceNo && { "materials.0.invoiceNo": invoiceNo }),
+        ...(invoiceAmount !== undefined && { "materials.0.invoiceAmount": invoiceAmount }),
+        ...(unit && { "materials.0.unit": unit }),
+        ...(seal && { "materials.0.seal": seal }),
+        ...(customer !== undefined && { "materials.0.customer": customer }),
+        ...(supplier !== undefined && { "materials.0.supplier": supplier }),
+      };
+
+      const updatedTrip = await Trip.findByIdAndUpdate(
+        tripId,
+        {
+          $set: {
+            ...tripUpdates,
+            ...materialUpdate,
+          }
+        },
+        { new: true, session }
+      );
+
+      // Sync tripSegment destination if changed
+      if (destinationFactoryId) {
+        await tripSegment.findOneAndUpdate(
+          { tripId, segmentNumber: 1 },
+          { $set: { destinationFactoryId } },
+          { session }
+        );
+      }
+
+      responseData = {
+        success: true,
+        trip: updatedTrip,
+        message: "Trip updated successfully",
+      };
+    });
+
+  } finally {
+    await session.endSession();
+  }
+
+  return res.status(200).json(responseData);
 });
 
 export const checkinVehicle = asyncHandler( async (req, res) => {
@@ -1135,8 +1339,7 @@ export const markArrived = asyncHandler( async (req, res) => {
     // ========================
     // UPDATE TRIP
     // ========================
-    const updatedTrip =
-      await Trip.findByIdAndUpdate(
+    const updatedTrip = await Trip.findByIdAndUpdate(
         tripId,
         {
           location: "outside_factory",
@@ -1151,7 +1354,7 @@ export const markArrived = asyncHandler( async (req, res) => {
               actionBy: user?.email || "system",
               actionLocation: user?.workLocation,
               factoryId: trip.destinationFactoryId || null,
-              action: "arrive",
+              action: "arrived",
               timestamp: new Date(),
               segment: {
                 movementType:trip.type === "internal_transfer" ? "internal" : "external",
@@ -1585,27 +1788,50 @@ export const cancelTrip = asyncHandler( async (req, res) => {
       
     });
     
-    const mailResult = await alertMailSender({
-       to: process.env.ALERT_EMAIL_RECEIVER || "sonu.pgtel@gmail.com",
-       alertType: ALERT_TYPES.TRIP_CANCELLED,
-       payload: {
-         trip: updatedTrip,
-         reason: updatedTrip.reason,
-         cancelledBy: user?.email || "system",
-         driverName: trip.driverId?.driverName || "",
-         driverContact: trip.driverId?.driverContact || "",
-         vehicleNumber: trip.vehicleId?.vehicleNumber || "",
-         vehicleType: trip.vehicleId?.type || "",
-         cancelledAt: updatedTrip.completedAt,
-         startedAt: updatedTrip.startedAt,
-         sourceFactory: trip.sourceFactoryId?.name || trip.externalSource || "",
-         destinationFactory: trip.destinationFactoryId?.name || trip.externalDestination || "",
-         sourceFactoryLocation: trip.sourceFactoryId?.location || "",
-         destinationFactoryLocation: trip.destinationFactoryId?.location || "",
-       }
-     });
+    // After the transaction, replace the single mailResult with this:
 
-     console.log("MAIL RESULT:", mailResult);
+    // 1. Fetch all active alert users for this destination factory
+    const alertUsers = await AlertEmailUsers.find({
+      factoryId: updatedTrip.destinationFactoryId,
+      isActive: true,
+    }).lean();
+
+    // 2. Send to each user (or pass all emails at once if your mailer supports it)
+    if (alertUsers.length > 0) {
+      const mailPromises = alertUsers.map(alertUser =>
+        alertMailSender({
+          to: alertUser.email,
+          alertType: ALERT_TYPES.TRIP_CANCELLED,
+          payload: {
+            trip: updatedTrip,
+            recipientName: alertUser.name,
+            reason: updatedTrip.reason,
+            cancelledBy: user?.email || "system",
+            driverName: trip.driverId?.driverName || "",
+            driverContact: trip.driverId?.driverContact || "",
+            vehicleNumber: trip.vehicleId?.vehicleNumber || "",
+            vehicleType: trip.vehicleId?.type || "",
+            cancelledAt: updatedTrip.completedAt,
+            startedAt: updatedTrip.startedAt,
+            sourceFactory: trip.sourceFactoryId?.name || trip.externalSource || "",
+            destinationFactory: trip.destinationFactoryId?.name || trip.externalDestination || "",
+            sourceFactoryLocation: trip.sourceFactoryId?.location || "",
+            destinationFactoryLocation: trip.destinationFactoryId?.location || "",
+          }
+        })
+      );
+
+      const mailResults = await Promise.allSettled(mailPromises);
+      
+      // Log any failures without crashing the response
+      mailResults.forEach((result, i) => {
+        if (result.status === "rejected") {
+          console.error(`Mail failed for ${alertUsers[i].email}:`, result.reason);
+        } else {
+          console.log(`Mail sent to ${alertUsers[i].email}`);
+        }
+      });
+    }
 
 
     // ========================
@@ -2024,7 +2250,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
 
 
 
-
 // ========================
 // GET VEHICLE TRIPS
 // ========================
@@ -2252,6 +2477,8 @@ export const getVehicleTrips = async (req, res) => {
           reason: 1,
           tripState: 1,
           loadStatus: 1,
+          arrivedAt: 1,
+          checkedInAt: 1,
           externalSource: 1,
           sourceFactory: 1,
           externalDestination: 1,
@@ -2330,6 +2557,8 @@ export const getLiveVehicleTrips = async (req, res) => {
       purpose
       reason
       loadStatus
+      arrivedAt
+      checkedInAt
       externalSource
       externalDestination
       materials
@@ -2406,6 +2635,8 @@ export const getLiveVehicleTrips = async (req, res) => {
       purpose: trip.purpose,
       reason: trip.reason,
       loadStatus: trip.loadStatus,
+      arrivedAt: trip.arrivedAt,
+      checkedInAt: trip.checkedInAt,
       externalSource: trip.externalSource,
       externalDestination: trip.externalDestination,
       createdAt: trip.createdAt,

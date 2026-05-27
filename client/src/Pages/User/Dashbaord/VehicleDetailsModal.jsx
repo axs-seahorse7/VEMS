@@ -14,6 +14,7 @@ import {
   Spin,
   Tabs,
 } from "antd";
+import CreateVehicleModal from "./CreateVehicalModal.jsx";
 
 const { Option } = Select;
 
@@ -1213,6 +1214,22 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
   const stage       = getWorkflowStage(vehicle);
   const tripHistory = Array.isArray(vehicle.tripHistory) ? vehicle.tripHistory : [];
   const [factories, setFactories] = useState([]);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+
+  console.log("vehicle render", vehicle)
+  
+  const canEdit = (() => {
+    if (!trip?.createdAt) return false;
+    if(trip.type === "external_delivery" && stage !== "DESTINATION"){
+      return false;
+    }
+    if(trip.type === "internal_transfer" && stage !== "ORIGIN"){
+      return false;
+    }
+
+    const diffMin = (Date.now() - new Date(trip.createdAt)) / 1000 / 60;
+    return diffMin <= 0;
+  })();
 
   const Row = ({ label, value, warn, accent }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid #f9fafb" }}>
@@ -1239,7 +1256,7 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
   }
 
   useEffect(() => {
-    try{
+    try {
       const fetchFactories = async () => {
         const res = await api.get("/factories");
         setFactories(res.data.factories);
@@ -1346,7 +1363,34 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
       }}
       className="border-t border-gray-200"
         >
+        {canEdit && (
+            <button
+              onClick={() => setEditModalOpen(true)}
+              style={{
+                background: "rgba(99,102,241,0.08)",
+                color: "#4f46e5",
+                border: "1.5px solid rgba(99,102,241,0.25)",
+                borderRadius: 8,
+                padding: "7px 14px",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              ✏️ Edit Trip
+            </button>
+          )}
         <WorkflowActions vehicle={vehicle} factory={factories} onAction={() => { onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
+        <CreateVehicleModal
+            open={editModalOpen}
+            onClose={() => setEditModalOpen(false)}
+            onRefresh={() => { setEditModalOpen(false); onRefresh(); }}
+            tripToEdit={vehicle}
+          />
       </div>
 
       

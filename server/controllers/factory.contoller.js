@@ -26,7 +26,7 @@ export const getFactories = async (req, res) => {
     try {
         // Never return soft-deleted factories
         const factories = await factoryModel.find({ isDeleted: false, status: "active" }).populate("vans");
-        return res.status(200).json({ factories });
+        return res.status(200).json({success: true, factories });
     } catch (error) {
         console.error("Error getting factories:", error);
         return res.status(500).json({ message: "Server error" });
@@ -40,7 +40,7 @@ export const getFactoryById = async (req, res) => {
         if (!factory) {
             return res.status(404).json({ message: "Factory not found" });
         }
-        return res.status(200).json({ factory });
+        return res.status(200).json({ success: true, factory });
     } catch (error) {
         console.error("Error getting factory by ID:", error);
         return res.status(500).json({ message: "Server error" });

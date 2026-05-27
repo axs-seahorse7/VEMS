@@ -20,6 +20,19 @@ const userSchema = new mongoose.Schema({
     otpExpiry:{
         type:Date,
     },
+
+    notifications:[{
+        header:String,
+        message:String,
+        isRead:{
+            type:Boolean,
+            default:false
+        },
+        createdAt:{
+            type:Date,
+            default:Date.now
+        }
+    }],
     
     isSystemAdmin:{
         type:Boolean,

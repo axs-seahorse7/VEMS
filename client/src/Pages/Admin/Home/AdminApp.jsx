@@ -1,10 +1,4 @@
-// AdminApp.jsx  —  Root entry point (preview / wiring)
-// In your real Next.js/React app, replace this with proper routing (e.g. Next.js App Router).
-// Each page component lives in its own file:
-//   AdminLayout.jsx   — sidebar + topbar shell
-//   AdminDashboard.jsx — Overview / coming soon
-//   ManageUsers.jsx   — User list, create, roles
-//   ManageFactory.jsx — Factory list, add factory
+
 
 import { useState, useEffect } from "react";
 import AdminDashboard from "../Dashboard/AdminDashboard";
@@ -12,12 +6,8 @@ import ManageUsers from "../Pages/Manage-User/ManageUsers";
 import ManageFactory from "../Pages/Manage-Factories/ManageFactories";
 import AdminLayout from "../../../components/Layouts/Layouts";
 import ManageVehicles from "../Pages/Manage-Vehicles/ManageVehicles";
-// import { getMe } from "../../../../../server/controllers/auth.controllers";
+import Settings from "../Pages/Settings/Settings";
 
-// import AdminLayout from "./AdminLayout";
-// import AdminDashboard from "./AdminDashboard";
-// import ManageUsers from "./ManageUsers";
-// import ManageFactory from "./ManageFactory";
 
 // ── Placeholder for pages not yet built ──────────────────────────────────────
 function ComingSoon({ label }) {
@@ -44,7 +34,7 @@ function PageContent({ page }) {
   if (page === "factory-list")    return <ManageFactory activePage="factory-list" />;
   if (page === "factory-create")  return <ManageFactory activePage="factory-create" />;
   if (page === "vehicles")        return <ManageVehicles />;
-  if (page === "settings")        return <ComingSoon label="Settings" />;
+  if (page === "settings")        return <Settings activePage="settings" />;
   return <AdminDashboard />;
 }
 

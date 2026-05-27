@@ -113,13 +113,13 @@ const TripSchema = new mongoose.Schema({
   tripHistory: [{
     status: String,
     location: String,
-    Phase: String,
+    phase: String,
     actionBy: String,
     actionLocation: String,
     factoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
     action:{
       type: String,
-      enum: ["begin","checkin", "checkout", "load", "unload", "cancelled", "complete", "closed", "route_change"]
+      enum: ["begin", "arrived", "checkin", "checkout", "load", "unload", "cancelled", "complete", "closed", "route_change"]
     },
     timestamp: Date,
     segment: {

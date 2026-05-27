@@ -1,5 +1,6 @@
 export const cancelledTripsTemplate = (payload) => {
   const {
+    recipientName,
     trip,
     reason,
     cancelledBy,
@@ -481,7 +482,7 @@ export const cancelledTripsTemplate = (payload) => {
 
     <!-- Greeting -->
     <p class="greeting">
-      Dear <strong>Manager</strong>,<br/>
+      Dear <strong>${fmt(recipientName)}</strong>,<br/>
       This is an automated alert from the PG VEMS. A scheduled trip has been <strong style="color:#dc2626;">cancelled</strong>. Please review the details below and take immediate action.
     </p>
 

@@ -4,6 +4,7 @@ import {isAuthenticated} from "../middleware/isAuth/isAuthenticated.js";
 import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, 
     completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination , cancelTrip, getClosedTrips,
     changeRoute, getVehicleLiveStatus, getLiveVehicleTrips, closedAndCancelledTrips, loadMaterialAndNewtrip,
+    updateVehicleTrip,
 } from "../controllers/trip.contollers.js";
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.post("/trip/create", createTrip);
 //new routes to add:
 router.post("/new/external-trip", externalVehicleRegister);
 router.post("/new/internal-trip", internalVehicleRegister);
+router.patch("/trip/update/:tripId", updateVehicleTrip);
 router.post("/trip/checkin/:tripId", checkinVehicle);
 router.post("/trip/checkout/:tripId", checkoutVehicle);
 router.post("/trip/exit-checkout/:tripId", checkoutAndExitVehicle);

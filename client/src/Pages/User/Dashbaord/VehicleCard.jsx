@@ -17,10 +17,42 @@ function fmtTime(ts) {
 }
 
 // Returns hours since trip was created
-function hoursWaiting(createdAt) {
+function  hoursWaiting(createdAt) {
   if (!createdAt) return 0;
   return (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60);
 }
+
+const getWaitingTime = (arrivedAt) => {
+  if (!arrivedAt) return "—";
+
+  const arrivedTime = new Date(arrivedAt).getTime();
+
+  if (isNaN(arrivedTime)) return "Invalid Date";
+
+  const diff = Date.now() - arrivedTime;
+
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  if (hours < 24) {
+    const remainingMin = minutes % 60;
+
+    return remainingMin
+      ? `${hours}h ${remainingMin}m`
+      : `${hours}h`;
+  }
+
+  const remainingHours = hours % 24;
+
+  return remainingHours
+    ? `${days}d ${remainingHours}h`
+    : `${days}d`;
+};
 
 const Icon = {
   truck: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
@@ -96,14 +128,26 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   const pucAlert     = isPUCExpired(vehicleData?.PUCExpiry);
   const loadStatus   = vehicle?.loadStatus || "pending";
   const user         = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
-
+// console.log("VehicleCard render",  vehicle);
   // ── Overdue logic ────────────────────────────────────────────────────────
   // A card is "overdue" when: still waiting outside AND has been waiting > 4 hrs
-  const isWaiting    = location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
-  const isWaitingInside    = location === "inside_factory" && vehicle.type === "external_delivery" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED";
-  const waitingHrs   = hoursWaiting(vehicle?.arrivedAt);
-  const insideWaitingHrs   = hoursWaiting(vehicle?.checkedInAt);
-  const isOverdue    = isWaiting && waitingHrs >= 4 || isWaitingInside && insideWaitingHrs >= 4;
+  const isWaitingOutside =
+  location === "outside_factory" &&
+  vehicle.tripState !== "CLOSED" &&
+  vehicle.tripState !== "CANCELLED";
+
+const isWaitingInside =
+  location === "inside_factory" &&
+  vehicle.type === "external_delivery" &&
+  vehicle.tripState !== "CLOSED" &&
+  vehicle.tripState !== "CANCELLED";
+
+const outsideWaitingHours = hoursWaiting(vehicle?.arrivedAt);
+const insideWaitingHours = hoursWaiting(vehicle?.checkedInAt);
+
+const isOutsideOverdue = isWaitingOutside && outsideWaitingHours >= 4;
+const isInsideOverdue = isWaitingInside && insideWaitingHours >= 4;
+const isOverdue = isOutsideOverdue || isInsideOverdue;
   
   // ── Shake toggle: fires every 30 s, active for ~1 s ─────────────────────
   const [shaking, setShaking] = useState(false);
@@ -243,22 +287,48 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
         {isOverdue && (
           <div style={{
             position: "absolute",
-            top: 7,
-            right: 8,
+            top: 3,
+            right: 140,
             display: "flex",
             alignItems: "center",
-            gap: 3,
-            background: "linear-gradient(90deg, #ca8a04, #dc3c3c)",
-            color: "#fff",
-            fontSize: 8.5,
-            fontWeight: 500,
-            letterSpacing: 1,
-            padding: "1px 6px",
+            gap: 4,
+            background: "rgb(244, 179, 66, 0.20)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            color: "#D75656",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.6,
+            padding: "2px 6px",
             borderRadius: 4,
-            boxShadow: "0 1px 6px #f59e0b55",
+            border: "1px solid rgba(200, 50, 20, 0.35)",
+            boxShadow: "0 0 6px rgba(220, 60, 30, 0.18), inset 0 0 4px rgba(220, 60, 30, 0.07)",
             zIndex: 2,
           }}>
-             {Math.floor(waitingHrs)}h {location === "inside_factory"? "waiting Inside" : "waiting"} 
+            {/* pulse dot — the real urgency signal */}
+            <span style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: "#e03e1a",
+              flexShrink: 0,
+              boxShadow: "0 0 0 0 rgba(220, 60, 30, 0.6)",
+              animation: "waitPulse 1.6s ease-out infinite",
+            }} />
+
+            {getWaitingTime(location === "inside_factory" ? vehicle.checkedInAt : vehicle.arrivedAt)}
+
+            <span style={{ fontSize: 11, fontWeight: 500 }}>
+              {location === "inside_factory" ? "inside" : "waiting"}
+            </span>
+
+            <style>{`
+              @keyframes waitPulse {
+                0%   { box-shadow: 0 0 0 0 rgba(220, 60, 30, 0.6); }
+                70%  { box-shadow: 0 0 0 4px rgba(220, 60, 30, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(220, 60, 30, 0); }
+              }
+            `}</style>
           </div>
         )}
 

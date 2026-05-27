@@ -257,7 +257,7 @@ function FactoryList({ onAddClick }) {
     <>
       <style>{`@keyframes mf-up { from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none} }`}</style>
 
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", padding:20, alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22, flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#111", margin: "0 0 4px" }}>Factory Management</h2>
           <p style={{ fontSize: 13.5, color: "#6b7280", margin: 0 }}>All registered factory locations.</p>
@@ -269,7 +269,7 @@ function FactoryList({ onAddClick }) {
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14, marginBottom: 22 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14, marginBottom: 22, padding: 20 }}>
         {[
           { label: "Total",      value: factories.length,                                          color: "#6366f1" },
           { label: "Active",     value: factories.filter(f => f.status === "active").length,       color: "#15803d" },
@@ -284,7 +284,7 @@ function FactoryList({ onAddClick }) {
       </div>
 
       {/* Cards grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 16, padding:20 }}>
         {factories.map((f) => (
           <div
             key={f._id}
@@ -370,7 +370,7 @@ export default function ManageFactory({ activePage = "factory-list" }) {
 
   if (page === "factory-create") {
     return (
-      <div style={{ maxWidth: 700 }}>
+      <div style={{ maxWidth: 700, padding:10, margin: "0 auto" }}>
         <button
           onClick={() => setPage("factory-list")}
           style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13.5, color: "#6366f1", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 20, fontFamily: "inherit", padding: 0 }}

@@ -391,7 +391,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
         </header>
 
         {/* Page content */}
-        <main style={{ flex: 1, padding: "28px 28px 40px", overflowY: "auto" }}>
+        <main style={{ flex: 1, padding: "0px 0px 40px", overflowY: "auto" }}>
           {children}
         </main>
       </div>

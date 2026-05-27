@@ -19,6 +19,7 @@ import FloatingActions from "../../../components/buttons/FloatingAction.jsx";
 import VehicleDrawer from "../../../components/Dashboard/VehicleDrawer.jsx";
 import VehicleStatusDrawer from "../../../components/Vehicle-Status/VehicleStatusDrawer.jsx";
 import NetworkStatusBanner from "../../../components/Interne-Status/NetworkStatusBanner.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -415,6 +416,7 @@ export default function VehicleDashboard() {
   const [vehicleDrawer, setVehicleDrawer]       = useState(false);
   const [isVehicleDetailsModalLoading, setisVehicleDetailsModalLoading] = useState(false);
   const observerRef = useRef(null);
+  const userVersion = import.meta.env.VITE_APP_VERSION || "1.0.0";
 
   // ── Network state ──────────────────────────────────────────────────────────
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -678,11 +680,13 @@ export default function VehicleDashboard() {
             <span className="max-md:hidden">New Entry</span>
           </button>
 
+          <NotificationBell />
           <Popover trigger="click" placement="bottomRight" content={
             <div style={{ fontSize: 11 }}>
               <div style={{ fontWeight: 600 }}>{user.email}</div>
               <div style={{ color: "#9ca3af" }}>{getLocationLabel(user.workLocation)}</div>
-              <div onClick={handleSignOut} style={{ marginTop: 8, padding: "4px 0", color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>Sign Out</div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginTop: 1, padding: "1px 0", color: "#541A1A", cursor: "pointer", fontWeight: 600,  }}> <span>Version</span> <span> v{userVersion} </span> </div>
+              <div onClick={handleSignOut} style={{ marginTop: 8, padding: "4px 0", color: "#dc2626", cursor: "pointer", fontWeight: 600, borderTop: "1px solid gray" }}>Sign Out</div>
             </div>
           }>
             <Avatar size="medium" style={{ backgroundColor: "#6366F1", cursor: "pointer" }}>{user.email?.[0]?.toUpperCase()}</Avatar>
@@ -732,7 +736,7 @@ export default function VehicleDashboard() {
       )}
 
       {/* ── Content ── */}
-      <div >
+      <div className="relative" >
         {viewMode === "grid" ? (
           isLoading ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0" }}>
@@ -811,8 +815,8 @@ export default function VehicleDashboard() {
             >
               {
                 isFetchingNextPage
-                  ? "Loading..."
-                  : "Load More"
+                  ? <div className=" fixed bottom-10 left-[50%] transform -translate-x-1/2 w-10 h-10 rounded-full  border border-blue-300 backdrop:blur-lg bg-gray-200/70 flex items-center justify-center " > <Spin size="small" /> </div> 
+                  : <Button shape="rounded" type="text" > Load More...</Button>
               }
             </button>
           )

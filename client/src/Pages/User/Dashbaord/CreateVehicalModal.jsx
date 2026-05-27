@@ -49,7 +49,7 @@ const ID_FORMAT = {
   }
 };
 
-const VEH_REGEX = /^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}$/;
+const VEH_REGEX = /^[A-Z]{2}\d{1,2}(?:[A-Z]{1,3})?\d{4}$/;
 function cleanVehicleNumber(raw) {
   return raw.replace(/[-\s]/g, "").toUpperCase().slice(0, 10);
 }
@@ -469,7 +469,9 @@ const SourceField = ({ value, onChange, options }) => {
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function CreateVehicleModal({ open, onClose, onRefresh }) {
+
+export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdit = null }) {
+  const isEditMode = !!tripToEdit;
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
 
   const workLocation  = user.workLocation;
@@ -509,18 +511,20 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   const setInternalForm = useCallback(updater => {
     _setInternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      lsSet(LS_INTERNAL, next); flashDraft();
-      checkDraft(next, lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL)); return next;
+      if (!isEditMode) { lsSet(LS_INTERNAL, next); flashDraft(); }
+      checkDraft(next, lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
+      return next;
     });
-  }, [checkDraft]);
+  }, [checkDraft, isEditMode]);
 
   const setExternalForm = useCallback(updater => {
     _setExternal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      lsSet(LS_EXTERNAL, next); flashDraft();
-      checkDraft(lsGet(LS_INTERNAL, DEFAULT_INTERNAL), next); return next;
+      if (!isEditMode) { lsSet(LS_EXTERNAL, next); flashDraft(); }
+      checkDraft(lsGet(LS_INTERNAL, DEFAULT_INTERNAL), next);
+      return next;
     });
-  }, [checkDraft]);
+  }, [checkDraft, isEditMode]);
 
   const flashDraft = () => {
     setDraftSaved(true);
@@ -530,15 +534,63 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   useEffect(() => { lsSet(LS_TAB, activeTab); }, [activeTab]);
 
+
   useEffect(() => {
-  if (!open) return;
-  const si = lsGet(LS_INTERNAL, DEFAULT_INTERNAL);
-  const se = lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL);
-  _setInternal(si); _setExternal(se);
-  // ✅ respect workLocation on open
-  setActiveTab(workLocation === "atGate" ? "external" : "internal");
-  checkDraft(si, se);
-}, [open, checkDraft]);
+    if (!open) return;
+
+    if (isEditMode && tripToEdit) {
+      const trip = tripToEdit;
+      const mat  = trip.materials?.[0] || {};
+      const drv  = trip.driver  || {};
+      const veh  = trip.vehicle || {};
+
+      const prefilled = {
+        // driver
+        driverName:    drv.driverName    || "",
+        driverContact: drv.driverContact || "",
+        driverIdType:  drv.driverIdType  || "Aadhar",
+        driverIdNumber:drv.driverIdNumber|| "",
+        licenseNumber: drv.licenseNumber || "",
+        // vehicle
+        vehicleNumber:   veh.vehicleNumber   || "",
+        typeOfVehicle:   veh.typeOfVehicle   || "truck",
+        transporterName: veh.transporterName || "",
+        PUCExpiry:       veh.PUCExpiry ? veh.PUCExpiry.split("T")[0] : "",
+        // trip
+        purpose:              trip.purpose              || "",
+        materialType:         mat.name                  || "",
+        material:             mat.material              || "",
+        quantity:             mat.quantity              || "",
+        invoiceNo:            mat.invoiceNo             || "",
+        invoiceAmount:        mat.invoiceAmount         || "",
+        customer:             mat.customer              || "",
+        supplier:             mat.supplier              || "",
+        destinationFactoryId: trip.destinationFactory?._id || trip.destinationFactoryId || "",
+        source:               trip.externalSource       || "",
+        isInternalShifting:   trip.type === "internal_transfer",
+        passType:             "Incoming",
+        seal:                 mat.seal                  || "sealed",
+        unit:                 mat.unit                  || "",
+      };
+
+      if (trip.type === "internal_transfer") {
+        _setInternal({ ...DEFAULT_INTERNAL, ...prefilled });
+        setActiveTab("internal");
+      } else {
+        _setExternal({ ...DEFAULT_EXTERNAL, ...prefilled });
+        setActiveTab("external");
+      }
+
+      return; // skip draft restore in edit mode
+    }
+
+    // normal create mode — restore drafts
+    const si = lsGet(LS_INTERNAL, DEFAULT_INTERNAL);
+    const se = lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL);
+    _setInternal(si); _setExternal(se);
+    setActiveTab(workLocation === "atGate" ? "external" : "internal");
+    checkDraft(si, se);
+  }, [open, isEditMode, tripToEdit, checkDraft]);
 
   useEffect(() => {
     if (!open) return;
@@ -672,15 +724,21 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmitInternal = async () => {
-    if (!validateInternal()) {
-       const validation = validateInternal()
-        messageApi.error("Please fill all required fields.",);
-        return ;
-    }
-    setSubmitting(true);
-    try {
-      // sourceFactoryId is always the current user's factory — never entered manually
-     const response = await api.post("/new/internal-trip", {
+  if (!validateInternal()) {
+    messageApi.error("Please fill all required fields.");
+    return;
+  }
+  setSubmitting(true);
+  try {
+    if (isEditMode) {
+      await api.patch(`/trip/update/${tripToEdit._id}`, {
+        ...internalForm,
+        vehicleNumber: cleanVehicleNumber(internalForm.vehicleNumber),
+        sourceFactoryId: user.factory?._id,
+      });
+      messageApi.success("Trip updated successfully");
+    } else {
+      await api.post("/new/internal-trip", {
         ...internalForm,
         vehicleNumber:   cleanVehicleNumber(internalForm.vehicleNumber),
         sourceFactoryId: user.factory?._id,
@@ -688,35 +746,42 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
         status:          "inside_factory",
       });
       messageApi.success("Internal vehicle entry created");
-      onRefresh(); handleClose();
-    } catch (e) { 
-      messageApi.error(e.response?.data?.message||"Failed"); 
-    }finally { 
-      setSubmitting(false); 
     }
-  };
+    onRefresh();
+    handleClose();
+  } catch (e) {
+    messageApi.error(e.response?.data?.message || "Failed");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
-  const handleSubmitExternal = async () => {
-    if (!validateExternal()) return message.error("Please fill all required fields.");
-    setSubmitting(true);
-    try {
-    const response = await api.post("/new/external-trip", {
-      ...externalForm,
-      vehicleNumber:   cleanVehicleNumber(externalForm.vehicleNumber),
-      sourceFactoryId: user.factory?._id,
-    });
-    messageApi.success(response?.data?.message || " External Vehicle created.");
-    setTimeout(() => {
-      onRefresh();
-      handleClose();
-    }, 500);
-
-    } catch (e) { 
-    messageApi.error(String(e.response?.data?.message ||"Failed")); 
-    }finally { 
-      setSubmitting(false); 
+const handleSubmitExternal = async () => {
+  if (!validateExternal()) return messageApi.error("Please fill all required fields.");
+  setSubmitting(true);
+  try {
+    if (isEditMode) {
+      await api.patch(`/trip/update/${tripToEdit._id}`, {
+        ...externalForm,
+        vehicleNumber: cleanVehicleNumber(externalForm.vehicleNumber),
+        sourceFactoryId: user.factory?._id,
+      });
+      messageApi.success("Trip updated successfully");
+    } else {
+      const response = await api.post("/new/external-trip", {
+        ...externalForm,
+        vehicleNumber:   cleanVehicleNumber(externalForm.vehicleNumber),
+        sourceFactoryId: user.factory?._id,
+      });
+      messageApi.success(response?.data?.message || "External Vehicle created.");
     }
-  };
+    setTimeout(() => { onRefresh(); handleClose(); }, 500);
+  } catch (e) {
+    messageApi.error(String(e.response?.data?.message || "Failed"));
+  } finally {
+    setSubmitting(false);
+  }
+};
 
 
   const handleClose = () => {
@@ -969,7 +1034,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title="New Vehicle Entry">
+    <Modal open={open} onClose={handleClose} title={isEditMode ? `Edit Trip — ${tripToEdit?.vehicle?.vehicleNumber || ""}` : "New Vehicle Entry"}
+    >
     {contextHolder}
       <TabBar
         active={activeTab}
@@ -1007,7 +1073,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
             {internalForm.materialType && renderMaterialDetails(internalForm, setInternal, internalForm.purpose === "Pickup")}
           </Layer>
 
-          {submitRow("Create Internal Entry", handleSubmitInternal, "linear-gradient(135deg,#6366f1,#4f46e5)")}
+          {submitRow(isEditMode ? "Update Entry" : "Create Internal Entry", handleSubmitInternal, "linear-gradient(135deg,#6366f1,#4f46e5)")}
         </div>
       )}
 
@@ -1057,7 +1123,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh }) {
 
             {externalForm.materialType && renderMaterialDetails(externalForm, setExternal, externalForm.purpose === "Pickup")}
           </Layer>
-          {submitRow("Create External Entry", handleSubmitExternal, "linear-gradient(135deg,#f59e0b,#d97706)")}
+          {submitRow(isEditMode ? "Update Entry" : "Create External Entry", handleSubmitExternal, "linear-gradient(135deg,#f59e0b,#d97706)")}
         </div>
       )}
     </Modal>

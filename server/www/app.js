@@ -26,6 +26,8 @@ import vehicleRoutes from "../routes/vehicle.routes.js";
 import gateRoutes from "../routes/gate.routes.js";
 import tripRoutes from "../routes/trip.routes.js";
 import analyticsRoutes from "../routes/analytics.route.js";
+import settingsRoutes from "../controllers/settings.controller.js";
+import {versionCheckMiddleware} from "../middleware/Version-Checker/version.js";
 
 const allowedOrigins = ['http://localhost:5173', 'https://vems-client.vercel.app'];
 
@@ -90,14 +92,15 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/auth", authRoutes)
 
-
 app.use(isAuthenticated)
+app.use("/api", versionCheckMiddleware);
 app.use("/api", userRoutes)
 app.use("/api", indexRoutes)
 app.use("/api", vehicleRoutes)
 app.use("/api", gateRoutes)
 app.use("/api", tripRoutes)
 app.use("/api/analytics", analyticsRoutes)
+app.use("/api/settings", settingsRoutes)
 app.use(errorMiddleware);
 
 app.listen(process.env.PORT, (function () {

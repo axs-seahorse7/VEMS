@@ -398,11 +398,11 @@ function UsersList() {
   const workLabelMap = { atGate: "At Gate", storeSite: "Store Site", dispatchSite: "Dispatch Site", pickupSite: "Pickup Site" };
 
   return (
-    <>
+    <div style={{ animation: "mu-fadeUp .3s ease", padding: 20 }}>
       <style>{`@keyframes mu-fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }`}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22, flexWrap: "wrap", gap: 12, padding: "10px 14px" }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#111", margin: "0 0 4px" }}>User Management</h2>
           <p style={{ fontSize: 13.5, color: "#6b7280", margin: 0 }}>Manage all operator accounts and access control.</p>
@@ -551,7 +551,7 @@ function UsersList() {
         title="Reset Password"
         message={`Send a password reset link to "${resetUser?.email}"?`}
       />
-    </>
+    </div>
   );
 }
 
