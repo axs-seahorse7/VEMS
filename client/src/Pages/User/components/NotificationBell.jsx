@@ -222,7 +222,7 @@ export default function NotificationBell() {
                     </div>
                     <div style={{
                       fontSize: 12, color: "#6b7280", lineHeight: 1.45,
-                      display: "-webkit-box", WebkitLineClamp: 2,
+                      display: "-webkit-box",
                       WebkitBoxOrient: "vertical", overflow: "hidden",
                     }}>
                       {n.message}

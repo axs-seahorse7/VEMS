@@ -4,7 +4,7 @@ import {isAuthenticated} from "../middleware/isAuth/isAuthenticated.js";
 import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExitVehicle, markArrived, 
     completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination , cancelTrip, getClosedTrips,
     changeRoute, getVehicleLiveStatus, getLiveVehicleTrips, closedAndCancelledTrips, loadMaterialAndNewtrip,
-    updateVehicleTrip,
+    updateVehicleTrip, getVehiclesLength,
 } from "../controllers/trip.contollers.js";
 const router = express.Router();
 
@@ -38,6 +38,7 @@ router.post("/trip/load-material-and-newtrip/:tripId", loadMaterialAndNewtrip);
 
 
 router.get("/vehicle/trips/live", getLiveVehicleTrips);
+router.get("/vehicle/trips/counts", getVehiclesLength);
 router.get("/vehicle/trips/closed-and-cancelled", closedAndCancelledTrips);
 router.get("/vehicle/trips/:tripId", getVehicleTrips);
 

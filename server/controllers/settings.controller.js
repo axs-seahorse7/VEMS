@@ -308,11 +308,7 @@ router.patch("/notifications/mark-read/:notifId", wrap(async (req, res) => {
   ok(res, { marked: true });
 }));
 
- 
-// ════════════════════════════════════════════════════════════════════════════
-//  CRUD
-// ════════════════════════════════════════════════════════════════════════════
- 
+
 /** GET /api/settings/versions — all versions, newest first */
 router.get("/versions", wrap(async (req, res) => {
   const { platform } = req.query;
@@ -323,7 +319,6 @@ router.get("/versions", wrap(async (req, res) => {
   ok(res, versions);
 }));
  
-/** GET /api/settings/versions/active — current active version (used by axios interceptor) */
 router.get("/versions/active", wrap(async (req, res) => {
   const platform = req.query.platform ?? "web";
   const version  = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean();
@@ -331,7 +326,6 @@ router.get("/versions/active", wrap(async (req, res) => {
   ok(res, version);
 }));
  
-/** POST /api/settings/versions — create a new version */
 router.post("/versions", wrap(async (req, res) => {
   try {
   const { versionNumber, platform = "web" } = req.body;
@@ -353,7 +347,6 @@ router.post("/versions", wrap(async (req, res) => {
 }
 }));
  
-/** PATCH /api/settings/versions/:id — update a version */
 router.patch("/versions/:id", wrap(async (req, res) => {
   try {
   const allowed = [
@@ -376,7 +369,6 @@ router.patch("/versions/:id", wrap(async (req, res) => {
 }
 }));
  
-/** DELETE /api/settings/versions/:id — soft delete */
 router.delete("/versions/:id", wrap(async (req, res) => {
   try {
   const version = await Version.findByIdAndUpdate(
@@ -390,12 +382,7 @@ router.delete("/versions/:id", wrap(async (req, res) => {
 }
 }));
  
-// ════════════════════════════════════════════════════════════════════════════
-//  SET ACTIVE  — marks one version active, deactivates others on same platform
-//  and pushes an in-app notification to all non-admin users
-// ════════════════════════════════════════════════════════════════════════════
- 
-/** PATCH /api/settings/versions/:id/set-active */
+
 router.patch("/versions/:id/set-active", wrap(async (req, res) => {
   try {
   const newActive = await Version.findById(req.params.id);
@@ -441,7 +428,6 @@ router.patch("/versions/:id/set-active", wrap(async (req, res) => {
 }
 }));
  
-/** GET /api/settings/versions/check?v=1.0.0&platform=web */
 router.get("/versions/check", wrap(async (req, res) => {
   // read from header (preferred) OR fallback to query param
   const clientVersion = req.headers["x-app-version"] || req.query.v;

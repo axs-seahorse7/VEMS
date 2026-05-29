@@ -24,6 +24,7 @@ const VEHICLE_ICONS = {
 // ── colour palette (teal-based, matches screenshot) ───────────────────────────
 const C = {
   teal:     "#0d9488",
+  blue:     "#24B1B1",
   tealLight:"#ccfbf1",
   tealMid:  "#5eead4",
   slate:    "#94a3b8",
@@ -485,12 +486,14 @@ function FactoryBarChart({ data, color }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
   const [mode, setMode] = useState("closed"); // "closed" | "cancelled"
-
+  console.log("VehicleUsageCard render", { vehicle, weeklyStats, vehicleUsage });
   const chartData  = mode === "closed"
     ? (vehicleUsage.factoryChart?.closed    ?? [])
+    : mode === "active"
+    ? (vehicleUsage.factoryChart?.active    ?? [])
     : (vehicleUsage.factoryChart?.cancelled ?? []);
 
-  const chartColor = mode === "closed" ? C.teal : "#EA5252";
+  const chartColor = mode === "closed" ? C.teal : mode === "active" ? C.blue : "#EA5252";
   const totalShown = chartData.reduce((s, d) => s + d.count, 0);
 
   return (
@@ -525,6 +528,7 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
             }}
           >
             <option value="closed">✓  Completed Trips</option>
+            <option value="active">✓  Active Trips</option>
             <option value="cancelled">✕  Cancelled Trips</option>
           </select>
           <span style={{
@@ -542,7 +546,7 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <BigNumber style={{ color: chartColor }}>{totalShown}</BigNumber>
         <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
-          {mode === "closed" ? "completed" : "cancelled"} trips
+          {mode === "closed" ? "completed" : mode === "active" ? "active" : "cancelled"} trips
           {" · "}
           {chartData.length} factor{chartData.length !== 1 ? "ies" : "y"}
         </span>
@@ -553,6 +557,8 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
         <div style={{ fontSize: 11, color: C.muted, marginTop: -16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}> 
           {mode === "closed"
             ? "Distribution of completed trips across factories"
+            : mode === "active"
+            ? "Distribution of active trips across factories"
             : "Distribution of cancelled trips across factories"}
         </div>
       
@@ -1160,6 +1166,96 @@ function VBarGroup({ bars }) {
   );
 }
 
+
+function ParetoChart({ bars }) {
+  const sorted = [...bars].sort((a, b) => b.value - a.value);
+  const total = sorted.reduce((sum, b) => sum + b.value, 0);
+
+  let cumulative = 0;
+  const data = sorted.map(b => {
+    cumulative += b.value;
+    return { ...b, cumPct: Math.round((cumulative / total) * 100) };
+  });
+
+  const W = 260, H = 80;
+  const barCount = data.length;
+  const barW = (W / barCount) * 0.5;
+  const barGap = W / barCount;
+  const maxVal = Math.max(...data.map(d => d.value), 1);
+
+  const linePoints = data.map((d, i) => {
+    const x = i * barGap + barGap / 2;
+    const y = H - (d.cumPct / 100) * H;
+    return { x, y, cumPct: d.cumPct };
+  });
+
+  const polyline = linePoints.map(p => `${p.x},${p.y}`).join(" ");
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <svg viewBox={`0 0 ${W} ${H + 24}`} width="100%" style={{ overflow: "visible" }}>
+        <defs>
+          {data.map((d, i) => (
+            <linearGradient key={i} id={`bg-${i}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={d.color} stopOpacity="1" />
+              <stop offset="100%" stopColor={d.color} stopOpacity="0.6" />
+            </linearGradient>
+          ))}
+        </defs>
+
+        {/* Bars */}
+        {data.map((d, i) => {
+          const barH = (d.value / maxVal) * H;
+          const x = i * barGap + (barGap - barW) / 2;
+          return (
+            <g key={i}>
+              <rect
+                x={x} y={H - barH}
+                width={barW} height={barH}
+                fill={`url(#bg-${i})`}
+                rx={3}
+              />
+              {/* value label above bar */}
+              <text x={x + barW / 2} y={H - barH - 4}
+                textAnchor="middle" fontSize={9} fontWeight="700"
+                fill={d.color}>
+                {d.value}%
+              </text>
+              {/* x label below */}
+              <text x={i * barGap + barGap / 2} y={H + 14}
+                textAnchor="middle" fontSize={9} fill={C.muted}>
+                {d.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Cumulative line */}
+        <polyline
+          points={polyline}
+          fill="none"
+          stroke="#6366f1"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Dots + labels on line */}
+        {linePoints.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={3} fill="#6366f1" />
+            <text x={p.x} y={p.y - 6}
+              textAnchor="middle" fontSize={8}
+              fill="#6366f1" fontWeight="700">
+              {p.cumPct}%
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Stat mini-cell (used in left panel grid)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1316,7 +1412,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
       <div style={s.topBar}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
           <button style={s.backBtn} onClick={() => window.history.back()}>←</button>
-          <span style={{ fontWeight: 600 }}>Fleet</span>
+          <span style={{ fontWeight: 600 }}>VEMS</span>
           <span style={{ color: C.slate }}>»</span>
           <span style={{ fontWeight: 700, color: C.text }}>{vehicle.vehicleNumber}</span>
         </div>
@@ -1367,7 +1463,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
                   {vehicle.model ?? vehicle.vehicleNumber}
                 </div>
                 <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
-                  {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Fleet" : "External"}
+                  {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Vehicle" : "External"}
                 </div>
                 <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
                   Updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
@@ -1446,14 +1542,12 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           </Card>
 
           {/* ── Row 1, Col 2: Driver Behavior (vertical bars) ── */}
-          <Card>
+          <Card  >
             <CardLabel>Trip Execution</CardLabel>
-            <BigNumber>{driverBehavior.onTimePct}%</BigNumber>
-            <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 4px" }}>
-              Completion rate
-              <Delta val={+(driverBehavior.onTimePct - 75).toFixed(0)} />
+            <div style={{ display: "flex", height: 190, border: `1px solid ${C.border}`, justifyContent: "center", alignItems: "center", }}>
+
+              <ParetoChart bars={driverBehavior.bars} />
             </div>
-            <VBarGroup bars={driverBehavior.bars} />
           </Card>
 
 
@@ -1487,7 +1581,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           <div style={{ gridColumn:  "span 3", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
             <Card>
-              <CardLabel>Fleet Availability</CardLabel>
+              <CardLabel>Vehicle Availability</CardLabel>
               <BigNumber style={{ color: C.teal }}>{availability.overallPct}%</BigNumber>
               <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
                 High-utilisation days

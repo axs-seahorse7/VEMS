@@ -181,12 +181,7 @@ export const getFleetSummary = async (req, res) => {
 
 
 // ── 2. Fleet Overview ─────────────────────────────────────────────────────────
-// GET /api/analytics/fleet-overview
-//
-// CHANGES vs original:
-//   • pgPareto / nonPgPareto → top PARETO_TOP_N vehicles + "Others" bucket
-//   • NEW field `factoryRollup` — factory-level bar chart data
-//     (UI can choose which to render; old fields kept so existing UI won't break)
+
 export const getFleetOverview = async (req, res) => {
   try {
     const { start, end } = parseDates(req.query);
@@ -543,9 +538,9 @@ export const getVehicleDashboard = async (req, res) => {
 
     const [totalTrips, totalClosedTrips, totalActiveTrips, totalCanceledTrips, totalInternalTrips, totalExternalTrips] = await Promise.all([
       Trip.find({ createdAt: { $gte: since, $lte: now } }).countDocuments(),
-      Trip.countDocuments({tripState: "CLOSED", createdAt: { $gte: since, $lte: now } }),
+      Trip.countDocuments({tripState: "CLOSED", completedAt: { $gte: since, $lte: now }, destinationFactoryId: { $ne: null }, }),
       Trip.countDocuments({tripState: {$in: ["ACTIVE", "COMPLETED"]}, createdAt: { $gte: since, $lte: now } }),
-      Trip.countDocuments({tripState: "CANCELLED", createdAt: { $gte: since, $lte: now } }),
+      Trip.countDocuments({tripState: "CANCELLED", completedAt: { $gte: since, $lte: now } }),
       Trip.countDocuments({type: "internal_transfer", createdAt: { $gte: since, $lte: now } }),
       Trip.countDocuments({type: "external_delivery", createdAt: { $gte: since, $lte: now } }),
     ]);
@@ -553,13 +548,11 @@ export const getVehicleDashboard = async (req, res) => {
 
  
     // ── 3. weeklyStats ────────────────────────────────────────────────────
-    const daysSinceFirst = firstTrip
-      ? Math.max(1, Math.ceil((now - new Date(firstTrip.createdAt)) / 86400000))
-      : 1;
-    const monthsActive = +(daysSinceFirst / 30).toFixed(1);
-    const years        = Math.floor(monthsActive / 12);
-    const months       = Math.round(monthsActive % 12);
-    const activeSince  = years > 0
+    const daysSinceFirst  = firstTrip ? Math.max(1, Math.ceil((now - new Date(firstTrip.createdAt)) / 86400000)) : 1;
+    const monthsActive    = +(daysSinceFirst / 30).toFixed(1);
+    const years           = Math.floor(monthsActive / 12);
+    const months          = Math.round(monthsActive % 12);
+    const activeSince     = years > 0
       ? `${years} Year${years > 1 ? "s" : ""} & ${months} Month${months !== 1 ? "s" : ""}`
       : `${months} Month${months !== 1 ? "s" : ""}`;
  
@@ -569,15 +562,7 @@ export const getVehicleDashboard = async (req, res) => {
     const cancelledPct = total ? +((totalCanceledTrips / totalTrips) * 100).toFixed(1) : 0;
     // SOH = % of trips that closed successfully
     const sohPct = closedPct;
- 
-    // ── 5. Driver Behavior proxy ──────────────────────────────────────────
-    // On-time start: closed trips / total expected  (proxy for punctuality)
-    // Harsh runs: cancelled + open  (proxy for disruptions)
-    // Idle trips: open and not started on time (proxy)
-    const onTimePct    = totalTrips ? Math.round((totalClosedTrips / totalTrips) * 100) : 0;
-    const harshRunsPct = totalTrips ? Math.round(((totalCanceledTrips) / totalTrips) * 100) : 0;
-    const idlePct      = totalTrips ? Math.round((totalActiveTrips / totalTrips) * 100) : 0;
- 
+
     // ── 6. Vehicle usage — trips per day sparkline ────────────────────────
     const dailyMap = {};
 
@@ -590,6 +575,7 @@ export const getVehicleDashboard = async (req, res) => {
 
     const days     = Math.max(1, Math.ceil((now - since) / 86400000));
     const dailyArr = [];
+
     for (let i = 0; i < days; i++) {
       const d   = new Date(since); d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
@@ -612,8 +598,16 @@ export const getVehicleDashboard = async (req, res) => {
     const totalTripHours = +closed.reduce((sum, trip) => sum + getTripHours(trip), 0).toFixed(2);
     const avgTripsPerDay    = +(closed.length / days).toFixed(1);
 
+    const [totalP2PTrips, totalDeliveryTrips] = await Promise.all([
+      Trip.countDocuments({ tripState: "CLOSED", type: "internal_transfer", completedAt: { $gte: since, $lte: now } }),
+      Trip.countDocuments({ tripState: "CLOSED", type: "external_delivery", externalSource: { $ne: null }, completedAt: { $gte: since, $lte: now } }),
+    ]);
+
+    const p2pPct      = totalTrips ? +((totalP2PTrips / totalTrips) * 100).toFixed(1) : 0;
+    const pg2nonPgPct = totalTrips ? +((totalDeliveryTrips / totalTrips) * 100).toFixed(1) : 0;
+
     
-    const [factoryClosedTrips, factoryCancelledTrips] = await Promise.all([
+    const [factoryClosedTrips, factoryCancelledTrips, factoryActiveTrips] = await Promise.all([
       Trip.aggregate([
         {
           $match: {
@@ -646,7 +640,7 @@ export const getVehicleDashboard = async (req, res) => {
           $match: {
             tripState: "CANCELLED",
             // type: "internal_transfer",
-            createdAt: { $gte: since, $lte: now },
+            completedAt: { $gte: since, $lte: now },
             destinationFactoryId: { $ne: null },
           },
         },
@@ -667,6 +661,32 @@ export const getVehicleDashboard = async (req, res) => {
         },
         { $sort: { count: -1 } },
       ]),
+
+      Trip.aggregate([
+        {
+          $match: {
+            tripState:{$in : [ "ACTIVE", "COMPLETED" ]},
+            // type: "internal_transfer",
+            createdAt: { $gte: since, $lte: now },
+            destinationFactoryId: { $ne: null },
+          },
+        },
+        { $lookup: {
+            from:         "factories",
+            localField:   "destinationFactoryId",
+            foreignField: "_id",
+            as:           "f",
+          }
+        },
+        {
+          $group: {
+            _id:         "$destinationFactoryId",
+            factoryName: { $first: { $ifNull: [{ $arrayElemAt: ["$f.name", 0] }, "Unknown"] } },
+            count:       { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+      ])
     ]);
 
     // Merge into dailyArr so every date slot exists (fills zero-days too)
@@ -689,9 +709,6 @@ export const getVehicleDashboard = async (req, res) => {
     const otherTrips    = closed.length - internalTrips - externalTrips;
  
     // ── 9. Availability tiers ─────────────────────────────────────────────
-    // Good   = days where vehicle ran ≥ 3 trips
-    // Medium = days where vehicle ran 1–2 trips
-    // Low    = idle days
     let goodDays = 0, mediumDays = 0, lowDays = 0;
 
     for (let i = 0; i < days; i++) {
@@ -891,13 +908,11 @@ export const getVehicleDashboard = async (req, res) => {
       },
  
       driverBehavior: {
-        onTimePct,
-        harshRunsPct,
-        idlePct,
+        p2pPct,
+        pg2nonPgPct,
         bars: [
-          { label: "On-time Starts",  value: onTimePct,    color: "#0d9488" },
-          { label: "Disrupted Runs",  value: harshRunsPct, color: "#EA5252" },
-          { label: "Idle / Waiting",  value: idlePct,      color: "#cbd5e1" },
+          { label: "PG to PG",  value: p2pPct,    color: "#0d9488" },
+          { label: "PG to Non-PG",  value: pg2nonPgPct, color: "#FF9D23" },
         ],
       },
  
@@ -906,6 +921,7 @@ export const getVehicleDashboard = async (req, res) => {
         avgTripsPerDay,
         dailyTrend:     dailyArr,   // [{date, count}] — UI draws area chart
       },
+      
 
       vehicleUsage: {
         totalHours:     totalTripHours,
@@ -914,6 +930,7 @@ export const getVehicleDashboard = async (req, res) => {
         factoryChart: {
           closed:    factoryClosedTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
           cancelled: factoryCancelledTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+          active:    factoryActiveTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
         },
       },
  

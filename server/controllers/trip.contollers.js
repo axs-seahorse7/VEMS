@@ -2254,6 +2254,10 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
 // GET VEHICLE TRIPS
 // ========================
 
+
+const lst36hr = new Date(Date.now() - 36 * 60 * 60 * 1000);
+
+
 export const getVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId).populate("factory");
@@ -2504,11 +2508,10 @@ export const getVehicleTrips = async (req, res) => {
 export const getLiveVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
-    .select("factory")
-    .lean();
+      .select("factory")
+      .lean();
 
     if (!user || !user.factory) {
-
       return res.status(404).json({
         success: false,
         message: "User factory not found"
@@ -2516,200 +2519,319 @@ export const getLiveVehicleTrips = async (req, res) => {
     }
 
     const factoryId = user.factory;
+    const page      = Number(req.query.page)  || 1;
+    const limit     = Number(req.query.limit) || 20;
+    const skip      = (page - 1) * limit;
+    const filter    = req.query.filter || "all";   // <-- new
+    const search      = req.query.search?.trim() || "";  // new
 
-    const now = new Date();
 
+    // ── Build the filter-specific query ───────────────────────────────────────
 
-    // =========================
-    // PAGINATION
-    // =========================
+    let matchQuery = {};
 
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
+   // 1. resolve search BEFORE switch (just get the IDs)
+    let vehicleIdFilter = null;
+    if (search) {
+      const matchingVehicles = await Vehicle.find({
+        vehicleNumber: { $regex: search, $options: "i" }
+      })
+      .select("_id")
+      .lean();
 
-    // =========================
-    // QUERY
-    // =========================
+      const vehicleIds = matchingVehicles.map((v) => v._id);
+      vehicleIdFilter = { $in: vehicleIds };
+    }
 
-    const trips = await Trip.find({
-      $and: [
-        {
+    if (vehicleIdFilter) {
+      matchQuery.vehicleId = vehicleIdFilter;
+    }
+
+    switch (filter) {
+      
+      case "all":
+        matchQuery = {
+            tripState: { $in: ["ACTIVE", "COMPLETED"] },
+            $or: [
+              { sourceFactoryId:      factoryId },
+              { destinationFactoryId: factoryId },
+            ],
+          };
+        break;
+      // Vehicles waiting outside, heading to this factory
+      case "waiting":
+        matchQuery = {
+          tripState:            { $in: ["ACTIVE", "COMPLETED"] },
+          location:             "outside_factory",
+          phase:                "DESTINATION",
+          destinationFactoryId: factoryId,
+        };
+        break;
+
+      // Vehicles physically inside this factory (as origin or destination)
+      case "inside":
+        matchQuery = {
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          location:  "inside_factory",
           $or: [
-            { sourceFactoryId: factoryId },
-            { destinationFactoryId: factoryId }
-          ]
-        },
-        {
-          tripState: {
-            $in: ["ACTIVE", "COMPLETED"]
-          }
-        },
+            { phase: "ORIGIN",      sourceFactoryId:      factoryId },
+            { phase: "DESTINATION", destinationFactoryId: factoryId },
+          ],
+        };
+        break;
 
-      ]
-    })
-    .select(`
-      type
-      phase
-      location
-      status
-      tripState
-      purpose
-      reason
-      loadStatus
-      arrivedAt
-      checkedInAt
-      externalSource
-      externalDestination
-      materials
-      createdAt
-      startedAt
-      completedAt
-      vehicleId
-      driverId
-      sourceFactoryId
-      destinationFactoryId
-    `)
-    .populate({
-      path: "vehicleId",
-      select: `
-        vehicleNumber
-        type
-        typeOfVehicle
-        transporterName
-      `
-    })       
-    .populate({
-      path: "driverId",
-      select: `
-        driverName
-        driverContact
-      `
-    })
-    .populate({
-      path: "sourceFactoryId",
-      select: `
-        name
-        location
-      `
-    })
-    .populate({
-      path: "destinationFactoryId",
-      select: `
-        name
-        location
-      `
-    })
-    .sort({
-      createdAt: -1,
-      updatedAt: -1,
-      _id: -1
-    })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+      // Vehicles en-route, destination is this factory
+      case "enroute":
+        matchQuery = {
+          tripState:            { $in: ["ACTIVE", "COMPLETED"] },
+          location:             "enroute",
+          destinationFactoryId: factoryId,
+        };
+        break;
 
-    const totalTrips = await Trip.countDocuments({
-      $and: [
-        {
+      // Vehicles dispatched from this factory (en-route, source is this factory)
+      case "dispatched":
+        matchQuery = {
+          tripState:       { $in: ["ACTIVE", "COMPLETED"] },
+          location:        "enroute",
+          status:         "IN_TRANSIT",
+          phase:          "ORIGIN",
+          sourceFactoryId: factoryId,
+        };
+        break;
+
+      // Purpose-based filters — same base scope as "allVehicles" on client
+      // (waiting ∪ inside ∪ enroute for this factory)
+      case "pickup":
+      case "delivery":
+        matchQuery = {
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          purpose:   filter === "pickup" ? "Pickup" : "Delivery",
           $or: [
-            { sourceFactoryId: factoryId },
-            { destinationFactoryId: factoryId }
-          ]
-        },
-        {
-          tripState: {
-            $in: ["ACTIVE", "COMPLETED"]
-          }
-        }
-      ]
-    });
+            { location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },
+            { location: "inside_factory",  $or: [
+                { phase: "ORIGIN",      sourceFactoryId:      factoryId },
+                { phase: "DESTINATION", destinationFactoryId: factoryId },
+              ]
+            },
+            { location: "enroute", destinationFactoryId: factoryId },
+          ],
+        };
+        break;
+
+      // Material-based filters — match first element of materials array
+      case "FG":
+      case "RM": {
+        const materialName = filter; // "FG" or "RM"
+        matchQuery = {
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          $or: [
+            { "materials.0.material": materialName },
+            { "materials.0.name":     materialName },
+          ],
+          // same factory scope as allVehicles
+          $and: [
+            {
+              $or: [
+                { location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },
+                { location: "inside_factory", $or: [
+                    { phase: "ORIGIN",      sourceFactoryId:      factoryId },
+                    { phase: "DESTINATION", destinationFactoryId: factoryId },
+                  ]
+                },
+                { location: "enroute", destinationFactoryId: factoryId },
+              ],
+            },
+          ],
+        };
+        break;
+      }
+
+      // Closed / cancelled trips for this factory
+      case "closed":
+        matchQuery = {
+          tripState: { $in: ["CLOSED", "CANCELLED"] },
+          completedAt: { $gte: lst36hr },
+          $or: [
+            { sourceFactoryId:      factoryId },
+            { destinationFactoryId: factoryId },
+          ],
+        };
+        break;
+
+      // "all" — active/completed trips touching this factory (original behaviour)
+      default:
+        matchQuery = {
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          completedAt: { $gte: lst36hr },
+          $or: [
+            { sourceFactoryId:      factoryId },
+            { destinationFactoryId: factoryId },
+          ],
+        };
+    }
+
+    if (vehicleIdFilter) {
+      matchQuery = {
+        $and: [
+          matchQuery,
+          { vehicleId: vehicleIdFilter }
+        ]
+      };
+    }
+
+    // ── Run paginated query + count in parallel ───────────────────────────────
+
+    const [trips, totalTrips] = await Promise.all([
+      Trip.find(matchQuery)
+        .select(`
+          type phase location status tripState purpose reason loadStatus
+          arrivedAt checkedInAt externalSource externalDestination
+          materials createdAt startedAt completedAt updatedAt
+          vehicleId driverId sourceFactoryId destinationFactoryId
+        `)
+        .populate({ path: "vehicleId",            select: "vehicleNumber type typeOfVehicle transporterName" })
+        .populate({ path: "driverId",             select: "driverName driverContact" })
+        .populate({ path: "sourceFactoryId",      select: "name location" })
+        .populate({ path: "destinationFactoryId", select: "name location" })
+        .sort({ updatedAt: -1, createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Trip.countDocuments(matchQuery),
+    ]);
+
+   
+
+    // ── Format ────────────────────────────────────────────────────────────────
 
     const formattedTrips = trips.map((trip) => ({
-      _id: trip._id,
-      type: trip.type,
-      phase: trip.phase,
-      location: trip.location,
-      status: trip.status,
-      tripState: trip.tripState,
-      purpose: trip.purpose,
-      reason: trip.reason,
-      loadStatus: trip.loadStatus,
-      arrivedAt: trip.arrivedAt,
-      checkedInAt: trip.checkedInAt,
-      externalSource: trip.externalSource,
+      _id:                 trip._id,
+      type:                trip.type,
+      phase:               trip.phase,
+      location:            trip.location,
+      status:              trip.status,
+      tripState:           trip.tripState,
+      purpose:             trip.purpose,
+      reason:              trip.reason,
+      loadStatus:          trip.loadStatus,
+      arrivedAt:           trip.arrivedAt,
+      checkedInAt:         trip.checkedInAt,
+      externalSource:      trip.externalSource,
       externalDestination: trip.externalDestination,
-      createdAt: trip.createdAt,
-      startedAt: trip.startedAt,
-      completedAt: trip.completedAt,
-      vehicle: trip.vehicleId
-        ? {
-            _id: trip.vehicleId._id,
-            vehicleNumber: trip.vehicleId.vehicleNumber,
-            transporterName: trip.vehicleId.transporterName || null,
-            vehicleType: trip.vehicleId.type,
-            typeOfVehicle: trip.vehicleId.typeOfVehicle
-          }
-        : null,
+      createdAt:           trip.createdAt,
+      startedAt:           trip.startedAt,
+      completedAt:         trip.completedAt,
+      updatedAt:           trip.updatedAt,
 
-      driver: trip.driverId
-        ? {
-            _id: trip.driverId._id,
-            name: trip.driverId.driverName,
-            phone: trip.driverId.driverContact,
-          }
-        : null,
+      vehicle: trip.vehicleId ? {
+        _id:             trip.vehicleId._id,
+        vehicleNumber:   trip.vehicleId.vehicleNumber,
+        transporterName: trip.vehicleId.transporterName || null,
+        vehicleType:     trip.vehicleId.type,
+        typeOfVehicle:   trip.vehicleId.typeOfVehicle,
+      } : null,
 
-      sourceFactory: trip.sourceFactoryId
-        ? {
-            _id: trip.sourceFactoryId._id,
-            name: trip.sourceFactoryId.name,
-            location: trip.sourceFactoryId.location
-          }
-        : null,
+      driver: trip.driverId ? {
+        _id:   trip.driverId._id,
+        name:  trip.driverId.driverName,
+        phone: trip.driverId.driverContact,
+      } : null,
 
-      destinationFactory: trip.destinationFactoryId
-        ? {
-            _id: trip.destinationFactoryId._id,
-            name: trip.destinationFactoryId.name,
-            location: trip.destinationFactoryId.location
-          }
-        : null,
+      sourceFactory: trip.sourceFactoryId ? {
+        _id:      trip.sourceFactoryId._id,
+        name:     trip.sourceFactoryId.name,
+        location: trip.sourceFactoryId.location,
+      } : null,
 
-      material: Array.isArray(trip.materials)
-        ? trip.materials[0] || null
-        : null
+      destinationFactory: trip.destinationFactoryId ? {
+        _id:      trip.destinationFactoryId._id,
+        name:     trip.destinationFactoryId.name,
+        location: trip.destinationFactoryId.location,
+      } : null,
+
+      material: Array.isArray(trip.materials) ? trip.materials[0] || null : null,
     }));
 
-    // =========================
-    // RESPONSE
-    // =========================
+    // ── Response ──────────────────────────────────────────────────────────────
+
     const hasMore = skip + trips.length < totalTrips;
+
     return res.status(200).json({
-    success: true,
-    page,
-    limit,
-    count: formattedTrips.length,
-    total: totalTrips,
-    hasMore,
-    nextPage: hasMore ? page + 1 : null,
-    trips: formattedTrips
-  });
+      success: true,
+      filter,
+      page,
+      limit,
+      count:    formattedTrips.length,
+      total:    totalTrips,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+      trips:    formattedTrips,
+    });
 
   } catch (err) {
-
-    console.error(
-      "Error fetching live vehicle trips:",
-      err
-    );
-
+    console.error("Error fetching live vehicle trips:", err);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch live vehicle trips",
-      error: err.message
+      error:   err.message,
     });
   }
 };
+
+export const getVehiclesLength = async (req, res) => {
+  try{
+    const user = await User.findById(req.userId).select("factory").lean();
+    const factoryId = user?.factory;
+    
+    const [
+      totalVehicles,
+      totalInsideVehicles,
+      totalOutsideVehicles,
+      totalUpcomingVehicles,
+      totalDispatchedVehicles,
+      totalClosedVehicles,
+      totalPickup,           
+      totalDelivery,         
+      totalFG,               
+      totalRM,              
+    ] = await Promise.all([
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }], }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "inside_factory",  phase: "DESTINATION", destinationFactoryId: factoryId }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "enroute",         phase: "ORIGIN",      destinationFactoryId: factoryId }),
+      // Dispatch -------
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "enroute",         status: "IN_TRANSIT", phase: "ORIGIN", sourceFactoryId: factoryId }),
+      // Closed / Cancelled in last 36hr
+      Trip.countDocuments({ tripState: { $in: ["CLOSED", "CANCELLED"] }, completedAt: { $gte: lst36hr },      $or: [{ sourceFactoryId: factoryId}, {destinationFactoryId: factoryId}] }),
+
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Pickup",   $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Delivery", $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "FG" }, { "materials.0.name": "FG" }], $and: [{ $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }] }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "RM" }, { "materials.0.name": "RM" }], $and: [{ $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }] }),
+    ]);
+
+     return res.status(200).json({
+      success: true,
+      totalVehicles,
+      totalInsideVehicles,
+      totalOutsideVehicles,
+      totalUpcomingVehicles,
+      totalDispatchedVehicles,
+      totalClosedVehicles,
+      totalPickup,
+      totalDelivery,
+      totalFG,
+      totalRM,
+     
+    });
+
+  }catch(er) {
+    console.log("something is wrong", er.message)
+    return res.status(500).send(er.message)
+  }
+}
 
 export const closedAndCancelledTrips = async (req, res) => {
   try {
@@ -2742,7 +2864,7 @@ export const closedAndCancelledTrips = async (req, res) => {
             $gte: last36Hours,
             $lte: now
           }
-        },
+        },       
         {
           tripState: {
             $in: ["CLOSED", "CANCELLED"]
@@ -2770,7 +2892,7 @@ export const closedAndCancelledTrips = async (req, res) => {
       vehicleId
       driverId
       sourceFactoryId
-      destinationFactoryId
+      destinationFactoryId        
     `)
     .populate("vehicleId", "vehicleNumber type typeOfVehicle transporterName")
     .populate("driverId", "driverName driverContact ")

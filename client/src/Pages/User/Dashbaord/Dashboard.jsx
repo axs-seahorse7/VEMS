@@ -440,7 +440,14 @@ export default function VehicleDashboard() {
     };
   }, []);
 
-  
+  function useDebounce(value, delay) {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+      const timer = setTimeout(() => setDebounced(value), delay);
+      return () => clearTimeout(timer);
+    }, [value, delay]);
+    return debounced;
+  }
 
   // ── User ──────────────────────────────────────────────────────────────────
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
@@ -459,11 +466,13 @@ export default function VehicleDashboard() {
     setTimeout(() => setRefreshing(false), 800);
   }, [queryClient]);
 
-  const {data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ["vehicles"],
+  const debouncedSearch = useDebounce(searchQuery, 400); 
+
+  const {data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage, } = useInfiniteQuery({
+    queryKey: ["vehicles", filter, debouncedSearch],
     initialPageParam: 1,
     queryFn: async ({ pageParam = 1 }) => {
-      const res = await api.get(`/vehicle/trips/live?page=${pageParam}&limit=20`);
+      const res = await api.get(`/vehicle/trips/live?page=${pageParam}&limit=20&filter=${filter}&search=${debouncedSearch}`);
       return res.data;
     },
 
@@ -476,29 +485,38 @@ export default function VehicleDashboard() {
     refetchIntervalInBackground: false,
   });
 
-
-  const {data: closedAndCancelledTripsData, isError: closedTripsError, isLoading: closedTripsLoading, fetchNextPage: fetchClosedTripsNextPage, hasNextPage: hasMoreClosedTrips, isFetchingNextPage: isFetchingClosedTripsNextPage} = useInfiniteQuery({
-    queryKey: ["vehicles-closed-and-cancelled"],
-    initialPageParam: 1,
-
-    queryFn: async ({ pageParam = 1 }) => {
-      const res = await api.get(`/vehicle/trips/closed-and-cancelled?page=${pageParam}&limit=20`);
+  const { data: tripsCount } = useQuery({
+    queryKey: ["vehicle-counts",],
+    queryFn: async () => {
+      const res = await api.get(`/vehicle/trips/counts`);
       return res.data;
     },
-
-    getNextPageParam: (lastPage) => {
-      return lastPage?.nextPage || undefined;
-    },
-
     refetchInterval: 10000,
-    refetchOnWindowFocus: true,
     refetchIntervalInBackground: false,
   });
 
-  const trips = data?.pages.flatMap((page) => page.trips ) || [];
-  const closedAndCancelledTrips = closedAndCancelledTripsData?.pages.flatMap((page) => page.trips ) || [];
-  const selectedVehicleId = selectedVehicle?._id;
 
+
+  const firstPage = data?.pages?.[0];
+
+  const {
+      totalVehicles,
+      totalInsideVehicles,
+      totalOutsideVehicles,
+      totalUpcomingVehicles,
+      totalDispatchedVehicles,
+      totalClosedVehicles,
+      totalPickup,           
+      totalDelivery,         
+      totalFG,               
+      totalRM,              
+     } = tripsCount || {};
+ 
+
+
+  const trips = data?.pages.flatMap((page) => page.trips ) || [];
+  const selectedVehicleId = selectedVehicle?._id;
+  const allVehicles = [...trips ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const abortControllerRef = useRef(null);
 
   const {data: selectedTrip, isLoading: selectedTripLoading } = useQuery({
@@ -519,57 +537,17 @@ export default function VehicleDashboard() {
     setSelectedVehicle(null);
   };
 
-  // ── Data slices ────────────────────────────────────────────────────────────
-  const filteredData     = trips.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)) || [];
-  const closedTrips      = closedAndCancelledTrips.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) || [];
-  const waitingVehicles  = filteredData.filter((v) => v.destinationFactory?._id === userFactoryId && v.location === "outside_factory" && (v.tripState !== "CLOSED" || v.tripState !== "CANCELLED"));
-  const insideVehicles   = trips?.filter((v) => v.location === "inside_factory" && v.tripState !== "CLOSED" && v.tripState !== "CANCELLED" && ((v.phase === "ORIGIN" && v.sourceFactory?._id?.toString() === userFactoryId?.toString()) || (v.phase === "DESTINATION" && v.destinationFactory?._id?.toString() === userFactoryId?.toString())));
-  const enrouteVehicles  = filteredData.filter((v) => v.destinationFactory?._id === userFactoryId && v.location === "enroute");
-  const dispatchedVehicles = filteredData.filter((v) => v.sourceFactory?._id?.toString() === userFactoryId?.toString() && v.location === "enroute");
 
-  const uniqueVehiclesMap = new Map();
-  [...waitingVehicles, ...insideVehicles, ...enrouteVehicles].forEach((v) => uniqueVehiclesMap.set(v._id, v));
-  const allVehicles = Array.from(uniqueVehiclesMap.values());
-
-  const pickupVehicles   = allVehicles.filter((v) => v.purpose === "Pickup");
-  const deliveryVehicles = allVehicles.filter((v) => v.purpose === "Delivery");
-
-  const hasMaterial = (vehicle, materialName) => {
-    return (
-      vehicle?.material?.material === materialName ||
-      vehicle?.material?.name === materialName
-    );
-  };
-
-  const FGVehicles = allVehicles?.filter((v) => hasMaterial(v, "FG"));
-  const RMVehicles = allVehicles?.filter((v) => hasMaterial(v, "RM"));
-
-  const segCounts = { all: allVehicles.length, waiting: waitingVehicles.length, pickup: pickupVehicles.length, delivery: deliveryVehicles.length, FG: FGVehicles.length, RM: RMVehicles.length, inside: insideVehicles.length, enroute: enrouteVehicles.length, dispatched: dispatchedVehicles.length, closed: closedTrips.length };
-
-  const baseFiltered = (() => {
-    if (filter === "waiting")    return waitingVehicles;
-    if (filter === "inside")     return insideVehicles;
-    if (filter === "enroute")    return enrouteVehicles;
-    if (filter === "pickup")     return pickupVehicles;
-    if (filter === "delivery")   return deliveryVehicles;
-    if (filter === "FG")         return FGVehicles;
-    if (filter === "RM")         return RMVehicles;
-    if (filter === "dispatched") return dispatchedVehicles;
-    if (filter === "closed")     return closedTrips;
-    return allVehicles;
-  })();
-  
-  const filteredVehicles = searchQuery.trim()
-    ? baseFiltered.filter((v) => { const vehicleData = v.vehicle || v.vehicleId || {}; return (vehicleData?.vehicleNumber || "").toLowerCase().includes(searchQuery.trim().toLowerCase()); })
-    : baseFiltered;
+  const segCounts = { all: totalVehicles, waiting: totalOutsideVehicles, pickup: totalPickup, delivery: totalDelivery, FG: totalFG, RM: totalRM, inside: totalInsideVehicles, enroute: totalUpcomingVehicles, dispatched: totalDispatchedVehicles, closed: totalClosedVehicles };
+  const filteredVehicles = trips;
 
   const handleSignOut = async () => {
     try {
-      await api.post("/auth/logout");
-      localStorage.removeItem("user");
-      window.location.href = "/login";
+    await api.post("/auth/logout");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
     } catch (e) {
-      message.error("Logout failed");
+    message.error("Logout failed");
     }
   };
 
@@ -579,9 +557,9 @@ export default function VehicleDashboard() {
   useEffect(() => {
     const isClosedFilter = filter === "closed";
     const node           = isClosedFilter ? lastClosedRef.current : lastLiveRef.current;
-    const canFetch       = isClosedFilter ? hasMoreClosedTrips    : hasNextPage;
-    const fetching       = isClosedFilter ? isFetchingClosedTripsNextPage : isFetchingNextPage;
-    const loadMore       = isClosedFilter ? fetchClosedTripsNextPage      : fetchNextPage;
+    const canFetch       = isClosedFilter ? hasNextPage    : hasNextPage;
+    const fetching       = isClosedFilter ? isFetchingNextPage : isFetchingNextPage;
+    const loadMore       = isClosedFilter ? fetchNextPage      : fetchNextPage;
     if (!node || !canFetch || fetching) return;
 
     const observer = new IntersectionObserver((entries) => {
@@ -590,41 +568,25 @@ export default function VehicleDashboard() {
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [filter, filteredVehicles, closedTrips, hasNextPage, hasMoreClosedTrips, isFetchingNextPage, isFetchingClosedTripsNextPage, fetchNextPage, fetchClosedTripsNextPage,]);
+  }, [filter, debouncedSearch, hasNextPage, isFetchingNextPage,  fetchNextPage]);
 
 
   const tableBottomRef = useRef(null);
+
   useEffect(() => {
     if (viewMode === "grid") return;
-
     const node = tableBottomRef.current;
-    const isClosedFilter = filter === "closed";
-    const canFetch = isClosedFilter ? hasMoreClosedTrips : hasNextPage;
-    const fetching = isClosedFilter ? isFetchingClosedTripsNextPage : isFetchingNextPage;
-    const loadMore = isClosedFilter ? fetchClosedTripsNextPage : fetchNextPage;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
 
-    if (!node || !canFetch || fetching) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) loadMore();
+    const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) fetchNextPage();
       },
       { rootMargin: "100px" }
     );
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [
-    viewMode,
-    filter,
-    filteredVehicles.length,
-    hasNextPage,
-    hasMoreClosedTrips,
-    isFetchingNextPage,
-    isFetchingClosedTripsNextPage,
-    fetchNextPage,
-    fetchClosedTripsNextPage,
-  ]);
+  }, [ viewMode, filter, debouncedSearch, hasNextPage, isFetchingNextPage, fetchNextPage, ]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8f9fb", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", color: "#111", scrollbarWidth: "thin", scrollbarColor: "#cbd5e1 #f8f9fb" }}>
@@ -672,8 +634,9 @@ export default function VehicleDashboard() {
 
           <Button onClick={manualRefetch} shape="round" type="primary" style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
             <span style={{ height: 15, width: 15, display: "flex", ...(refreshing ? { animation: "spin .7s linear infinite" } : {}) }}>{Icon.refresh}</span>
-            <span>Refresh</span>
+            <span>Refresh</span>          
           </Button>
+
 
           <button onClick={() => setEntryOpen(true)} style={{ display: "flex", alignItems: "center", gap: 5, border: "none", background: "#6366f1", borderRadius: 50, padding: "6px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", color: "#fff" }}>
             <span style={{ width: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>{Icon.plus}</span>
@@ -696,15 +659,15 @@ export default function VehicleDashboard() {
 
       {/* ── KPIs ── */}
       <div style={{ padding: "12px 20px 20px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, borderBottom: "1px solid #e5e7eb" }}>
-        <KpiCard label="Waiting"      value={waitingVehicles.length}    color="#f59e0b" icon={Icon.clock}    active={filter === "waiting"}    onClick={() => setFilter("waiting")} />
-        <KpiCard label="Inside"       value={insideVehicles.length}     color="#10b981" icon={Icon.truck}    active={filter === "inside"}     onClick={() => setFilter("inside")} />
-        <KpiCard label="Upcoming"     value={enrouteVehicles.length}    color="#3b82f6" icon={Icon.map}      active={filter === "enroute"}    onClick={() => setFilter("enroute")} />
-        <KpiCard label="FG Vehicles"  value={FGVehicles.length}         color="#79AE6F" icon={Icon.alert}    active={filter === "FG"}         onClick={() => setFilter("FG")} />
-        <KpiCard label="RM Vehicles"  value={RMVehicles.length}         color="#66D0BC" icon={Icon.alert}    active={filter === "RM"}         onClick={() => setFilter("RM")} />
-        <KpiCard label="Pickups"      value={pickupVehicles.length}     color="purple"  icon={Icon.package}  active={filter === "pickup"}     onClick={() => setFilter("pickup")} />
-        <KpiCard label="Deliveries"   value={deliveryVehicles.length}   color="#ec4899" icon={Icon.location} active={filter === "delivery"}   onClick={() => setFilter("delivery")} />
-        <KpiCard label="Dispatched"   value={dispatchedVehicles.length} color="#059669" icon={Icon.dispatch} active={filter === "dispatched"} onClick={() => setFilter((f) => f === "dispatched" ? "all" : "dispatched")} />
-        <KpiCard label="Closed Trips" value={closedTrips.length}        color="#2C687B" icon={Icon.close}    active={filter === "closed"}     onClick={() => setFilter((f) => f === "closed" ? "all" : "closed")} />
+        <KpiCard label="Waiting"      value={totalOutsideVehicles}      color="#f59e0b" icon={Icon.clock}    active={filter === "waiting"}    onClick={() => setFilter("waiting")} />
+        <KpiCard label="Inside"       value={totalInsideVehicles}       color="#10b981" icon={Icon.truck}    active={filter === "inside"}     onClick={() => setFilter("inside")} />
+        <KpiCard label="Upcoming"     value={totalUpcomingVehicles}     color="#3b82f6" icon={Icon.map}      active={filter === "enroute"}    onClick={() => setFilter("enroute")} />
+        <KpiCard label="FG Vehicles"  value={totalFG}         color="#79AE6F" icon={Icon.alert}    active={filter === "FG"}         onClick={() => setFilter("FG")} />
+        <KpiCard label="RM Vehicles"  value={totalRM}         color="#66D0BC" icon={Icon.alert}    active={filter === "RM"}         onClick={() => setFilter("RM")} />
+        <KpiCard label="Pickups"      value={totalPickup}     color="purple"  icon={Icon.package}  active={filter === "pickup"}     onClick={() => setFilter("pickup")} />
+        <KpiCard label="Deliveries"   value={totalDelivery}   color="#ec4899" icon={Icon.location} active={filter === "delivery"}   onClick={() => setFilter("delivery")} />
+        <KpiCard label="Dispatched"   value={totalDispatchedVehicles}   color="#059669" icon={Icon.dispatch} active={filter === "dispatched"} onClick={() => setFilter((f) => f === "dispatched" ? "all" : "dispatched")} />
+        <KpiCard label="Closed Trips" value={totalClosedVehicles}       color="#2C687B" icon={Icon.close}    active={filter === "closed"}     onClick={() => setFilter((f) => f === "closed" ? "all" : "closed")} />
       </div>
 
       {/* ── Offline Banner ── */}
@@ -801,7 +764,7 @@ export default function VehicleDashboard() {
                 Loading more…
               </div>
             )}
-          </>
+          </>      
 
         )}
           
