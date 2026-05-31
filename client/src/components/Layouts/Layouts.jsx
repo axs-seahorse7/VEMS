@@ -75,28 +75,26 @@ export const Icons = {
 const NAV = [
   {
     id: "overview",
-    label: "Overview",
+    label: "Dashboard",
     icon: Icons.overview,
-    single: true,
+    single: false,
+    children: [
+      { id: "overview", label: "Overview" },
+      { id: "searchDrivers", label: "Search Drivers" },
+    ]
   },
   {
     id: "users",
     label: "Manage Users",
     icon: Icons.users,
-    children: [
-      { id: "users-list", label: "User List" },
-      { id: "users-create", label: "Create User" },
-      { id: "users-roles", label: "Roles & Permissions" },
-    ],
+    single: true,
+   
   },
   {
     id: "factory",
     label: "Manage Factory",
     icon: Icons.factory,
-    children: [
-      { id: "factory-list", label: "Factory List" },
-      { id: "factory-create", label: "Add Factory" },
-    ],
+    single:true
   },
   {
     id: "vehicles",
@@ -115,10 +113,10 @@ const NAV = [
 const COLORS = {
   sidebarBg: "#0f1117",
   sidebarBorder: "#1e2130",
-  accent: "#6366f1",
-  accentLight: "#818cf8",
-  accentBg: "rgba(99,102,241,0.12)",
-  text: "#e2e8f0",
+  accent: "#077A7D",
+  accentLight: "#24B1B1",
+  accentBg: "rgb(36, 177, 177, 0.20)",
+  text: "#24B1B1",
   textMuted: "#64748b",
   topbarBg: "#ffffff",
   pageBg: "#f1f5f9",
@@ -126,7 +124,7 @@ const COLORS = {
 };
 
 // ── Sidebar Item ──────────────────────────────────────────────────────────────
-function SidebarItem({ item, activePage, onNavigate, collapsed }) {
+function SidebarItem({ item, activePage, onNavigate, collapsed, setCollapsed }) {
   const hasChildren = item.children?.length > 0;
   const isActive = item.single
     ? activePage === item.id
@@ -181,22 +179,48 @@ function SidebarItem({ item, activePage, onNavigate, collapsed }) {
         )}
         <span style={{ width: 18, height: 18, flexShrink: 0, display: "flex" }}>{item.icon}</span>
         {!collapsed && (
-          <>
-            <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>
-            {hasChildren && (
+            <>
               <span style={{
-                width: 14, height: 14, display: "flex",
-                transform: open ? "rotate(90deg)" : "none", transition: "transform .2s"
-              }}>{Icons.chevron}</span>
-            )}
-          </>
+                flex: 1,
+                textAlign: "left",
+                opacity: collapsed ? 0 : 1,
+                transition: "opacity 0.2s ease 0.15s, transform 0.2s ease 0.10s", // 0.15s delay
+              }}>
+                {item.label}
+              </span>
+              {hasChildren && (
+                <span style={{
+                  width: 14, height: 14, display: "flex",
+                  transform: open ? "rotate(90deg)" : "none",
+                  transition: "transform .2s",
+                  opacity: collapsed ? 0 : 1,
+                  // slight extra delay for chevron so label lands first
+                  transition: "opacity 0.2s ease 0.18s, transform .2s",
+                }}>
+                  {Icons.chevron}
+                </span>
+              )}
+            </>
         )}
       </button>
 
-      {/* Sub-items */}
-      {!collapsed && hasChildren && open && (
-        <div style={{ paddingLeft: 32, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-          {item.children.map((c) => (
+     {/* // Sub-items container — replace your existing {!collapsed && hasChildren && open && (...)} block */}
+      {!collapsed && hasChildren && (
+        <div
+          style={{
+            paddingLeft: 32,
+            marginTop: 2,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
+            overflow: "hidden",
+            maxHeight: open ? `${item.children.length * 44}px` : "0px",
+            opacity: open ? 1 : 0,
+            transition: "max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease",
+            transitionDelay: "0.1, 0.1"
+          }}
+        >
+          {item.children.map((c, i) => (
             <button
               key={c.id}
               onClick={() => onNavigate(c.id)}
@@ -212,16 +236,31 @@ function SidebarItem({ item, activePage, onNavigate, collapsed }) {
                 color: activePage === c.id ? COLORS.accentLight : COLORS.textMuted,
                 cursor: "pointer",
                 fontFamily: "inherit",
-                transition: "all .12s",
+                transition: "color .12s, background .12s, transform .15s",
+                transform: open ? "translateX(0)" : "translateX(-6px)",
+                // stagger each child slightly
+                opacity: open ? 1 : 0,
+                transitionDelay: open ? `0.1s` : "0s",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = COLORS.text; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = COLORS.text;
+                e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                e.currentTarget.style.transform = "translateX(3px)";
+              }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = activePage === c.id ? COLORS.accentLight : COLORS.textMuted;
                 e.currentTarget.style.background = activePage === c.id ? COLORS.accentBg : "transparent";
+                e.currentTarget.style.transform = "translateX(0)";
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: activePage === c.id ? COLORS.accent : COLORS.textMuted, flexShrink: 0 }} />
+                <span style={{
+                  width: 5, height: 5, borderRadius: "50%",
+                  background: activePage === c.id ? COLORS.accent : COLORS.textMuted,
+                  flexShrink: 0,
+                  transition: "transform .15s",
+                  transitionDelay: activePage === c.id ? "0.1s" : "0s",
+                }} />
                 {c.label}
               </span>
             </button>
@@ -234,7 +273,7 @@ function SidebarItem({ item, activePage, onNavigate, collapsed }) {
 
 // ── Main Layout ───────────────────────────────────────────────────────────────
 export default function AdminLayout({ activePage, onNavigate, children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
   const SIDEBAR_W = collapsed ? 64 : 230;
 
@@ -260,39 +299,44 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
 
       {/* ── Sidebar ── */}
       <aside style={{
-        width: SIDEBAR_W, minHeight: "100vh", background: COLORS.sidebarBg,
-        borderRight: `1px solid ${COLORS.sidebarBorder}`,
+        width: SIDEBAR_W, minHeight: "100vh", background: "#ffff",
+        // borderRight: `1px solid gray`,
         display: "flex", flexDirection: "column",
         position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200,
         transition: "width .22s cubic-bezier(.4,0,.2,1)",
         overflow: "hidden",
+        boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
       }}>
         {/* Logo */}
         <div style={{
           height: 60, display: "flex", alignItems: "center",
           padding: collapsed ? "0 13px" : "0 16px",
-          borderBottom: `1px solid ${COLORS.sidebarBorder}`,
+          // borderBottom: `1px solid gray`,
           gap: 10, flexShrink: 0,
+          backgroundColor: "#ffff"
         }}>
           <div style={{
-            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-            background: "linear-gradient(135deg,#6366f1,#4f46e5)",
-            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff"
+            width: 60, height: 60, paddingRight:4,
+            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
           }}>
-            <span style={{ width: 17, height: 17, display: "flex" }}>{Icons.truck}</span>
+              <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="" />
           </div>
           {!collapsed && (
             <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: -.3 }}>VEMS</div>
+              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: -.3 }}>VEMS</div>
               <div style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 500 }}>Admin Console</div>
             </div>
           )}
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, overflowY: "auto", padding: "12px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
+        <nav
+          onMouseEnter={() => setCollapsed(false)}
+          onMouseLeave={() => setCollapsed(true)}
+         style={{ flex: 1, overflowY: "auto", padding: "12px 8px", display: "flex", flexDirection: "column", gap: 3, transition: "all 0.2s" }}
+         >
           {NAV.map((item) => (
-            <SidebarItem key={item.id} item={item} activePage={activePage} onNavigate={onNavigate} collapsed={collapsed} />
+            <SidebarItem key={item.id} item={item} activePage={activePage} onNavigate={onNavigate} collapsed={collapsed} setCollapsed={setCollapsed} />
           ))}
         </nav>
 

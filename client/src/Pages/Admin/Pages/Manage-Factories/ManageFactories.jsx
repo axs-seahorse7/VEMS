@@ -365,20 +365,20 @@ function FactoryList({ onAddClick }) {
 }
 
 // ── Exported router ───────────────────────────────────────────────────────────
-export default function ManageFactory({ activePage = "factory-list" }) {
+export default function ManageFactory({ activePage = "factory" }) {
   const [page, setPage] = useState(activePage);
 
   if (page === "factory-create") {
     return (
       <div style={{ maxWidth: 700, padding:10, margin: "0 auto" }}>
         <button
-          onClick={() => setPage("factory-list")}
+          onClick={() => setPage("factory")}
           style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13.5, color: "#6366f1", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 20, fontFamily: "inherit", padding: 0 }}
         >← Back to Factory List</button>
         <FactoryForm
           title="Add New Factory"
-          onSave={() => setPage("factory-list")}
-          onCancel={() => setPage("factory-list")}
+          onSave={() => setPage("factory")}
+          onCancel={() => setPage("factory")}
         />
       </div>
     );

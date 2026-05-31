@@ -1,17 +1,23 @@
-// VehiclePerformanceDashboard.jsx
-// Mirrors the "Overall Performance Dashboard" screenshot using real fleet data.
-// API: GET /api/analytics/vehicle-dashboard?vehicleId=<id>&period=week|today|month|quarter
-
 import { useState, useEffect, useRef } from "react";
 import api from "../../../../services/API/Api/api"; // adjust path
 import {Divider} from "antd";
 import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale,
+  PointElement, LineElement,
+  Tooltip, Filler, Legend, ArcElement
+} from "chart.js";
+import { Line, Doughnut  } from "react-chartjs-2";
+import { useQuery } from "@tanstack/react-query";
 
-// ── period options ────────────────────────────────────────────────────────────
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Filler, Legend);
+
+
 const PERIODS = [
   { key: "today",   label: "Today" },
-  { key: "week",    label: "Week till date" },
-  { key: "month",   label: "Month till date" },
+  { key: "week",    label: "Week" },
+  { key: "month",   label: "Month" },
   { key: "quarter", label: "Quarter" },
 ];
 
@@ -92,12 +98,8 @@ function Donut({ segments, size = 120, stroke = 14, label, sublabel }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mini Area Sparkline (SVG)
-// ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// AreaSparkline — responsive, with factory-breakdown tooltip on hover
-// ─────────────────────────────────────────────────────────────────────────────
+
+
 function AreaSparkline({ data, height = 70, color = C.teal }) {
   const containerRef = useRef(null);
   const [width,   setWidth]   = useState(0);
@@ -486,7 +488,6 @@ function FactoryBarChart({ data, color }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
   const [mode, setMode] = useState("closed"); // "closed" | "cancelled"
-  console.log("VehicleUsageCard render", { vehicle, weeklyStats, vehicleUsage });
   const chartData  = mode === "closed"
     ? (vehicleUsage.factoryChart?.closed    ?? [])
     : mode === "active"
@@ -565,13 +566,6 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
     </Card>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WaitingAnalysisCard
-// Graph 1 — Operational Bottleneck (horizontal bar)
-// Graph 2 — Overall Congestion Gauge (donut)
-// Paste this component into VehiclePerformanceDashboard.jsx
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Zone colour map ───────────────────────────────────────────────────────────
 const ZONE_COLOR = {
@@ -715,117 +709,8 @@ function BottleneckBar({ label, pct, count, total, color, description }) {
   );
 }
 
-// ── Main card ─────────────────────────────────────────────────────────────────
-function WaitingAnalysisCard({ waitingAnalysis }) {
-  if (!waitingAnalysis) return null;
 
-  const { outsideWaiting, insideWaiting, congestion } = waitingAnalysis;
 
-  // Which stage is the bigger bottleneck?
-  const bottleneckStage = outsideWaiting.pct >= insideWaiting.pct
-    ? "Outside Gate"
-    : "Inside Plant";
-
-  return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
-      {/* ── Card header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <CardLabel>Waiting Analysis</CardLabel>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-            Vehicles stuck &gt; 4 hrs · Threshold: 4h
-          </div>
-        </div>
-        {/* bottleneck callout */}
-        <div style={{
-          background: "#fff7ed",
-          border: "1px solid #fed7aa",
-          borderRadius: 8,
-          padding: "5px 12px",
-          fontSize: 11,
-          fontWeight: 700,
-          color: "#c2410c",
-        }}>
-          ⚠ Bottleneck: {bottleneckStage}
-        </div>
-      </div>
-
-      {/* ── Two-column layout: bars left, gauge right ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 20,
-        alignItems: "start",
-      }}>
-
-        {/* Graph 1 — Bottleneck bars */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
-            letterSpacing: 0.5, marginBottom: 2 }}>
-            Graph 1 — Operational Bottleneck
-          </div>
-
-          <BottleneckBar
-            label={outsideWaiting.label}
-            description={outsideWaiting.description}
-            pct={outsideWaiting.pct}
-            count={outsideWaiting.count}
-            total={outsideWaiting.total}
-            color={C.teal}
-          />
-
-          <BottleneckBar
-            label={insideWaiting.label}
-            description={insideWaiting.description}
-            pct={insideWaiting.pct}
-            count={insideWaiting.count}
-            total={insideWaiting.total}
-            color={C.teal}
-          />
-
-          {/* formula note */}
-          <div style={{
-            background: "#f1f5f9",
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            padding: "8px 12px",
-            fontSize: 10,
-            color: C.muted,
-            lineHeight: 1.7,
-          }}>
-            <span style={{ fontWeight: 700, color: C.text }}>Outside % </span>
-            = waiting outside ÷ all arrived × 100
-            <br />
-            <span style={{ fontWeight: 700, color: C.text }}>Inside % </span>
-            = waiting inside ÷ all checked-in × 100
-          </div>
-        </div>
-
-        {/* Graph 2 — Congestion gauge */}
-        <div style={{ minWidth: 350 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
-            letterSpacing: 0.5, marginBottom: 10, textAlign: "center" }}>
-            Graph 2 — System Health
-          </div>
-          <CongestionGauge pct={congestion.pct} zone={congestion.zone} />
-          <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
-            {congestion.totalWaiting} waiting
-            <br />
-            of {congestion.totalActiveTrips} active trips
-          </div>
-        </div>
-
-      </div>
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DriverAnalyticsCard
-// Shows driver-wise: completed / cancelled / active trips + completion rate
-// Paste into VehiclePerformanceDashboard.jsx before the export default
-// ─────────────────────────────────────────────────────────────────────────────
 
 function DriverAnalyticsCard({ driverAnalytics }) {
   const [sortKey,  setSortKey]  = useState("completed"); // completed|cancelled|active|total
@@ -1167,95 +1052,364 @@ function VBarGroup({ bars }) {
 }
 
 
-function ParetoChart({ bars }) {
-  const sorted = [...bars].sort((a, b) => b.value - a.value);
-  const total = sorted.reduce((sum, b) => sum + b.value, 0);
+function TripExecutionDonut({ segments }) {
+  const data = {
+    labels: segments.map((s) => s.label),
+    datasets: [
+      {
+        data: segments.map((s) => s.value),
+        backgroundColor: segments.map((s) => s.color),
+        hoverBackgroundColor: segments.map((s) => s.colorLight),
+        borderColor: "#ffffff",
+        borderWidth: 3,
+        hoverOffset: 6,
+      },
+    ],
+  };
 
-  let cumulative = 0;
-  const data = sorted.map(b => {
-    cumulative += b.value;
-    return { ...b, cumPct: Math.round((cumulative / total) * 100) };
-  });
+  const options = {
+    cutout: "65%",
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "right",
+        labels: {
+          usePointStyle: true,
+          pointStyle: "rectRounded",
+          font: { size: 10, weight: "600" },
+          color: "#6b7280",
+          padding: 14,
+          generateLabels: (chart) =>
+            chart.data.labels.map((label, i) => ({
+              text: `${label}  ${chart.data.datasets[0].data[i]}%`,
+              fillStyle: chart.data.datasets[0].backgroundColor[i],
+              strokeStyle: "#fff",
+              lineWidth: 0,
+              hidden: false,
+              index: i,
+            })),
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => ` ${ctx.label}: ${ctx.parsed}%`,
+        },
+        backgroundColor: "#1f2937",
+        titleColor: "#f9fafb",
+        bodyColor: "#d1d5db",
+        padding: 10,
+        cornerRadius: 8,
+      },
+    },
+  };
 
-  const W = 260, H = 80;
-  const barCount = data.length;
-  const barW = (W / barCount) * 0.5;
-  const barGap = W / barCount;
-  const maxVal = Math.max(...data.map(d => d.value), 1);
+  // Center text plugin (inline, no registration needed as chartjs plugin)
+  const centerTextPlugin = {
+    id: "centerText",
+    afterDraw(chart) {
+      const { ctx, chartArea } = chart;
+      if (!chartArea) return;
+      const cx = (chartArea.left + chartArea.right) / 2;
+      const cy = (chartArea.top + chartArea.bottom) / 2;
 
-  const linePoints = data.map((d, i) => {
-    const x = i * barGap + barGap / 2;
-    const y = H - (d.cumPct / 100) * H;
-    return { x, y, cumPct: d.cumPct };
-  });
+      const active = chart.getActiveElements();
+      const hasHover = active.length > 0;
+      const idx = hasHover ? active[0].index : null;
+      const seg = hasHover ? segments[idx] : null;
 
-  const polyline = linePoints.map(p => `${p.x},${p.y}`).join(" ");
+      ctx.save();
+
+      // Big value
+      ctx.font = "800 18px DM Sans, sans-serif";
+      ctx.fillStyle = seg ? seg.color : "#111827";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        seg ? `${seg.value}%` : `${segments.reduce((a, s) => a + s.value, 0).toFixed(1)}%`,
+        cx,
+        cy - 8
+      );
+
+      // Sub label
+      ctx.font = "600 9px DM Sans, sans-serif";
+      ctx.fillStyle = "#9ca3af";
+      ctx.fillText(seg ? seg.label.split(" ").slice(-1)[0] : "Total", cx, cy + 10);
+
+      ctx.restore();
+    },
+  };
 
   return (
-    <div style={{ marginTop: 8 }}>
-      <svg viewBox={`0 0 ${W} ${H + 24}`} width="100%" style={{ overflow: "visible" }}>
-        <defs>
-          {data.map((d, i) => (
-            <linearGradient key={i} id={`bg-${i}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={d.color} stopOpacity="1" />
-              <stop offset="100%" stopColor={d.color} stopOpacity="0.6" />
-            </linearGradient>
-          ))}
-        </defs>
-
-        {/* Bars */}
-        {data.map((d, i) => {
-          const barH = (d.value / maxVal) * H;
-          const x = i * barGap + (barGap - barW) / 2;
-          return (
-            <g key={i}>
-              <rect
-                x={x} y={H - barH}
-                width={barW} height={barH}
-                fill={`url(#bg-${i})`}
-                rx={3}
-              />
-              {/* value label above bar */}
-              <text x={x + barW / 2} y={H - barH - 4}
-                textAnchor="middle" fontSize={9} fontWeight="700"
-                fill={d.color}>
-                {d.value}%
-              </text>
-              {/* x label below */}
-              <text x={i * barGap + barGap / 2} y={H + 14}
-                textAnchor="middle" fontSize={9} fill={C.muted}>
-                {d.label}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Cumulative line */}
-        <polyline
-          points={polyline}
-          fill="none"
-          stroke="#6366f1"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Dots + labels on line */}
-        {linePoints.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={3} fill="#6366f1" />
-            <text x={p.x} y={p.y - 6}
-              textAnchor="middle" fontSize={8}
-              fill="#6366f1" fontWeight="700">
-              {p.cumPct}%
-            </text>
-          </g>
-        ))}
-      </svg>
+    <div style={{ position: "relative", height: 160, width: "100%" }}>
+      <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
     </div>
   );
 }
 
+
+
+// ── Main card ─────────────────────────────────────────────────────────────────
+function WaitingAnalysisCard({ waitingAnalysis }) {
+  if (!waitingAnalysis) return null;
+
+  const { outsideWaiting, insideWaiting, congestion } = waitingAnalysis;
+
+  // Which stage is the bigger bottleneck?
+  const bottleneckStage = outsideWaiting.pct >= insideWaiting.pct
+    ? "Outside Gate"
+    : "Inside Plant";
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* ── Card header ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <CardLabel>Waiting Analysis</CardLabel>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+            Vehicles stuck &gt; 4 hrs · Threshold: 4h
+          </div>
+        </div>
+        {/* bottleneck callout */}
+        <div style={{
+          background: "#fff7ed",
+          border: "1px solid #fed7aa",
+          borderRadius: 8,
+          padding: "5px 12px",
+          fontSize: 11,
+          fontWeight: 700,
+          color: "#c2410c",
+        }}>
+          ⚠ Bottleneck: {bottleneckStage}
+        </div>
+      </div>
+
+      {/* ── Two-column layout: bars left, gauge right ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 20,
+        alignItems: "start",
+      }}>
+
+        {/* Graph 1 — Bottleneck bars */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
+            letterSpacing: 0.5, marginBottom: 2 }}>
+            Graph 1 — Operational Bottleneck
+          </div>
+
+          <BottleneckBar
+            label={outsideWaiting.label}
+            description={outsideWaiting.description}
+            pct={outsideWaiting.pct}
+            count={outsideWaiting.count}
+            total={outsideWaiting.total}
+            color={C.teal}
+          />
+
+          <BottleneckBar
+            label={insideWaiting.label}
+            description={insideWaiting.description}
+            pct={insideWaiting.pct}
+            count={insideWaiting.count}
+            total={insideWaiting.total}
+            color={C.teal}
+          />
+
+          {/* formula note */}
+          <div style={{
+            background: "#f1f5f9",
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            padding: "8px 12px",
+            fontSize: 10,
+            color: C.muted,
+            lineHeight: 1.7,
+          }}>
+            <span style={{ fontWeight: 700, color: C.text }}>Outside % </span>
+            = waiting outside ÷ all arrived × 100
+            <br />
+            <span style={{ fontWeight: 700, color: C.text }}>Inside % </span>
+            = waiting inside ÷ all checked-in × 100
+          </div>
+        </div>
+
+        {/* Graph 2 — Congestion gauge */}
+        <div style={{ minWidth: 220 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
+            letterSpacing: 0.5, marginBottom: 10, textAlign: "center" }}>
+            Graph 2 — System Health
+          </div>
+          <CongestionGauge pct={congestion.pct} zone={congestion.zone} />
+          <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+            {congestion.totalWaiting} waiting
+            <br />
+            of {congestion.totalActiveTrips} active trips
+          </div>
+        </div>
+
+      </div>
+    </Card>
+  );
+}
+
+function TripTypeDonut({ title, p2p, customerOrExternal, colorP2P = "#3b82f6", colorOther = "#f59e0b" }) {
+  const total = p2p.count + customerOrExternal.count;
+  const p2pPct   = total ? +((p2p.count / total) * 100).toFixed(1) : 0;
+  const otherPct = total ? +((customerOrExternal.count / total) * 100).toFixed(1) : 0;
+
+  const data = {
+    datasets: [{
+      data: [p2pPct, otherPct],
+      backgroundColor: [colorP2P, colorOther],
+      hoverBackgroundColor: [colorP2P + "cc", colorOther + "cc"],
+      borderColor: "#ffffff",
+      borderWidth: 3,
+      hoverOffset: 6,
+    }],
+  };
+
+  const options = {
+    cutout: "70%",
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { animateRotate: true, duration: 900 },
+  };
+
+  const centerTextPlugin = {
+    id: `centerText-${title}`,
+    afterDraw(chart) {
+      const { ctx, chartArea } = chart;
+      if (!chartArea) return;
+      const cx = (chartArea.left + chartArea.right) / 2;
+      const cy = (chartArea.top  + chartArea.bottom) / 2;
+      ctx.save();
+      ctx.font = "800 16px DM Sans, sans-serif";
+      ctx.fillStyle = "#111827";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(total.toLocaleString(), cx, cy - 8);
+      ctx.font = "600 8px DM Sans, sans-serif";
+      ctx.fillStyle = "#9ca3af";
+      ctx.fillText("Total", cx, cy + 8);
+      ctx.restore();
+    },
+  };
+
+  return (
+    <div style={{
+      background: "#fff",
+      border: "1px solid #e5e7eb",
+      borderRadius: 14,
+      padding: "14px 16px 12px",
+      flex: 1,
+      boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
+      {/* Title */}
+      <div style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: "0.07em",
+        textTransform: "uppercase", color: "#9ca3af", marginBottom: 10,
+      }}>
+        {title}
+      </div>
+
+      {/* Donut */}
+      <div style={{ height: 140, width: "100%", position: "relative" }}>
+        <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        marginTop: 12,
+        paddingTop: 10,
+        borderTop: "1px solid #f3f4f6",
+        gap: 8,
+      }}>
+        {/* P2P — count first, pct in bracket */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: 2,
+            background: colorP2P, flexShrink: 0, marginTop: 3,
+          }} />
+          <div>
+            <div style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>P2P</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: colorP2P, lineHeight: 1.2 }}>
+              {p2p.count.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 600 }}>({p2pPct}%)</div>
+          </div>
+        </div>
+
+        {/* Other — pct first, count below */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: 2,
+            background: colorOther, flexShrink: 0, marginTop: 3,
+          }} />
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>
+              {customerOrExternal.label ?? "Cust. Delivery"}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: colorOther, lineHeight: 1.2 }}>
+              ({otherPct}%)
+            </div>
+            <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 600 }}>
+              {customerOrExternal.count.toLocaleString()} trips
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Parent card holding both donuts side by side ──────────────────────────────
+function PGBreakdownCard({ delivery, pickup }) {
+  return (
+    <div style={{
+      background: "#fff",
+      border: "1px solid #e5e7eb",
+      borderRadius: 16,
+      padding: "16px 18px",
+      boxShadow: "0 1px 8px rgba(0,0,0,0.06)",
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: "0.07em",
+        textTransform: "uppercase", color: "#9ca3af", marginBottom: 14,
+      }}>
+        PG to PG vs Customer (Delivery vs Pickup)
+      </div>
+
+      <div style={{ display: "flex", marginTop: 40, alignItems: "center", gap: 5 }}>
+        {/* Delivery donut — blue / amber */}
+        <TripTypeDonut
+          title="Delivery"
+          p2p={delivery.p2p}
+          customerOrExternal={{ ...delivery.customerDelivery, label: "Customer Delivery" }}
+          colorP2P="#3b82f6"
+          colorOther="#f59e0b"
+        />
+
+        {/* Pickup donut — violet / emerald */}
+        <TripTypeDonut
+          title="Pickup"
+          p2p={pickup.p2p}
+          customerOrExternal={{ ...pickup.external, label: "External" }}
+          colorP2P="#8b5cf6"
+          colorOther="#10b981"
+        />
+      </div>
+    </div>
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Stat mini-cell (used in left panel grid)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1347,30 +1501,36 @@ function BigNumber({ children, style = {} }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }) {
   const [period,    setPeriod]    = useState("week");
-  const [vehicleId, setVehicleId] = useState(propVehicleId ?? null);
-  const [data,      setData]      = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState("");
-
-  // Auto-resolve top vehicle if no vehicleId prop provided
-  useEffect(() => {
-    if (propVehicleId) { setVehicleId(propVehicleId); return; }
-    api.get("/analytics/vehicle-dashboard/top")
-      .then(r => setVehicleId(r.data.vehicleId))
-      .catch(() => setError("Could not resolve top vehicle."));
-  }, [propVehicleId]);
+  const [vehicleType, setVehicleType] = useState("all"); // "all" | "internal" | "external"
 
 
-  useEffect(() => {
-    if (!vehicleId) return;
-    setLoading(true); setError("");
-    api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period } })
-      .then(r => { setData(r.data); setLoading(false); })
-      .catch(() => { setError("Failed to load dashboard data."); setLoading(false); });
-  }, [vehicleId, period]);
+
+  const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
+  const fetchDashboard = ({ vehicleId, period }) => api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period } }).then(r => r.data);
 
 
-  // ── loading skeleton ────────────────────────────────────────────────────
+  const { data: resolvedVehicleId, isError: isTopError } = useQuery({
+    queryKey: ["topVehicle"],
+    queryFn: fetchTopVehicle,
+    enabled: !propVehicleId,           
+    staleTime: 5 * 60 * 1000,       
+  });
+
+  const vehicleId = propVehicleId ?? resolvedVehicleId;
+
+  const { data, isLoading: loading, isError: isDashError } = useQuery({
+    queryKey: ["vehicleDashboard", vehicleId, period],
+    queryFn: () => fetchDashboard({ vehicleId, period,}),
+    enabled: !!vehicleId,       
+    staleTime: 2 * 60 * 1000,
+  });
+
+    const visibleVehicles = data?.topVehicles?.[vehicleType] ?? { vehicles: [], maxTrips: 1 };
+
+
+  const error = isTopError ? "Could not resolve top vehicle." : isDashError ? "Failed to load dashboard data.": null;
+
+
   if (loading) return (
     <div style={s.page}>
       <style>{keyframes}</style>
@@ -1398,7 +1558,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
   if (!data) return null;
 
-  const { vehicle, weeklyStats, stateOfHealth, driverBehavior, vehicleUsage, idleAnalysis, tripTypeSplit, availability } = data;
+  const { vehicle, weeklyStats, stateOfHealth, driverBehavior, vehicleUsage, idleAnalysis, tripTypeSplit, topVehicles, availability } = data;
 
   // ── derive a fake-previous-period delta (±) for display ──────────────────
   // Since we don't have historical comparison, we show absolute metrics.
@@ -1416,9 +1576,10 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           <span style={{ color: C.slate }}>»</span>
           <span style={{ fontWeight: 700, color: C.text }}>{vehicle.vehicleNumber}</span>
         </div>
+
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Period</span>
-          <div style={{ display: "flex", gap: 2, background: "#f1f5f9", borderRadius: 8, padding: 3 }}>
+          <div style={{ display: "flex", gap: 2, background: "#DFF1F1", borderRadius: 8, padding: 3 }}>
             {PERIODS.map(p => (
               <button key={p.key}
                 style={{ ...s.periodBtn, ...(period === p.key ? s.periodBtnActive : {}) }}
@@ -1427,9 +1588,10 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
               </button>
             ))}
           </div>
-          <button style={s.shareBtn}>↑ Share</button>
+          <button style={{...s.shareBtn, color: "#093C5D"}}>↑ Share</button>
           <button style={s.downloadBtn}>⬇ Download</button>
         </div>
+
       </div>
 
       {/* ── page title ── */}
@@ -1510,7 +1672,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
         <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
           <Card>
-            <CardLabel>State Of Health (Internal & External)</CardLabel>
+            <CardLabel>State Of Health</CardLabel>
             <BigNumber style={{ color: stateOfHealth.totalIssues > 0 ? C.redDark : C.teal }}>
               {stateOfHealth.totalIssues > 0
                 ? `${stateOfHealth.totalIssues} Trip${stateOfHealth.totalIssues !== 1 ? "s" : ""} cancelled`
@@ -1541,15 +1703,12 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
             </div>
           </Card>
 
-          {/* ── Row 1, Col 2: Driver Behavior (vertical bars) ── */}
           <Card  >
-            <CardLabel>Trip Execution</CardLabel>
-            <div style={{ display: "flex", height: 190, border: `1px solid ${C.border}`, justifyContent: "center", alignItems: "center", }}>
-
-              <ParetoChart bars={driverBehavior.bars} />
+            <CardLabel>Trip Execution (P2P vs Non-PG) </CardLabel>
+            <div style={{ display: "flex", height: 190, justifyContent: "center", alignItems: "center", }}>
+              <TripExecutionDonut segments={driverBehavior.bars} />
             </div>
           </Card>
-
 
           <Card>
             <CardLabel>Trip Type Split</CardLabel>
@@ -1573,66 +1732,217 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
         </div>
 
-        <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr ", gap: 14 }}>
-          <WaitingAnalysisCard waitingAnalysis={data.waitingAnalysis} />
-        </div>
-
           {/* ════ RIGHT 3-col grid ════ */}
-          <div style={{ gridColumn:  "span 3", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
+        <div style={{ gridColumn:  "span 2", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
-            <Card>
-              <CardLabel>Vehicle Availability</CardLabel>
-              <BigNumber style={{ color: C.teal }}>{availability.overallPct}%</BigNumber>
-              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
-                High-utilisation days
-                <Delta val={+(availability.overallPct - 60).toFixed(0)} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                {availability.tiers.map(tier => (
-                  <div key={tier.label} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    background: "#f8fafc", borderRadius: 8, padding: "7px 10px",
-                    border: `1px solid ${C.border}`,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: tier.color }} />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.label}</span>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{tier.pct}%</div>
-                      <div style={{ fontSize: 10, color: C.muted }}>{tier.range}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card>
-              <CardLabel>Idle Analysis</CardLabel>
-              <BigNumber style={{ color: idleAnalysis.idleDayPct > 40 ? C.redDark : C.teal }}>
-                {idleAnalysis.idleDayPct}%
-              </BigNumber>
-              <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
-                Days with zero trips
-                <Delta val={+(30 - idleAnalysis.idleDayPct).toFixed(0)} />
-              </div>
-              {idleAnalysis.bars.map(b => (
-                <HBar key={b.label} label={b.label} value={b.value} max={b.max} color={b.color} suffix=" days" />
-              ))}
-            </Card>
-
+          <Card>
+           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+            <CardLabel>Top 10 Vehicles by Trips</CardLabel>
+            <select
+              value={vehicleType}
+              onChange={e => setVehicleType(e.target.value)}
+              style={{
+                fontSize: 11, fontWeight: 600, color: C.text,
+                background: C.bg, border: `1px solid ${C.border}`,
+                borderRadius: 6, padding: "3px 8px",
+                cursor: "pointer", outline: "none",
+              }}
+            >
+              <option value="all">All</option>
+              <option value="internal">Internal</option>
+              <option value="external">External</option>
+            </select>
           </div>
+
+          <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 16px" }}>
+            Ranked by completed segments · {period}
+          </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {visibleVehicles.vehicles.map((v, i) => (
+                <div key={v.vehicleId} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+
+                  {/* Rank */}
+                  <span style={{
+                    width: 18, fontSize: 10, fontWeight: 700,
+                    color: i < 3 ? C.teal : C.muted, textAlign: "right", flexShrink: 0,
+                  }}>
+                    #{i + 1}
+                  </span>
+
+                  {/* Label */}
+                  <span style={{
+                    width: 80, fontSize: 12, fontWeight: 600,
+                    color: C.text, flexShrink: 0,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {v.vehicleNumber}
+                  </span>
+
+                  {/* Bar track */}
+                  <div style={{
+                    flex: 1, height: 8, background: C.border,
+                    borderRadius: 99, overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${v.pct}%`,
+                      background: i === 0
+                        ? C.teal
+                        : i < 3
+                        ? `${C.teal}99`
+                        : "#94a3b8",
+                      borderRadius: 99,
+                      transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)",
+                    }} />
+                  </div>
+
+                  {/* Count */}
+                  <span style={{
+                    width: 32, fontSize: 12, fontWeight: 700,
+                    color: C.text, textAlign: "right", flexShrink: 0,
+                  }}>
+                    {v.tripCount}
+                  </span>
+
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <CardLabel>Daily Trip Completions</CardLabel>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 16, margin: "4px 0 16px" }}>
+              <BigNumber style={{ color: C.teal }}>
+                {idleAnalysis.dailyTrend.reduce((s, d) => s + d.count, 0)}
+              </BigNumber>
+              <span style={{ fontSize: 11, color: C.muted }}>
+                total trips · {idleAnalysis.activeDays} active days · {idleAnalysis.idleDays} idle
+              </span>
+            </div>
+
+            {/* ✅ Fixed height div wraps ONLY the Line, as its direct parent */}
+            <div style={{ height: 160, position: "relative", width: "100%" }}>
+              <Line
+                key={period}
+                data={{
+                  labels: idleAnalysis.dailyTrend.map(d => {
+                    const dt = new Date(d.date);
+                    return `${dt.getDate()}/${dt.getMonth() + 1}`;
+                  }),
+                  datasets: [
+                    {
+                      label: "Trips",
+                      data: idleAnalysis.dailyTrend.map(d => d.count),
+                      borderColor: "#0d9488",
+                      borderWidth: 2,
+                      backgroundColor: (ctx) => {
+                        const chart = ctx.chart;
+                        const { ctx: canvas, chartArea } = chart;
+                        if (!chartArea) return "transparent";
+                        const grad = canvas.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                        grad.addColorStop(0, "rgba(13,148,136,0.18)");
+                        grad.addColorStop(1, "rgba(13,148,136,0)");
+                        return grad;
+                      },
+                      fill: true,
+                      tension: 0.4,
+                      pointBackgroundColor: idleAnalysis.dailyTrend.map(d =>
+                        d.count === 0 ? "#ef4444" : "#0d9488"
+                      ),
+                      pointBorderColor: idleAnalysis.dailyTrend.map(d =>
+                        d.count === 0 ? "#fca5a5" : "#fff"
+                      ),
+                      pointRadius: idleAnalysis.dailyTrend.map(d => d.count === 0 ? 4 : 3),
+                      pointHoverRadius: 6,
+                      pointBorderWidth: 1.5,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false, // ✅ false so it respects parent height
+                  animation: false,           // ✅ prevents resize flicker on re-render
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      backgroundColor: "#1e293b",
+                      titleColor: "#94a3b8",
+                      bodyColor: "#f1f5f9",
+                      borderColor: "#334155",
+                      borderWidth: 1,
+                      padding: 10,
+                      cornerRadius: 8,
+                      callbacks: {
+                        title: (items) => {
+                          const idx = items[0].dataIndex;
+                          const dt = new Date(idleAnalysis.dailyTrend[idx].date);
+                          return dt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                        },
+                        label: (item) => `  ${item.raw} trip${item.raw !== 1 ? "s" : ""}`,
+                      },
+                    },
+                  },
+                  scales: {
+                    x: {
+                      grid: { display: false },
+                      border: { display: false },
+                      ticks: { color: "#94a3b8", font: { size: 10 } },
+                    },
+                    y: {
+                      beginAtZero: true,
+                      grid: { color: "#f1f5f9", lineWidth: 1 },
+                      border: { display: false, dash: [3, 3] },
+                      ticks: {
+                        color: "#94a3b8",
+                        font: { size: 10 },
+                        stepSize: 1,
+                        precision: 0,
+                      },
+                    },
+                  },
+                }}
+              />
+            </div>
+            {/*  No style={{ height }} on the Line itself — parent div controls it */}
+
+            <div style={{ display: "flex", gap: 16, marginTop: 10, justifyContent: "flex-end" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: C.muted }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#0d9488", display: "inline-block" }} />
+                Trips completed
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: C.muted }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block" }} />
+                Idle day
+              </span>
+            </div>
+          </Card>
+
+         <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr ", gridTemplateRows: "auto", gap: 14 }}>
+          <WaitingAnalysisCard waitingAnalysis={data.waitingAnalysis} />
+          <PGBreakdownCard
+            delivery={{
+              p2p:              { count: 20  }, 
+              customerDelivery: { count: 94  }, 
+            }}
+            pickup={{
+              p2p:      { count: 55 }, 
+              external: { count: 30 }, 
+            }}
+          />
+        </div>
+      </div>
+
+
 
 
       </div>
 
       <Card 
-      title="Driver Analytics ----" 
       style={{ marginTop: 14 }}
       >
         <div style={{ gridColumn: "span 1", display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
             <DriverAnalyticsCard driverAnalytics={data.driverAnalytics} />
-            <DriverSearchPage/>
         </div>
       </Card>
 
@@ -1643,6 +1953,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 // ── Styles ─────────────────────────────────────────────────────────────────
 const s = {
   page: {
+    position: "relative",
     fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
     background: C.bg,
     minHeight: "100vh",
@@ -1657,7 +1968,9 @@ const s = {
     justifyContent: "space-between",
     alignItems: "center",
     flexWrap: "wrap",
+    width: "100%",
     gap: 10,
+   
   },
   backBtn: {
     background: "#f1f5f9",

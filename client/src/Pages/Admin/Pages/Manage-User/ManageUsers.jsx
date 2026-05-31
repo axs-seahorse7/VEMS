@@ -556,8 +556,8 @@ function UsersList() {
 }
 
 // ── Exported router ───────────────────────────────────────────────────────────
-export default function ManageUsers({ activePage = "users-list" }) {
+export default function ManageUsers({ activePage = "users" }) {
   const [page, setPage] = useState(activePage);
-  if (page === "users-roles") return <RolesPage />;
+  // if (page === "users-roles") return <RolesPage />;
   return <UsersList onCreateClick={() => setPage("users-create")} />;
 }
