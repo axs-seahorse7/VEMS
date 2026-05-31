@@ -495,7 +495,7 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
     : (vehicleUsage.factoryChart?.cancelled ?? []);
 
   const chartColor = mode === "closed" ? C.teal : mode === "active" ? C.blue : "#EA5252";
-  const totalShown = chartData.reduce((s, d) => s + d.count, 0);
+  const totalShown = chartData?.reduce((s, d) => s + d.count, 0);
 
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 10,}}>
@@ -1126,7 +1126,7 @@ function TripExecutionDonut({ segments }) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
-        seg ? `${seg.value}%` : `${segments.reduce((a, s) => a + s.value, 0).toFixed(1)}%`,
+        seg ? `${seg.value}%` : `${segments?.reduce((a, s) => a + s.value, 0).toFixed(1)}%`,
         cx,
         cy - 8
       );
@@ -1814,10 +1814,10 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
             <CardLabel>Daily Trip Completions</CardLabel>
             <div style={{ display: "flex", alignItems: "baseline", gap: 16, margin: "4px 0 16px" }}>
               <BigNumber style={{ color: C.teal }}>
-                {idleAnalysis.dailyTrend.reduce((s, d) => s + d.count, 0)}
+                {idleAnalysis?.dailyTrend?.reduce((s, d) => s + d.count, 0)}
               </BigNumber>
               <span style={{ fontSize: 11, color: C.muted }}>
-                total trips · {idleAnalysis.activeDays} active days · {idleAnalysis.idleDays} idle
+                total trips · {idleAnalysis?.activeDays} active days · {idleAnalysis?.idleDays} idle
               </span>
             </div>
 
