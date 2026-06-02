@@ -202,7 +202,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
       }
 
       // ========================
-      // 1. USER
+      //  USER
       // ========================
       const user = await User.findById(req.userId)
         .populate("factory")
@@ -213,12 +213,10 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
       }
 
       // ========================
-      // 2. VEHICLE (GET OR CREATE)
+      //  VEHICLE (GET OR CREATE)
       // ========================
       const vehicle = await Vehicle.findOneAndUpdate(
-        {
-          vehicleNumber
-        },
+        { vehicleNumber },
         {
           $setOnInsert: {
             vehicleNumber,
@@ -234,7 +232,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
       );
 
       // ========================
-      // 3. DRIVER (GET OR CREATE)
+      //  DRIVER (GET OR CREATE)
       // ========================
       const driver = await Driver.findOneAndUpdate(
         {
@@ -262,7 +260,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
 
       
       // ========================
-      // 4. VEHICLE CHECK
+      //  VEHICLE CHECK
       // ========================
       const existingTrip = await Trip.findOne({
         vehicleId: vehicle._id,
@@ -282,7 +280,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
       }
 
       // ========================
-      // 5. CREATE TRIP
+      //  CREATE TRIP
       // ========================
       const tripPayload = {
         vehicleId: vehicle._id,
@@ -299,19 +297,17 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         status: isInternalShifting? "ORIGIN" : "ARRIVED",
         loadStatus: "pending",
         startedAt: new Date(),
-        materials: [
-          {
-            name: req.body.materialType?? "",
-            material: req.body.material?? "",
-            quantity: req.body.quantity,
-            invoiceNo: req.body.invoiceNo,
-            invoiceAmount: req.body.invoiceAmount,
-            unit: req.body.unit,
-            seal: req.body.seal || "sealed",
-            customer: req.body.customer || null,
-            supplier: req.body.supplier || null
-          }
-        ],
+        materials: [{
+          name: req.body.materialType?? "",
+          material: req.body.material?? "",
+          quantity: req.body.quantity,
+          invoiceNo: req.body.invoiceNo,
+          invoiceAmount: req.body.invoiceAmount,
+          unit: req.body.unit,
+          seal: req.body.seal || "sealed",
+          customer: req.body.customer || null,
+          supplier: req.body.supplier || null
+        }],
 
         tripHistory: [
           {
@@ -344,24 +340,29 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
 
       newTrip = newTrip[0];
 
-      await tripSegment.create([{
+      const newSegment = await tripSegment.create([{
         tripId: newTrip._id,
         triptype: "EXTERNAL",
+        purpose: newTrip.purpose,
         segmentNumber: 1,
+        materials: newTrip.materials[0],
         externalSource: newTrip.externalSource?? null,
         externalDestination: newTrip.externalDestination?? null,
         sourceFactoryId: newTrip.sourceFactoryId?? null,
         destinationFactoryId: newTrip.destinationFactoryId?? null,
         vehicleId: newTrip.vehicleId,
         driverId: newTrip.driverId,
-
         startedAt: newTrip.startedAt,
         completedAt: null,
       }], { session });
 
       // ========================
-      // 6. ASSIGN RELATIONS
+      // ASSIGN RELATIONS
       // ========================
+
+      newTrip.currentSegment = newSegment[0]._id;
+      await newTrip.save({ session });
+
       await assignDriverToTrip({
         driverId: driver._id,
         tripId: newTrip._id,
@@ -403,7 +404,6 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         purpose
       } = req.body;
 
-      console.log("Internal Vehicle Register Payload:", req.body);
       
       if (!vehicleNumber || !driverIdNumber) {
         throw new AppError(" vehicleNumber and driverIdNumber are required", 400);
@@ -530,20 +530,24 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
 
       newTrip = newTrip[0];
 
-      await tripSegment.create([{
+    const newSegment =  await tripSegment.create([{
         tripId: newTrip._id,
         triptype:"INTERNAL",
+        purpose: newTrip.purpose,
         segmentNumber: 1,
+        materials: newTrip.materials[0],
         externalSource: newTrip.externalSource?? null,
         externalDestination: newTrip.externalDestination?? null,
         sourceFactoryId: newTrip.sourceFactoryId?? null,
         destinationFactoryId: newTrip.destinationFactoryId?? null,
         vehicleId: newTrip.vehicleId,
         driverId: newTrip.driverId,
-
         startedAt: newTrip.startedAt,
         completedAt: null,
       }], { session });
+
+    newTrip.currentSegment = newSegment[0]._id
+    await newTrip.save({session})
 
       await assignDriverToTrip({
         driverId: driver._id,
@@ -582,7 +586,7 @@ export const updateVehicleTrip = asyncHandler(async (req, res) => {
       const { tripId } = req.params;
 
       // ========================
-      // 1. FIND TRIP
+      //  FIND TRIP
       // ========================
       const trip = await Trip.findById(tripId)
         .populate("vehicleId")
@@ -594,14 +598,14 @@ export const updateVehicleTrip = asyncHandler(async (req, res) => {
       }
 
       // ========================
-      // 2. PHASE CHECK — only ORIGIN
+      //  PHASE CHECK — only ORIGIN
       // ========================
       if (( trip.type === "internal_transfer" && trip.phase !== "ORIGIN") || (trip.type === "external_delivery" && trip.phase !== "DESTINATION")) {
         throw new AppError("Trip can only be updated at the appropriate phase", 400);
       }
 
       // ========================
-      // 3. 15 MIN WINDOW CHECK
+      //  15 MIN WINDOW CHECK
       // ========================
       const now = new Date();
       const startedAt = new Date(trip.startedAt);
@@ -635,7 +639,7 @@ export const updateVehicleTrip = asyncHandler(async (req, res) => {
       }
 
       // ========================
-      // 5. BUILD UPDATE PAYLOAD
+      //  BUILD UPDATE PAYLOAD
       // ========================
       const {
         driverName,
@@ -660,7 +664,7 @@ export const updateVehicleTrip = asyncHandler(async (req, res) => {
 
       // Update driver if driver fields provided
       // ========================
-      // 5. HANDLE DRIVER UPDATE
+      //  HANDLE DRIVER UPDATE
       // ========================
       if (driverName || driverContact || driverIdNumber || licenseNumber) {
 
@@ -970,8 +974,8 @@ export const unloadTrip = async (req, res) => {
 
 export const completeTrip = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
+  let updatedTrip = null;
   try {
-    let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
 
@@ -1054,11 +1058,7 @@ export const completeTrip = asyncHandler( async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error in completeTrip:", err);
-    return res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    throw new AppError(err.message || "Failed to complete trip", 500);
 
   } finally {
 
@@ -1136,25 +1136,16 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
 
   } catch (err) {
 
-    console.error(
-      "Error in checkoutVehicle:",
-      err
-    );
-
-    return res.status(400).json({
-      success: false,
-      message: err.message
-    });
+    throw new AppError(err.message || "Failed to checkout vehicle", 500);
 
   }
 });
 
 export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
+  let updatedTrip = null;
   try {
-    let updatedTrip = null;
     await session.withTransaction(async () => {
-
       const { tripId } = req.params;
 
       const user = await User.findById(req.userId).populate("factory").session(session);
@@ -1162,9 +1153,8 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
         throw new AppError("Please login to continue", 400);
       }
 
-
       const trip = await Trip.findById(tripId)
-        .session(session);
+      .session(session);
 
       if (!trip) {
         throw new AppError("Trip not found", 404);
@@ -1186,8 +1176,7 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
       // ========================
       // CLOSE TRIP
       // ========================
-      updatedTrip =
-        await Trip.findByIdAndUpdate(
+      updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
           {
             location: "outside_factory",
@@ -1222,30 +1211,36 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
           }
         );
 
+      const segmentId = updatedTrip.currentSegment
+  
+      if (segmentId) {
+        await tripSegment.findByIdAndUpdate(
+          segmentId,
+          {
+            status: updatedTrip.tripState,
+            completedAt: new Date()
+          },
+          {
+            new: true,
+            session
+          }
+        );
+      }
+
         
 
       // ========================
       // RELEASE DRIVER
       // ========================
       if (trip.driverId) {
-
-        const duration =
-          updatedTrip.completedAt &&
-          updatedTrip.startedAt
-            ? Math.floor(
-                (
-                  updatedTrip.completedAt -
-                  updatedTrip.startedAt
-                ) / 1000
-              )
-            : 0;
+        const duration = updatedTrip.completedAt && updatedTrip.startedAt
+          ? Math.floor(( updatedTrip.completedAt - updatedTrip.startedAt ) / 1000 ): 0;
 
         await Driver.findByIdAndUpdate(
           trip.driverId,
           {
             $inc: {
-              "stats.totalTime":
-                duration
+              "stats.totalTime": duration
             },
 
             $set: {
@@ -1283,12 +1278,9 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
     // RESPONSE
     // ========================
     return res.status(200).json({
-      success: true,
-
-      trip: updatedTrip,
-
-      message:
-        "Vehicle checked out and trip closed successfully"
+      success:  true,
+      trip:     updatedTrip,
+      message:  "Vehicle checked out and trip closed successfully"
     });
 
   } catch (err) {
@@ -1298,10 +1290,7 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
       err
     );
 
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
+    throw new AppError(err.message || "Failed to checkout and exit vehicle", 500);
 
   } finally {
 
@@ -1477,25 +1466,31 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
       // ========================
       // RELEASE DRIVER
       // ========================
-      if (trip.driverId) {
+      const segmentId = updatedTrip.currentSegment
+      if (segmentId) {
+        const tripSegment = await TripSegment.findByIdAndUpdate(
+          segmentId,
+          {
+            status: updatedTrip.tripState,
+            completedAt: new Date()
+          },
+          {
+            new: true,
+            session
+          }
+        );
+      }
 
-        const duration =
-          updatedTrip.completedAt &&
-          updatedTrip.startedAt
-            ? Math.floor(
-                (
-                  updatedTrip.completedAt -
-                  updatedTrip.startedAt
-                ) / 1000
-              )
-            : 0;
+
+      if (trip.driverId) {
+        const duration = updatedTrip.completedAt && updatedTrip.startedAt
+          ? Math.floor((updatedTrip.completedAt - updatedTrip.startedAt ) / 1000 ) : 0;
 
         await Driver.findByIdAndUpdate(
           trip.driverId,
           {
             $inc: {
-              "stats.totalTime":
-                duration
+              "stats.totalTime": duration
             },
 
             $set: {
@@ -1513,12 +1508,10 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
       // RELEASE VEHICLE
       // ========================
       if (trip.vehicleId) {
-
         await Vehicle.findByIdAndUpdate(
           trip.vehicleId,
           {
             driverId: null,
-
             currentTrip: null
           },
           {
@@ -1577,9 +1570,7 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
         throw new AppError("Trip not found", 404);
       }
 
-      if (
-        existingTrip.location !== "inside_factory"
-      ) {
+      if (existingTrip.location !== "inside_factory") {
         throw new AppError("Vehicle must be inside factory to mark load complete", 400);
       }
 
@@ -1669,8 +1660,7 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error in markLoadCompleteAtDestination:", err);
-    throw new AppError(err.message, 400);
+    throw new AppError(err.message, 500);
   } finally {
     session.endSession();
   }
@@ -1707,17 +1697,14 @@ export const cancelTrip = asyncHandler( async (req, res) => {
         throw new AppError("Trip not found", 400);
       }
 
-      if (
-        ["COMPLETED", "CLOSED", "CANCELLED"]
-          .includes(trip.tripState)
-      ) {
+      if (["COMPLETED", "CLOSED", "CANCELLED"].includes(trip.tripState)) {
         throw new AppError(`Cannot cancel trip with state "${trip.tripState}"`);
       }
 
       const now = new Date();
 
       
-      updatedTrip =await Trip.findByIdAndUpdate(
+      updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
           {
             tripState: "CANCELLED",
@@ -1754,21 +1741,18 @@ export const cancelTrip = asyncHandler( async (req, res) => {
       // ========================
       // RELEASE DRIVER
       // ========================
-      if (trip.driverId) {
+       const segmentId = updatedTrip.currentSegment
 
-        await Driver.findByIdAndUpdate(
-          trip.driverId,
-          {
-            $set: {
-              activeTripId: null,
-              assignedVehicle: null
-            }
-          },
-          {
-            session
-          }
-        );
-      }
+       if(segmentId) {
+        await tripSegment.findByIdAndUpdate(segmentId, {
+          status: updatedTrip.tripState,
+          completedAt: new Date()
+        },{
+
+          session
+        })
+       }
+
 
       // ========================
       // RELEASE VEHICLE
@@ -1856,7 +1840,6 @@ export const cancelTrip = asyncHandler( async (req, res) => {
  return res.status(201).json(responseData)
 });
 
-
 export const changeRoute = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let tripDetails = null;
@@ -1864,10 +1847,8 @@ export const changeRoute = asyncHandler( async (req, res) => {
     let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
-
       const {newDestinationFactoryId, customer, type } = req.body;
 
-      
       const user = await User.findById(req.userId)
         .populate("factory")
         .session(session);
@@ -1880,35 +1861,26 @@ export const changeRoute = asyncHandler( async (req, res) => {
 
   
       const trip = await Trip.findById(tripId)
-        .session(session);
+      .session(session);
 
       if (!trip) {
         throw new AppError("Trip not found.");
       }
 
      
-      if (
-        ["CLOSED", "CANCELLED"]
-          .includes(trip.tripState)
-      ) {
+      if (["CLOSED", "CANCELLED"].includes(trip.tripState)) {
         throw new AppError(
           "Cannot change route of a closed or cancelled trip", 400
         );
       }
 
-      if (
-        type === "internal" &&
-        !newDestinationFactoryId
-      ) {
+      if (type === "internal" && !newDestinationFactoryId) {
         throw new AppError(
           "New destination factory is required for internal transfer", 400
         );
       }
 
-      if (
-        type === "external" &&
-        !customer
-      ) {
+      if (type === "external" && !customer) {
         throw new AppError(
           "Customer is required for external movement", 400
         );
@@ -1917,11 +1889,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
       // ========================
       // SAME DESTINATION CHECK
       // ========================
-      if (
-        type === "internal" &&
-        String(trip.destinationFactoryId) ===
-        String(newDestinationFactoryId)
-      ) {
+      if (type === "internal" && String(trip.destinationFactoryId) === String(newDestinationFactoryId)) {
         throw new AppError(
           "Vehicle is already at this factory.", 400
         );
@@ -1957,8 +1925,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
       };
 
       
-      updatedTrip =
-        await Trip.findByIdAndUpdate(
+      updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
           {
             ...updatePayload,
@@ -1984,6 +1951,21 @@ export const changeRoute = asyncHandler( async (req, res) => {
 
     });
 
+   
+
+    const segmentId = updatedTrip.currentSegment
+
+    if(segmentId){
+     await tripSegment.findByIdAndUpdate(segmentId, {
+        status: "CLOSED",
+        completedAt: new Date()
+      },{
+        new: true,
+        session
+      })
+
+    }
+
     const existingSegments = await tripSegment.find({ tripId: updatedTrip._id }).session(session);
 
     let segmentCounter = null;
@@ -1991,20 +1973,24 @@ export const changeRoute = asyncHandler( async (req, res) => {
       segmentCounter = existingSegments.length + 1;
     }
 
-    await tripSegment.create([{
+    const newSegment = await tripSegment.create([{
         tripId: updatedTrip._id,
         triptype: updatedTrip.type === "internal_transfer"? "INTERNAL": "EXTERNAL",
+        status: "ACTIVE",
         segmentNumber: segmentCounter || 1,
+        materials: updatedTrip.materials[0],
         externalSource: updatedTrip.externalSource?? null,
         externalDestination: updatedTrip.externalDestination?? null,
         sourceFactoryId: updatedTrip.sourceFactoryId?? null,
         destinationFactoryId: updatedTrip.destinationFactoryId?? null,
         vehicleId: updatedTrip.vehicleId,
         driverId: updatedTrip.driverId,
-
         startedAt: updatedTrip.startedAt,
         completedAt: null,
       }], { session });
+
+      updatedTrip.currentSegment = newSegment[0]._id
+      await updatedTrip.save({session})
 
     tripDetails = {
       trip: updatedTrip,
@@ -2030,8 +2016,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
       const { tripId } = req.params;
       const { newTripDetails } = req.body;
 
-     
-
       const user = await User.findById(req.userId)
         .populate("factory")
         .session(session);
@@ -2045,15 +2029,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
           "You cannot select your current factory as Destination",
           400
         );
-      }
-
-       if(newTripDetails){
-        console.log("New Trip Details:", newTripDetails);
-        console.log("user factory", user.factory._id)
-      //  return res.status(400).json({
-      //     success: false,
-      //     message: "Cheking trip details in console. "
-      //   });
       }
 
       const currentTrip = await Trip.findById(tripId).session(session);
@@ -2073,8 +2048,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
           400
         );
       }
-
-      
 
       // CLOSE CURRENT TRIP
       const updatedTrip = await Trip.findOneAndUpdate(
@@ -2123,7 +2096,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
           400
         );
       }
-
 
       
 
@@ -2202,28 +2174,44 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
       );
 
       await Vehicle.findByIdAndUpdate( currentTrip.vehicleId, {
-          currentTrip: newTrip[0]._id
+        currentTrip: newTrip[0]._id
         },
         {
           session
         }
       );
 
-      await tripSegment.create([{
+      const segmentId = updatedTrip.currentSegment
+
+      if(segmentId){
+        await tripSegment.findByIdAndUpdate(segmentId, {
+            status: "CLOSED",
+            completedAt: new Date()
+          },{
+            new: true,
+            session
+          })
+
+      }
+
+    const newSegment =  await tripSegment.create([{
         tripId: newTrip[0]._id,
         triptype: newTrip[0].type === "internal_transfer"? "INTERNAL": "EXTERNAL",
         segmentNumber: 1,
+        purpose: newTrip[0].purpose,
+        materials: newTrip[0].materials[0],
         externalSource: newTrip[0].externalSource?? null,
         externalDestination: newTrip[0].externalDestination?? null,
         sourceFactoryId: newTrip[0].sourceFactoryId?? null,
         destinationFactoryId: newTrip[0].destinationFactoryId?? null,
         vehicleId: newTrip[0].vehicleId,
         driverId: newTrip[0].driverId,
-
         startedAt: newTrip[0].startedAt,
         completedAt: null,
       }], { session });
 
+      newTrip[0].currentSegment = newSegment[0]._id
+      await newTrip[0].save({session})
 
       responseData = {
         success: true,
@@ -2250,10 +2238,11 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
 
 
 
+
+
 // ========================
 // GET VEHICLE TRIPS
 // ========================
-
 
 const lst36hr = new Date(Date.now() - 36 * 60 * 60 * 1000);
 
@@ -3372,3 +3361,12 @@ export const getVehicleLiveStatus = asyncHandler(
     });
 
 });
+
+export const getDownloadTrips = async (req, res) =>{
+  try {
+
+    
+  } catch (error) {
+    return res.status(500).send(error.message || "Network Error")
+  }
+}

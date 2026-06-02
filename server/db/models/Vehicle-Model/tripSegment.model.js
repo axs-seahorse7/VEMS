@@ -7,11 +7,14 @@ const tripSegmentSchema = new mongoose.Schema({
       required: true,
       index: true
    },
+
    triptype: {
       type: String,
       enum: ["INTERNAL", "EXTERNAL"],
         default: "INTERNAL",
    },
+
+   purpose:String,
 
    segmentNumber: {
       type: Number,
@@ -41,6 +44,18 @@ const tripSegmentSchema = new mongoose.Schema({
       ref: "Driver"
    },
 
+   materials:{
+      name:String,
+      material: String,
+      quantity: Number,
+      invoiceNo: String,
+      unit: String,
+      invoiceAmount: Number,
+      seal: String,
+      customer: String,
+      supplier: String,
+   },
+
    startedAt: Date,
 
    completedAt: Date,
@@ -51,8 +66,11 @@ const tripSegmentSchema = new mongoose.Schema({
          "ACTIVE",
          "COMPLETED",
          "CANCELLED",
-         "ROUTE_CHANGED"
-      ]
+         "ROUTE_CHANGED",
+         "CLOSED",
+         "CANCELLED"
+      ],
+      default: "ACTIVE"
    },
 
    routeChangeReason: String

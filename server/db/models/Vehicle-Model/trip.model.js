@@ -13,7 +13,10 @@ const materialSchema = new mongoose.Schema({
 }, { _id: false });
 
 const TripSchema = new mongoose.Schema({
-
+  currentSegment: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref:"TripSegment"
+  },
   vehicleId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "Vehicle",
@@ -55,7 +58,7 @@ const TripSchema = new mongoose.Schema({
     index: true,
   },
 
- 
+  
 
   externalSource: String,  
   externalDestination: String, 
@@ -88,6 +91,7 @@ const TripSchema = new mongoose.Schema({
   },
 
   purpose: String,
+
   reason:{
     type: String,
   },

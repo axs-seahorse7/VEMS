@@ -241,9 +241,9 @@ export const getAvailableVehicles = async (req, res) => {
  
     const [vehicles, total] = await Promise.all([
       Vehicle.find(filter)
-        .populate("driverId", "name contact")          // driver basic info
+        .populate("driverId", "name contact")   
         .populate("ownerFactoryId", "name location")
-        .populate("currentFactoryId", "name location")  // factory basic info
+        .populate("currentFactoryId", "name location")  
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))

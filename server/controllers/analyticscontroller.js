@@ -24,12 +24,7 @@ const parseDates = (query) => {
 
 const daysBetween = (a, b) => Math.max(1, Math.ceil((b - a) / 86400000));
 
-/**
- * Takes a sorted-descending array of { label, count } items.
- * Keeps the top PARETO_TOP_N items individually;
- * collapses the rest into a single "Others" bucket.
- * Appends cumulative-% for the Pareto line.
- */
+
 const buildPareto = (arr, labelKey = "vehicleNumber") => {
   const total = arr.reduce((s, r) => s + r.count, 0);
   const top   = arr.slice(0, PARETO_TOP_N);
@@ -49,10 +44,6 @@ const buildPareto = (arr, labelKey = "vehicleNumber") => {
   });
 };
 
-/**
- * Factory-level rollup — groups trips by ownerFactoryId so large fleets
- * are summarised at the factory/depot level instead of per-vehicle.
- */
 const buildFactoryRollup = async (matchClosed) => {
   return Trip.aggregate([
     { $match: matchClosed },
@@ -88,10 +79,7 @@ const buildFactoryRollup = async (matchClosed) => {
   ]);
 };
 
-
 // ── Leaderboard ───────────────────────────────────────────────────────────────
-// GET /api/analytics/vehicle-trip-leaderboard
-// Unchanged data structure — just capped to top-N with an "Others" row appended.
 export const getVehicleTripLeaderboard = async (req, res) => {
   try {
     const { period = "today", limit = 10 } = req.query;
@@ -138,10 +126,7 @@ export const getVehicleTripLeaderboard = async (req, res) => {
   }
 };
 
-
 // ── 1. Fleet Summary KPIs ─────────────────────────────────────────────────────
-// GET /api/analytics/fleet-summary
-// Data structure: UNCHANGED
 export const getFleetSummary = async (req, res) => {
   try {
     const { start, end } = parseDates(req.query);
@@ -181,7 +166,6 @@ export const getFleetSummary = async (req, res) => {
 
 
 // ── 2. Fleet Overview ─────────────────────────────────────────────────────────
-
 export const getFleetOverview = async (req, res) => {
   try {
     const { start, end } = parseDates(req.query);
@@ -253,13 +237,7 @@ export const getFleetOverview = async (req, res) => {
   }
 };
 
-
 // ── 3. Avg Trips Per Day ──────────────────────────────────────────────────────
-// GET /api/analytics/avg-trips-per-day
-//
-// CHANGES vs original:
-//   • pgAvgPareto / nonPgAvgPareto → top-N + "Others"
-//   • p2pVsDelivery structure: UNCHANGED
 export const getAvgTripsPerDay = async (req, res) => {
   try {
     const { start, end }  = parseDates(req.query);
@@ -338,10 +316,7 @@ export const getAvgTripsPerDay = async (req, res) => {
   }
 };
 
-
 // ── 4. Top Performers ─────────────────────────────────────────────────────────
-// GET /api/analytics/top-performers
-// Data structure: UNCHANGED — already limited to top 5; dailyTrend unchanged.
 export const getTopPerformers = async (req, res) => {
   try {
     const { start, end } = parseDates(req.query);
@@ -386,8 +361,6 @@ export const getTopPerformers = async (req, res) => {
 
 
 // ── 5. Time-Based Analysis ────────────────────────────────────────────────────
-// GET /api/analytics/time-analysis
-// Data structure: UNCHANGED
 export const getTimeAnalysis = async (req, res) => {
   try {
     const { start, end } = parseDates(req.query);
@@ -436,8 +409,6 @@ export const getTimeAnalysis = async (req, res) => {
 
 
 // ── 6. Transporter / Supplier Customer Visits ─────────────────────────────────
-// GET /api/analytics/transporter-visits
-// Data structure: UNCHANGED
 export const getTransporterVisits = async (req, res) => {
   try {
     const { start, end } = parseDates(req.query);

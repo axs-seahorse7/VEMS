@@ -3,7 +3,7 @@ import api from "../../../../services/API/Api/api"; // adjust path
 import {Divider} from "antd";
 import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
 import {
-  Chart as ChartJS,
+Chart as ChartJS,
   CategoryScale, LinearScale,
   PointElement, LineElement,
   Tooltip, Filler, Legend, ArcElement
@@ -1325,6 +1325,7 @@ function TripTypeDonut({ title, p2p, customerOrExternal, colorP2P = "#3b82f6", c
       {/* Legend */}
       <div style={{
         display: "flex",
+        flexDirection: "column",
         justifyContent: "space-between",
         marginTop: 12,
         paddingTop: 10,
@@ -1332,7 +1333,7 @@ function TripTypeDonut({ title, p2p, customerOrExternal, colorP2P = "#3b82f6", c
         gap: 8,
       }}>
         {/* P2P — count first, pct in bracket */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
+        <div style={{ display: "flex",  gap: 5 }}>
           <div style={{
             width: 8, height: 8, borderRadius: 2,
             background: colorP2P, flexShrink: 0, marginTop: 3,
@@ -1347,7 +1348,7 @@ function TripTypeDonut({ title, p2p, customerOrExternal, colorP2P = "#3b82f6", c
         </div>
 
         {/* Other — pct first, count below */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
+        <div style={{ display: "flex",  gap: 5 }}>
           <div style={{
             width: 8, height: 8, borderRadius: 2,
             background: colorOther, flexShrink: 0, marginTop: 3,
@@ -1407,6 +1408,9 @@ function PGBreakdownCard({ delivery, pickup }) {
           colorOther="#10b981"
         />
       </div>
+      
+      
+       
     </div>
   );
 }
@@ -1503,8 +1507,6 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
   const [period,    setPeriod]    = useState("week");
   const [vehicleType, setVehicleType] = useState("all"); // "all" | "internal" | "external"
 
-
-
   const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
   const fetchDashboard = ({ vehicleId, period }) => api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period } }).then(r => r.data);
 
@@ -1525,9 +1527,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
     staleTime: 2 * 60 * 1000,
   });
 
-    const visibleVehicles = data?.topVehicles?.[vehicleType] ?? { vehicles: [], maxTrips: 1 };
-
-
+  const visibleVehicles = data?.topVehicles?.[vehicleType] ?? { vehicles: [], maxTrips: 1 };
   const error = isTopError ? "Could not resolve top vehicle." : isDashError ? "Failed to load dashboard data.": null;
 
 
@@ -1821,7 +1821,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
               </span>
             </div>
 
-            {/* ✅ Fixed height div wraps ONLY the Line, as its direct parent */}
+            {/* Fixed height div wraps ONLY the Line, as its direct parent */}
             <div style={{ height: 160, position: "relative", width: "100%" }}>
               <Line
                 key={period}

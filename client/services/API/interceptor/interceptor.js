@@ -5,16 +5,12 @@ let versionChecked  = false;  // soft update shown
 let forceUpdateShown = false; // force update modal shown — separate flag
 
 export const setupInterceptors = () => {
-
   api.interceptors.request.use(
     (config) => config,
     (error) => Promise.reject(error)
   );
 
-  api.interceptors.response.use(
-
-    (response) => {
-      // ── Already handled — skip ──────────────────────────────────
+  api.interceptors.response.use((response) => {
       if (versionChecked) return response;
 
       const latestVersion = response.headers["x-latest-version"];
@@ -22,7 +18,7 @@ export const setupInterceptors = () => {
 
       if (!latestVersion) return response;
 
-      // Set IMMEDIATELY before any async/modal so parallel responses don't trigger twice
+      // Set IMMEDIATELY before any async/modal 
       versionChecked = true;
 
       if (isForceUpdate) {

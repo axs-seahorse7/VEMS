@@ -15,7 +15,7 @@ const driverSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Trip",
     default: null
-  },
+  },  
   stats: {
     totalTrips:     { type: Number, default: 0 },
     totalDistance:  { type: Number, default: 0 },
