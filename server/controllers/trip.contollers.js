@@ -3362,11 +3362,682 @@ export const getVehicleLiveStatus = asyncHandler(
 
 });
 
-export const getDownloadTrips = async (req, res) =>{
-  try {
+import ExcelJS from "exceljs";
 
-    
-  } catch (error) {
-    return res.status(500).send(error.message || "Network Error")
+
+const fmtDT = (d) =>
+  d ? new Date(d).toLocaleString("en-IN", { hour12: true }) : "";
+ 
+const fmtDate = (d) =>
+  d ? new Date(d).toLocaleDateString("en-IN") : "";
+ 
+/* ══════════════════════════════════════════════════════════════
+   EXCEL STYLE HELPERS
+══════════════════════════════════════════════════════════════ */
+ 
+const COLORS = {
+  headerBg:    "1E293B",  // slate-800  — dark section label rows
+  headerFg:    "FFFFFF",
+  colHeaderBg: "F1F5F9",  // slate-100  — column name row
+  colHeaderFg: "334155",
+  seg1Bg:      "FFFFFF",  // first segment  — white
+  seg2Bg:      "F8FAFC",  // alternating segment — off-white
+  multiMatBg:  "FFF7ED",  // orange-50  — 2nd+ material row within same segment
+  routeChangeBg: "EFF6FF", // blue-50   — route_change event in log
+  evenRowBg:   "F8FAFC",
+  white:       "FFFFFF",
+};
+ 
+/** Apply bold styled header to a row */
+const styleHeader = (row, bgHex, fgHex) => {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + bgHex } };
+    cell.font      = { bold: true, color: { argb: "FF" + fgHex }, name: "Arial", size: 9 };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border    = { bottom: { style: "thin", color: { argb: "FFE2E8F0" } } };
+  });
+};
+ 
+/** Apply standard data cell styling */
+const styleData = (cell, bgHex) => {
+  cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + bgHex } };
+  cell.font      = { name: "Arial", size: 9 };
+  cell.alignment = { vertical: "middle", wrapText: true };
+  cell.border    = {
+    bottom: { style: "hair", color: { argb: "FFE2E8F0" } },
+    right:  { style: "hair", color: { argb: "FFE2E8F0" } },
+  };
+};
+ 
+const styleRow = (row, bgHex) =>
+  row.eachCell({ includeEmpty: true }, (cell) => styleData(cell, bgHex));
+ 
+
+const TOLERANCE_MS = 1000; 
+ 
+const isCheckout = (ev) => {
+  const a = ev.action?.toLowerCase();
+  const s = ev.status?.toLowerCase();
+  return a === "checkout" || s === "checkout";
+};
+ 
+/** True if the event action/status is a route_change */
+const isRouteChange = (ev) => {
+  const a = ev.action?.toLowerCase();
+  const s = ev.status?.toLowerCase();
+  return a === "route_change" || s === "route_changed";
+};
+ 
+/**
+ * @param {Array}  history       - full trip.tripHistory (sorted ascending by timestamp)
+ * @param {Date}   windowStart   - TripSegment.startedAt
+ * @param {Date}   windowEnd     - next TripSegment.startedAt OR trip close time
+ * @param {Set}    claimedIds    - _id strings already assigned; mutated in place
+ * @returns {Array} history entries that belong to this segment, sorted by timestamp
+ */
+function eventsForWindow(history, windowStart, windowEnd, claimedIds) {
+  if (!windowStart) return [];
+ 
+  const segStart = new Date(windowStart).getTime();
+  const segEnd   = windowEnd ? new Date(windowEnd).getTime() : Infinity;
+ 
+  // ── Pass 1: segment snapshot match ──────────────────────────
+  const pass1 = [];
+  for (const ev of history) {
+    if (!ev.timestamp) continue;
+    const evId = ev._id?.toString();
+    if (evId && claimedIds.has(evId)) continue;
+ 
+    if (ev.segment?.startedAt) {
+      const snapStart = new Date(ev.segment.startedAt).getTime();
+      if (Math.abs(snapStart - segStart) <= TOLERANCE_MS) {
+        pass1.push(ev);
+        if (evId) claimedIds.add(evId);
+      }
+    }
   }
+ 
+  // ── Pass 2: checkout look-ahead (business rule) ──────────────
+  // If this segment contains a ROUTE_CHANGED event, the very next
+  // unclaimed CHECKOUT in the full history belongs to this segment,
+  // regardless of its timestamp.
+  const hasRouteChange = pass1.some(isRouteChange);
+  if (hasRouteChange) {
+    // Find the last ROUTE_CHANGED event in this segment to anchor the search
+    const lastRC = [...pass1].filter(isRouteChange).pop();
+    const rcTime = lastRC ? new Date(lastRC.timestamp).getTime() : segStart;
+ 
+    // Walk forward in history to find the first unclaimed CHECKOUT after rcTime
+    for (const ev of history) {
+      if (!ev.timestamp) continue;
+      const evId = ev._id?.toString();
+      if (evId && claimedIds.has(evId)) continue;
+      if (!isCheckout(ev)) continue;
+ 
+      const t = new Date(ev.timestamp).getTime();
+      if (t >= rcTime) {
+        // Claim it for this segment — it's the post-route-change checkout
+        pass1.push(ev);
+        if (evId) claimedIds.add(evId);
+        break; // only the first unclaimed checkout after RC belongs here
+      }
+    }
+  }
+ 
+  // ── Pass 3: timestamp window fallback ───────────────────────
+  const pass1Ids = new Set(pass1.map((e) => e._id?.toString()));
+  const pass3 = [];
+  for (const ev of history) {
+    if (!ev.timestamp) continue;
+    const evId = ev._id?.toString();
+    if (evId && claimedIds.has(evId)) continue;  // already owned
+    if (evId && pass1Ids.has(evId))   continue;  // already in pass1
+ 
+    // Never let checkout fall through to timestamp matching —
+    // it will be grabbed by Pass 2 of the correct segment instead.
+    if (isCheckout(ev)) continue;
+ 
+    const t = new Date(ev.timestamp).getTime();
+    if (t >= segStart - TOLERANCE_MS && t < segEnd + TOLERANCE_MS) {
+      pass3.push(ev);
+    }
+  }
+ 
+  // Mark pass3 survivors as claimed
+  pass3.forEach((e) => {
+    const id = e._id?.toString();
+    if (id) claimedIds.add(id);
+  });
+ 
+  // Merge and sort by timestamp
+  return [...pass1, ...pass3].sort(
+    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+  );
 }
+ 
+function pickEventTime(events, ...targets) {
+  const upper = targets.map((t) => t.toUpperCase());
+  const found = events.find(
+    (ev) =>
+      upper.includes(ev.action?.toUpperCase()) ||
+      upper.includes(ev.status?.toUpperCase())
+  );
+  return fmtDT(found?.timestamp);
+}
+ 
+/* ══════════════════════════════════════════════════════════════
+   CONTROLLER
+══════════════════════════════════════════════════════════════ */
+ 
+export const getDownloadTrips = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+ 
+    /* ── 1. Auth / factory resolution ───────────────────────── */
+    const user = await User.findById(req.userId).select("factory").lean();
+    if (!user?.factory) {
+      return res.status(404).json({ message: "User or factory not found" });
+    }
+    const factoryId = user.factory;
+ 
+    /* ── 2. Build date range ─────────────────────────────────── */
+    let fromDate, toDate;
+    if (from || to) {
+      fromDate = from ? new Date(from) : null;
+      toDate   = to   ? new Date(to)   : null;
+      if (toDate) toDate.setHours(23, 59, 59, 999);
+    } else {
+      // default: last 36 hours
+      toDate   = new Date();
+      fromDate = new Date(toDate.getTime() - 36 * 60 * 60 * 1000);
+    }
+ 
+    const dateFilter = {};
+    if (fromDate) dateFilter.$gte = fromDate;
+    if (toDate)   dateFilter.$lte = toDate;
+    const trips = await Trip.aggregate([
+      {
+        $match: {
+          tripState: { $in: ["CLOSED", "CANCELLED"] },
+          ...(Object.keys(dateFilter).length && { updatedAt: dateFilter }),
+          $or: [
+            { sourceFactoryId: factoryId },
+            { destinationFactoryId: factoryId },
+          ],
+        },
+      },
+      // vehicle — required; skip trips with no vehicle
+      {
+        $lookup: {
+          from: "vehicles",
+          localField: "vehicleId",
+          foreignField: "_id",
+          as: "vehicle",
+        },
+      },
+      { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: false } },
+      // driver — optional
+      {
+        $lookup: {
+          from: "drivers",
+          localField: "driverId",
+          foreignField: "_id",
+          as: "driver",
+        },
+      },
+      { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
+      { $sort: { updatedAt: -1 } },
+    ]);
+ 
+    if (!trips.length) {
+      return res.status(404).json({ message: "No trips found for the given range." });
+    }
+ 
+    const tripIds = trips.map((t) => t._id);
+ 
+    const rawSegments = await tripSegment.aggregate([
+      { $match: { tripId: { $in: tripIds } } },
+      {
+        $lookup: {
+          from: "vehicles",
+          localField: "vehicleId",
+          foreignField: "_id",
+          as: "vehicle",
+        },
+      },
+      { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: true } },
+      // driver per segment
+      {
+        $lookup: {
+          from: "drivers",
+          localField: "driverId",
+          foreignField: "_id",
+          as: "driver",
+        },
+      },
+      { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
+      // source factory
+      {
+        $lookup: {
+          from: "factories",
+          localField: "sourceFactoryId",
+          foreignField: "_id",
+          as: "sourceFactory",
+        },
+      },
+      { $unwind: { path: "$sourceFactory", preserveNullAndEmptyArrays: true } },
+      // destination factory
+      {
+        $lookup: {
+          from: "factories",
+          localField: "destinationFactoryId",
+          foreignField: "_id",
+          as: "destinationFactory",
+        },
+      },
+      { $unwind: { path: "$destinationFactory", preserveNullAndEmptyArrays: true } },
+      // sort: trip first, then segment order within trip
+      { $sort: { tripId: 1, segmentNumber: 1 } },
+    ]);
+ 
+    const segmentsByTrip = new Map();
+    for (const seg of rawSegments) {
+      const key = seg.tripId.toString();
+      if (!segmentsByTrip.has(key)) segmentsByTrip.set(key, []);
+      segmentsByTrip.get(key).push(seg);
+    }
+ 
+    /* ════════════════════════════════════════════════════════════
+       BUILD WORKBOOK
+    ════════════════════════════════════════════════════════════ */
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Fleet Management System";
+    wb.created = new Date();
+ 
+    const wsDetail = wb.addWorksheet("Trip Details", {
+      views:     [{ state: "frozen", ySplit: 2 }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+    });
+ 
+    wsDetail.columns = [
+      // TRIP INFO (cols 1-4)
+      { key: "tripId",        width: 28 },
+      { key: "segNo",         width: 8  },
+      { key: "tripType",      width: 18 },
+      { key: "purpose",       width: 14 },
+      // VEHICLE (cols 5-8)
+      { key: "vehicleNo",     width: 16 },
+      { key: "vehicleCat",    width: 16 },
+      { key: "vehicleType",   width: 18 },
+      { key: "pucExpiry",     width: 14 },
+      // DRIVER (cols 9-13)
+      { key: "driverName",    width: 18 },
+      { key: "driverContact", width: 14 },
+      { key: "driverIdType",  width: 14 },
+      { key: "driverIdNo",    width: 16 },
+      { key: "licenseNo",     width: 16 },
+      // ROUTE (cols 14-19)
+      { key: "srcFactory",    width: 20 },
+      { key: "srcLocation",   width: 18 },
+      { key: "dstFactory",    width: 20 },
+      { key: "dstLocation",   width: 18 },
+      { key: "extSource",     width: 20 },
+      { key: "extDest",       width: 20 },
+      // SEGMENT TIMING (cols 20-21)
+      { key: "segStartedAt",  width: 22 },
+      { key: "segCompletedAt",width: 22 },
+      // TIMELINE (cols 22-30)
+      { key: "tBegin",        width: 20 },
+      { key: "tArrived",      width: 20 },
+      { key: "tCheckin",      width: 20 },
+      { key: "tCheckout",     width: 20 },
+      { key: "tLoad",         width: 20 },
+      { key: "tUnload",       width: 20 },
+      { key: "tDestination",  width: 20 },
+      { key: "tRouteChange",  width: 20 },
+      { key: "tClosed",       width: 20 },
+      // MATERIAL (cols 31-39)
+      { key: "matName",       width: 18 },
+      { key: "matType",       width: 16 },
+      { key: "qty",           width: 10 },
+      { key: "unit",          width: 8  },
+      { key: "invoiceNo",     width: 16 },
+      { key: "invoiceAmt",    width: 16 },
+      { key: "seal",          width: 12 },
+      { key: "supplier",      width: 18 },
+      { key: "customer",      width: 18 },
+    ];
+ 
+    // Row 1 — section label spans
+    const labelRow1 = wsDetail.addRow([]);
+    const sectionDefs = [
+      { col: 1,  span: 4,  label: "TRIP INFO"        },
+      { col: 5,  span: 4,  label: "VEHICLE"          },
+      { col: 9,  span: 5,  label: "DRIVER"           },
+      { col: 14, span: 6,  label: "ROUTE"            },
+      { col: 20, span: 2,  label: "SEGMENT TIMING"   },
+      { col: 22, span: 9,  label: "TIMELINE"         },
+      { col: 31, span: 9,  label: "MATERIAL / CARGO" },
+    ];
+    sectionDefs.forEach(({ col, span, label }) => {
+      labelRow1.getCell(col).value = label;
+      if (span > 1) wsDetail.mergeCells(1, col, 1, col + span - 1);
+    });
+    styleHeader(labelRow1, COLORS.headerBg, COLORS.headerFg);
+    labelRow1.height = 22;
+ 
+    // Row 2 — column headers
+    const headerRow1 = wsDetail.addRow([
+      "Trip ID", "Seg #", "Trip Type", "Purpose",
+      "Vehicle No.", "Category", "Vehicle Type", "PUC Expiry",
+      "Driver Name", "Contact", "ID Type", "ID Number", "License No.",
+      "Source Factory", "Source Location", "Dest. Factory", "Dest. Location", "Ext. Source", "Ext. Dest.",
+      "Seg Started At", "Seg Completed At",
+      "Begin", "Arrived", "Check-In", "Check-Out", "Loaded", "Unloaded", "At Destination", "Route Changed", "Closed",
+      "Material", "Mat. Type", "Qty", "Unit", "Invoice No.", "Invoice Amt (₹)", "Seal", "Supplier", "Customer",
+    ]);
+    styleHeader(headerRow1, COLORS.colHeaderBg, COLORS.colHeaderFg);
+    headerRow1.height = 32;
+ 
+    const wsLog = wb.addWorksheet("Event Log", {
+      views: [{ state: "frozen", ySplit: 1 }],
+    });
+ 
+    wsLog.columns = [
+      { key: "tripId",     width: 28 },
+      { key: "segNo",      width: 8  },
+      { key: "vehicleNo",  width: 16 },
+      { key: "driverName", width: 18 },
+      { key: "evtNo",      width: 8  },
+      { key: "status",     width: 18 },
+      { key: "action",     width: 16 },
+      { key: "location",   width: 18 },
+      { key: "phase",      width: 18 },
+      { key: "actionBy",   width: 26 },
+      { key: "actionLoc",  width: 16 },
+      { key: "factory",    width: 20 },
+      { key: "timestamp",  width: 22 },
+    ];
+ 
+    const logHeaderRow = wsLog.addRow([
+      "Trip ID", "Seg #", "Vehicle No.", "Driver", "Event #",
+      "Status", "Action", "Location", "Phase",
+      "Action By", "Action Location", "Factory", "Timestamp",
+    ]);
+    styleHeader(logHeaderRow, COLORS.headerBg, COLORS.headerFg);
+    logHeaderRow.height = 24;
+ 
+    /* ────────────────────────────────────────────────────────────
+       SHEET 3 — SUMMARY
+    ──────────────────────────────────────────────────────────── */
+    const wsSummary = wb.addWorksheet("Summary");
+    wsSummary.columns = [{ width: 30 }, { width: 22 }, { width: 16 }];
+ 
+    // counters for summary — populated while iterating trips below
+    let totalSegments = 0;
+    const vehicleMap  = {}; // vehicleNo → { docs, segments }
+    const driverMap   = {}; // driverName → { contact, docs, segments }
+ 
+    /* ════════════════════════════════════════════════════════════
+       MAIN DATA LOOP — iterate trips → segments → materials
+    ════════════════════════════════════════════════════════════ */
+    for (const trip of trips) {
+      const tripIdStr  = trip._id.toString();
+      const history    = trip.tripHistory || [];
+      const segments   = segmentsByTrip.get(tripIdStr) || [];
+ 
+      // Sort history by timestamp ascending for reliable window mapping
+      const sortedHistory = [...history].sort(
+        (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+      );
+ 
+      const effectiveSegments = segments.length > 0 ? segments : [
+              {
+                _id:                  trip._id,          // fake id
+                tripId:               trip._id,
+                segmentNumber:        1,
+                triptype:             trip.type === "internal_transfer" ? "INTERNAL" : "EXTERNAL",
+                purpose:              trip.purpose || "",
+                vehicleId:            trip.vehicleId,
+                driverId:             trip.driverId,
+                vehicle:              trip.vehicle,
+                driver:               trip.driver,
+                sourceFactoryId:      trip.sourceFactoryId,
+                destinationFactoryId: trip.destinationFactoryId,
+                sourceFactory:        trip.sourceFactory,  
+                destinationFactory:   trip.destinationFactory,
+                externalSource:       trip.externalSource      || "",
+                externalDestination:  trip.externalDestination || "",
+                materials:            trip.materials?.[0] || null,
+                startedAt:            trip.startedAt,
+                completedAt:          trip.completedAt || trip.updatedAt,
+                status:               trip.tripState,
+                _synthetic:           true,
+              },
+            ];
+ 
+      totalSegments += effectiveSegments.length;
+ 
+      /* Summary: vehicle-level count */
+      effectiveSegments.forEach((seg) => {
+        const vn = seg.vehicle?.vehicleNumber || trip.vehicle?.vehicleNumber || "Unknown";
+        vehicleMap[vn] = vehicleMap[vn] || { docs: new Set(), segments: 0 };
+        vehicleMap[vn].docs.add(tripIdStr);
+        vehicleMap[vn].segments++;
+ 
+        const dn = seg.driver?.driverName || trip.driver?.driverName || "Unknown";
+        const dc = seg.driver?.driverContact || trip.driver?.driverContact || "";
+        driverMap[dn] = driverMap[dn] || { contact: dc, docs: new Set(), segments: 0 };
+        driverMap[dn].docs.add(tripIdStr);
+        driverMap[dn].segments++;
+      });
+ 
+      const claimedIds = new Set();
+ 
+      /* ── Process each segment ── */
+      effectiveSegments.forEach((seg, segIdx) => {
+        const isLastSeg = segIdx === effectiveSegments.length - 1;
+ 
+        /* Time window for history mapping */
+        const windowStart = seg.startedAt;
+        const windowEnd   = isLastSeg
+          ? (trip.completedAt || trip.updatedAt)          // last seg goes to trip close
+          : effectiveSegments[segIdx + 1].startedAt;      // else next seg's start
+ 
+        const segEvents = eventsForWindow(sortedHistory, windowStart, windowEnd, claimedIds);
+ 
+        /* Resolved vehicle/driver — prefer segment-level, fall back to trip */
+        const vehicle = seg.vehicle || trip.vehicle || {};
+        const driver  = seg.driver  || trip.driver  || {};
+ 
+        /* Resolved factories — segment has its own populated factories */
+        const srcFactory = seg.sourceFactory      || {};
+        const dstFactory = seg.destinationFactory || {};
+ 
+        /* Timeline from segment-scoped events */
+        const timeline = [
+          pickEventTime(segEvents, "begin"),
+          pickEventTime(segEvents, "arrived"),
+          pickEventTime(segEvents, "checkin"),
+          pickEventTime(segEvents, "checkout"),
+          pickEventTime(segEvents, "load"),
+          pickEventTime(segEvents, "unload"),
+          pickEventTime(segEvents, "destination", "complete"),
+          pickEventTime(segEvents, "route_change"),
+          // closed timestamp only on last segment
+          isLastSeg ? fmtDT(trip.completedAt || trip.updatedAt) : "",
+        ];
+ 
+        let materials;
+        if (seg._synthetic) {
+          // synthetic segment — use trip.materials array
+          materials = trip.materials?.length ? trip.materials : [null];
+        } else if (seg.materials && Object.keys(seg.materials).length > 0) {
+          // segment has its own material object — wrap in array
+          materials = [seg.materials];
+        } else {
+          // no segment-level material — use trip.materials as fallback
+          materials = trip.materials?.length ? trip.materials : [null];
+        }
+ 
+        /* ── Emit one Excel row per material ── */
+        materials.forEach((mat, mIdx) => {
+          const bgHex = mIdx === 0
+            ? (segIdx % 2 === 0 ? COLORS.seg1Bg : COLORS.seg2Bg)
+            : COLORS.multiMatBg; // extra material rows get orange tint
+ 
+          const rowData = [
+            // TRIP INFO
+            tripIdStr,
+            `Seg ${seg.segmentNumber}`,
+            seg.triptype === "INTERNAL" ? "Internal" : "External",
+            seg.purpose || trip.purpose || "",
+            // VEHICLE
+            vehicle.vehicleNumber      || "",
+            vehicle.typeOfVehicle      || "",
+            vehicle.type === "internal" ? "Internal" : "External",
+            fmtDate(vehicle.PUCExpiry),
+            // DRIVER
+            driver.driverName          || "",
+            driver.driverContact       || "",
+            driver.driverIdType        || "",
+            driver.driverIdNumber      || "",
+            driver.licenseNumber       || "",
+            // ROUTE
+            srcFactory.name            || "",
+            srcFactory.location        || "",
+            dstFactory.name            || "",
+            dstFactory.location        || "",
+            seg.externalSource         || trip.externalSource         || "",
+            seg.externalDestination    || trip.externalDestination    || "",
+            // SEGMENT TIMING
+            fmtDT(seg.startedAt),
+            fmtDT(seg.completedAt),
+            // TIMELINE
+            ...timeline,
+            // MATERIAL
+            mat?.name          || "",
+            mat?.material      || "",
+            mat?.quantity      ?? "",
+            mat?.unit          || "",
+            mat?.invoiceNo     || "",
+            mat?.invoiceAmount ?? "",
+            mat?.seal          || "",
+            mat?.supplier      || "",
+            mat?.customer      || "",
+          ];
+ 
+          const dataRow = wsDetail.addRow(rowData);
+          dataRow.height = 18;
+          styleRow(dataRow, bgHex);
+ 
+          // Bold Trip ID on first material row of each segment
+          if (mIdx === 0) {
+            dataRow.getCell(1).font = { bold: true, name: "Arial", size: 9 };
+          }
+        });
+ 
+        /* ── Emit one Event Log row per history event in this window ── */
+        segEvents.forEach((ev, evIdx) => {
+          const isRouteChange = ev.action?.toUpperCase() === "ROUTE_CHANGE" ||
+                                ev.status?.toUpperCase() === "ROUTE_CHANGED";
+ 
+          const logRow = wsLog.addRow([
+            tripIdStr,
+            `Seg ${seg.segmentNumber}`,
+            vehicle.vehicleNumber  || "",
+            driver.driverName      || "",
+            evIdx + 1,
+            ev.status              || "",
+            ev.action              || "",
+            ev.location            || "",
+            ev.phase               || "",
+            ev.actionBy            || "",
+            ev.actionLocation      || "",
+            ev.factory?.name       || "",  
+            fmtDT(ev.timestamp),
+          ]);
+          logRow.height = 16;
+          styleRow(
+            logRow,
+            isRouteChange
+              ? COLORS.routeChangeBg
+              : evIdx % 2 === 0 ? COLORS.white : COLORS.evenRowBg
+          );
+        });
+      });
+    } // end trips loop
+ 
+    /* ── Autofilters ── */
+    wsDetail.autoFilter = {
+      from: { row: 2, column: 1 },
+      to:   { row: 2, column: wsDetail.columns.length },
+    };
+    wsLog.autoFilter = {
+      from: { row: 1, column: 1 },
+      to:   { row: 1, column: wsLog.columns.length },
+    };
+ 
+    /* ════════════════════════════════════════════════════════════
+       SHEET 3 — SUMMARY  (fill now that we have all counts)
+    ════════════════════════════════════════════════════════════ */
+    const addSummaryKV = (label, value, bold = false) => {
+      const r = wsSummary.addRow([label, value]);
+      if (bold) {
+        r.getCell(1).font = { bold: true, name: "Arial", size: 10 };
+        r.getCell(2).font = { bold: true, name: "Arial", size: 10 };
+      }
+    };
+ 
+    addSummaryKV("Fleet Trip Download Report", "", true);
+    addSummaryKV("Generated At",  new Date().toLocaleString("en-IN"));
+    addSummaryKV("Date Range",    `${fmtDate(fromDate)} → ${fmtDate(toDate)}`);
+    wsSummary.addRow([]);
+    addSummaryKV("Total Trip Documents", trips.length,    true);
+    addSummaryKV("Total Segments",       totalSegments,   true);
+    wsSummary.addRow([]);
+ 
+    // Per-vehicle table
+    const vHeader = wsSummary.addRow(["Vehicle No.", "Trip Documents", "Segments"]);
+    styleHeader(vHeader, COLORS.colHeaderBg, COLORS.colHeaderFg);
+    Object.entries(vehicleMap)
+      .sort((a, b) => b[1].segments - a[1].segments)
+      .forEach(([vn, d]) => {
+        const r = wsSummary.addRow([vn, d.docs.size, d.segments]);
+        r.eachCell((c) => styleData(c, COLORS.white));
+      });
+ 
+    wsSummary.addRow([]);
+ 
+    // Per-driver table
+    const dHeader = wsSummary.addRow(["Driver", "Contact", "Trip Documents"]);
+    styleHeader(dHeader, COLORS.colHeaderBg, COLORS.colHeaderFg);
+    Object.entries(driverMap)
+      .sort((a, b) => b[1].docs.size - a[1].docs.size)
+      .forEach(([dn, d]) => {
+        const r = wsSummary.addRow([dn, d.contact, d.docs.size]);
+        r.eachCell((c) => styleData(c, COLORS.white));
+      });
+ 
+    /* ════════════════════════════════════════════════════════════
+       STREAM RESPONSE
+    ════════════════════════════════════════════════════════════ */
+    const filename = `fleet-trips-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+ 
+    await wb.xlsx.write(res);
+    res.end();
+ 
+  } catch (error) {
+    console.error("Error generating trip download:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate trip report",
+      error: error.message,
+    });
+  }
+};

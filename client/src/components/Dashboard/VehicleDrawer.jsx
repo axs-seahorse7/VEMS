@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { Drawer, DatePicker, Input, Tabs } from "antd";
+import { Drawer, DatePicker, Input, Tabs, Modal, Spin, message, Button } from "antd";
 import {
   CarOutlined,
   CheckCircleOutlined,
@@ -18,6 +18,8 @@ import {
 } from "@ant-design/icons";
 import api from "../../../services/API/Api/api";
 import * as XLSX from "xlsx";
+import VehicleDetailModal from "../../Pages/User/Dashbaord/VehicleDetailsModal";
+
 
 const { RangePicker } = DatePicker;
 
@@ -201,7 +203,7 @@ function AvailableCard({ v }) {
 /* ══════════════════════════════════════════════════════════════
    CLOSED TRIP CARD
 ══════════════════════════════════════════════════════════════ */
-function ClosedTripCard({ v }) {
+function ClosedTripCard({ v, setSelectedTripId }) {
   const closedAt = v.updatedAt
     ? new Date(v.updatedAt).toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })
     : null;
@@ -211,6 +213,7 @@ function ClosedTripCard({ v }) {
       background:"#fff", border:"1px solid #e8eaed", borderRadius:10,
       padding:"14px 12px", transition:"border-color .18s, box-shadow .18s",
       cursor:"default",
+      onClick: () => setSelectedTripId(v._id),
     }}
       onMouseEnter={e => { e.currentTarget.style.borderColor="#f97316"; e.currentTarget.style.boxShadow="0 4px 16px rgba(249,115,22,.08)"; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor="#e8eaed"; e.currentTarget.style.boxShadow="none"; }}
@@ -236,11 +239,11 @@ function ClosedTripCard({ v }) {
       {(v.sourceFactory?.name || v.destinationFactory?.name) && (
         <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:8 }}>
           <span style={{ fontSize:10.5, color:"#71717a", fontWeight:500, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-            {v.sourceFactory?.name || "?"}
+            {v.sourceFactory? v.sourceFactory.name : v.externalSource?? "-" }
           </span>
           <ArrowRightOutlined style={{ fontSize:9, color:"#d4d4d8", flexShrink:0 }} />
           <span style={{ fontSize:10.5, color:"#71717a", fontWeight:500, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-            {v.destinationFactory?.name || "?"}
+            {v.destinationFactory? v.destinationFactory.name : v.externalDestination?? "-" }
           </span>
         </div>
       )}
@@ -345,7 +348,7 @@ function EmptyState({ icon, title, sub }) {
    MAIN COMPONENT
 ══════════════════════════════════════════════════════════════ */
 export default function VehicleDrawer({ open = false, onClose = () => {} }) {
-  const [tab, setTab]             = useState("available");
+  const [tab, setTab]             = useState("closed");
   const [search, setSearch]       = useState("");
   const [dateRange, setDateRange] = useState([null, null]);
   const [dlFlash, setDlFlash]     = useState(false);
@@ -364,6 +367,9 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
   const [nextCursor, setNextCursor]       = useState(null);
   const [hasMore, setHasMore]             = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
+
+  const [selectedTripId, setSelectedTripId] = useState(null);
+  const [isDownloadLoading, setisDownloadLoading] = useState(false);
 
   /* ── Fetch available vehicles ── */
   useEffect(() => {
@@ -392,7 +398,6 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
       if (from) params.from = from.format("YYYY-MM-DD");
       if (to)   params.to   = to.format("YYYY-MM-DD");
       const res = await api.get("/trip/closed", { params });
-      console.log("Closed trips response:", res.data);
       setClosedTrips(res.data.data  || []);
       setClosedStats(res.data.stats || null);
       setIsDefaultRange(res.data.dateRange?.isDefault ?? true);
@@ -422,10 +427,8 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
       setClosedTrips(prev => [...prev, ...(res.data.data || [])]);
       setNextCursor(res.data.pagination?.nextCursor ?? null);
       setHasMore(res.data.pagination?.hasMore ?? false);
-      // stats only comes on page 1 — keep what we have
-    } catch (err) {
-      console.error("Failed to load more closed trips:", err.message);
-    } finally {
+    } 
+    finally {
       setIsFetchingMore(false);
     }
   }, [hasMore, isFetchingMore, closedLoading, nextCursor, dateRange]);
@@ -452,15 +455,36 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
   }, [sourceList, search, tab]);
 
   /* ── Download ── */
-  const handleDownload = () => {
-    if (tab === "closed") exportClosedTripsXLSX(filtered);
-    else exportAvailableCSV(filtered);
-    setDlFlash(true);
-    setTimeout(() => setDlFlash(false), 1400);
-  };
+  // const handleDownload = () => {
+  //   if (tab === "closed") exportClosedTripsXLSX(filtered);
+  //   else exportAvailableCSV(filtered);
+  //   setDlFlash(true);
+  //   setTimeout(() => setDlFlash(false), 1400);
+  // };
 
   const isLoading   = tab === "available" ? availLoading  : closedLoading;
   const activeError = tab === "available" ? availError    : closedError;
+
+  const handleDownload = async () => {
+    if(isDownloadLoading) {
+      message.warning("A download is already in progress. Please wait.", 1.5)
+      return;
+    };
+  try {
+    setisDownloadLoading(true);
+    message.success("Preparing your download...", 1.5);
+    const res = await api.get("/trip/download", { params: { from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
+    const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `closed-trips-${new Date().toISOString().slice(0,10)}.xlsx` });
+    a.click(); URL.revokeObjectURL(a.href);
+    message.success("Download Completed!", 2);
+  } catch (err) {
+    Modal.error({ title: "Download Failed", content: "An error occurred while downloading the report. Please try again." });
+  } finally {
+    setisDownloadLoading(false);
+    }
+  }
+
 
   return (
     <>
@@ -484,10 +508,14 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
         .vd-drawer .ant-picker { border-radius:8px !important; border-color:#e8eaed !important; font-size:12.5px !important; }
         .vd-drawer .ant-picker:hover,
         .vd-drawer .ant-picker-focused { border-color:#52525b !important; box-shadow:0 0 0 2px rgba(82,82,91,.08) !important; }
+        /* Force drawer below the modal */
+        .vd-drawer .ant-drawer-content-wrapper { z-index: 1000 !important; }
+        .vd-drawer.ant-drawer { z-index: 1000 !important; }
       `}</style>
 
       <Drawer
-        rootClassName="vd-drawer"
+        zIndex={900}
+        // rootClassName="vd-drawer"
         open={open}
         onClose={onClose}
         width={460}
@@ -503,7 +531,7 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
               <CarOutlined style={{ fontSize:16, color:"#52525b" }} />
             </div>
             <div>
-              <div style={{ fontSize:13.5, fontWeight:700, color:"#18181b", lineHeight:1.2 }}>Fleet Vehicles</div>
+              <div style={{ fontSize:13.5, fontWeight:700, color:"#18181b", lineHeight:1.2 }}>PG VEMS Vehicles</div>
               <div style={{ fontSize:10.5, color:"#a1a1aa", fontWeight:400 }}>Browse &amp; export</div>
             </div>
           </div>
@@ -514,22 +542,6 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
           activeKey={tab}
           onChange={key => { setTab(key); setSearch(""); }}
           items={[
-            {
-              key: "available",
-              label: (
-                <span style={{ display:"flex", alignItems:"center", gap:6 }}>
-                  <CheckCircleOutlined style={{ color: tab === "available" ? "#16a34a" : "#a1a1aa" }} />
-                  Available
-                  {availableVehicles.length > 0 && (
-                    <span style={{
-                      fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:20,
-                      background: tab === "available" ? "#f0fdf4" : "#f4f4f5",
-                      color:      tab === "available" ? "#16a34a" : "#a1a1aa",
-                    }}>{availableVehicles.length}</span>
-                  )}
-                </span>
-              ),
-            },
             {
               key: "closed",
               label: (
@@ -546,6 +558,23 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
                 </span>
               ),
             },
+            {
+              key: "available",
+              label: (
+                <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <CheckCircleOutlined style={{ color: tab === "available" ? "#16a34a" : "#a1a1aa" }} />
+                  Available
+                  {availableVehicles.length > 0 && (
+                    <span style={{
+                      fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:20,
+                      background: tab === "available" ? "#f0fdf4" : "#f4f4f5",
+                      color:      tab === "available" ? "#16a34a" : "#a1a1aa",
+                    }}>{availableVehicles.length}</span>
+                  )}
+                </span>
+              ),
+            },
+            
           ]}
         />
 
@@ -605,13 +634,15 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
               <span style={{ fontSize:9.5, color:"#a1a1aa" }}>· more below</span>
             )}
           </div>
-
-          <button
-            onClick={handleDownload}
-            style={{
-              display:"flex", alignItems:"center", gap:5,
-              background: dlFlash ? "#f0fdf4" : "#18181b",
-              border: dlFlash ? "1px solid #bbf7d0" : "1px solid #18181b",
+          {tab === "closed" &&
+            <Button
+              loading={isDownloadLoading}
+              onClick={handleDownload}
+              disabled={isLoading || isDownloadLoading}
+              style={{
+                display:"flex", alignItems:"center", gap:5,
+                background: dlFlash ? "#f0fdf4" : "#306D29",
+              border: dlFlash ? "1px solid #bbf7d0" : "1px solid #306D29",
               borderRadius:7, padding:"5px 12px", cursor:"pointer",
               color: dlFlash ? "#16a34a" : "#fff",
               fontSize:11, fontWeight:600, transition:"all .2s",
@@ -619,7 +650,8 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
           >
             {dlFlash ? <CheckOutlined style={{ fontSize:11 }} /> : <DownloadOutlined style={{ fontSize:11 }} />}
             {dlFlash ? "Saved!" : "Download Excel"}
-          </button>
+          </Button>
+          }
         </div>
 
         {/* ══ Content ══ */}
@@ -662,7 +694,7 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
               {filtered.map((v, i) =>
                 tab === "available"
                   ? <AvailableCard  key={v._id ?? i} v={v} />
-                  : <ClosedTripCard key={v._id ?? i} v={v} />
+                  : <div onClick={() => setSelectedTripId(v._id)}> <ClosedTripCard key={v._id ?? i} v={v} setSelectedTripId={setSelectedTripId} /> </div>
               )}
             </div>
           )}
@@ -680,6 +712,12 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
           )}
         </div>
       </Drawer>
+
+      <VehicleDetailModal
+        selectedVehicleId={selectedTripId}
+        onClose={() => setSelectedTripId(null)}
+      />
+
     </>
   );
 }

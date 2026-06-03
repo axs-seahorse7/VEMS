@@ -759,9 +759,9 @@ export default function VehicleDashboard() {
             />
             <div ref={tableBottomRef} style={{ height: 1,}} />
 
-            {(isFetchingNextPage || isFetchingClosedTripsNextPage) && (
-              <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "#6366f1", fontWeight: 600 }}>
-                Loading more…
+            {(isFetchingNextPage) && (
+              <div style={{ textAlign: "center", padding: "40px 0", fontSize: 12, color: "#6366f1", fontWeight: 600 }}>
+                <Spin/>
               </div>
             )}
           </>      
@@ -771,49 +771,33 @@ export default function VehicleDashboard() {
 
         {
           hasNextPage && (
-
-            <button
-              onClick={() => fetchNextPage()}
-              disabled={isFetchingNextPage}
-            >
-              {
-                isFetchingNextPage
-                  ? <div className=" fixed bottom-10 left-[50%] transform -translate-x-1/2 w-10 h-10 rounded-full  border border-blue-300 backdrop:blur-lg bg-gray-200/70 flex items-center justify-center " > <Spin size="small" /> </div> 
-                  : <Button shape="rounded" type="text" > Load More...</Button>
-              }
-            </button>
+            <div style={{ textAlign: "center", padding: "40px 0", fontSize: 12, color: "#6b7280", fontWeight: 500 }}>
+                <button
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {
+                    isFetchingNextPage
+                      ? <div className=" py-5 w-full backdrop:blur-lg flex items-center justify-center " > 
+                          <Spin size="medium" /> 
+                        </div> 
+                      : <Button shape="rounded" type="primary" > Load More</Button>
+                  }
+                </button>
+            </div>
           )
         }
       </div>
 
-
-      {/* ── Modals & Drawers ── */}
-
-        {selectedTripLoading ? (
-          <Modal
-            onClose={handleCloseLoadingDetailModal}
-            title="Vehicle Details is Loading..."
-            open={selectedTripLoading}
-            footer={null}
-            closable={true}
-            centered
-            bodyStyle={{ padding: 0, minWidth: 300 }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-              <Spin />
-            </div>
-          </Modal>
-        ) : (
           <VehicleDetailModal
-            vehicle={selectedTrip}
             selectedTripLoading={selectedTripLoading}
             onClose={() => setSelectedVehicle(null)}
             onRefresh={manualRefetch}
             userFactoryId={userFactoryId}
             factory={factory}
             userRole={userRole}
+            selectedVehicleId={selectedVehicleId}
           />
-        )}
 
       <CreateVehicleModal open={entryOpen} onClose={() => setEntryOpen(false)} onRefresh={manualRefetch} />
       <VehicleStatusDrawer open={vehicleDrawer} onClose={() => setVehicleDrawer(false)} />

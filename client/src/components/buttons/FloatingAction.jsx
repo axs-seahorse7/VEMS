@@ -193,7 +193,7 @@ export default function FloatingActions({ viewMode, setViewMode, setIsFilterDraw
           position: fixed;
           bottom: 32px;
           right: 32px;
-          z-index: 999;
+          z-index: 800;
           width: 48px;
           height: 48px;
           border-radius: 50%;
@@ -250,20 +250,22 @@ export default function FloatingActions({ viewMode, setViewMode, setIsFilterDraw
         <div className={`fab-item${open ? " visible" : ""}`}>
           <Button
             shape="round"
+            type="primary"
             onClick={() => { setIsFilterDrawerOpen(true); setOpen(false); }}
             style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.12)" }}
           >
-            Available vehicles
+            Vehicles
           </Button>
         </div>
 
         <div className={`fab-item${open ? " visible" : ""}`}>
           <Button
             shape="round"
+            type="primary"
             onClick={() => { setIsVehicleDrawerOpen(true); setOpen(false); }}
             style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.12)" }}
           >
-            Track vehicles
+            Track Vehicles
           </Button>
         </div>
 

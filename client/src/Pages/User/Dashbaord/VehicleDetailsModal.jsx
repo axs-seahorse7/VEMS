@@ -15,6 +15,7 @@ import {
   Tabs,
 } from "antd";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
+import { useQuery } from "@tanstack/react-query";
 
 const { Option } = Select;
 
@@ -583,7 +584,6 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
       setTripInternal(DEFAULT_TRIP_INTERNAL);
       setSelectedTrip(null);
     } catch (err) {
-      console.error(err);
       message.error("Failed to complete load and create new trip");
     }
   };
@@ -623,7 +623,6 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
           setSelectedTrip(null);
       }
     } catch (err) {
-      console.error(err);
       message.error("Failed to complete loading");
     }
   };
@@ -1202,21 +1201,38 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
 }
 
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
-export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClose, onRefresh,  userRole, }) {
-  if (!vehicle) return null;
+export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefresh  }) {
+  if(!selectedVehicleId) return null
   const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
+  const userRole = user.workLocation
   const userFactoryId = user?.factory._id;
-  const location    = vehicle.location;
-  const trip        = vehicle;
-  const vehicleData = vehicle.vehicle;
-  const pucAlert    = vehicleData.PUCExpiry;
-  const phase       = vehicle.phase;
-  const stage       = getWorkflowStage(vehicle);
-  const tripHistory = Array.isArray(vehicle.tripHistory) ? vehicle.tripHistory : [];
   const [factories, setFactories] = useState([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
 
-  console.log("vehicle render", vehicle)
+  const {data, isLoading: selectedTripLoading } = useQuery({
+    queryKey: ["vehicle-trip", selectedVehicleId],
+    queryFn: async () => {
+      if (!selectedVehicleId) return null;
+      const res = await api.get(`/vehicle/trips/${selectedVehicleId}`,);
+      return res.data;
+    },
+
+    enabled: !!selectedVehicleId,
+    refetchInterval: selectedVehicleId? 10000: false,
+    
+  });
+
+  const trip = data || null;
+
+  const location    = trip?.location;
+  const vehicleData = trip?.vehicle;
+  const pucAlert    = vehicleData?.PUCExpiry;
+  const phase       = trip?.phase;
+  const stage       = getWorkflowStage(trip);
+  const tripHistory = Array.isArray(trip?.tripHistory) ? trip.tripHistory : [];
+  const vehicle = trip?.vehicle || {};
+  const driver = trip?.driver || {};
+
   
   const canEdit = (() => {
     if (!trip?.createdAt) return false;
@@ -1245,15 +1261,7 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
     </div>
   );
 
-  if(selectedTripLoading) {
-    return (
-      <Modal open={!!vehicle} onClose={onClose} title="Loading trip details..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
-          <Spin size="large" />
-        </div>
-      </Modal>
-    );
-  }
+
 
   useEffect(() => {
     try {
@@ -1263,13 +1271,27 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
       }
       fetchFactories();
     } catch (error) {
-      console.error("Error fetching factories:", error);
+      message.error("cannot refresh");
     }
 
   }, []);
 
+
+  
+
+    if(selectedTripLoading) {
+    return (
+      <Modal open={!!vehicle} onClose={onClose} title="Your trip is loading..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
+          <Spin size="large" />
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal open={!!vehicle} onClose={onClose} title={`${vehicleData?.vehicleNumber} — Vehicle Details`} width={640} style={{ maxHeight: "90vh", scrollY: "auto", scrollbarWidth: "none", position: "relative", padding: 0 }}>
+    
+    <Modal open={!!trip} onClose={onClose} title={`${vehicleData?.vehicleNumber} — Vehicle Details`} width={640} style={{ maxHeight: "90vh", scrollY: "auto", scrollbarWidth: "none", position: "relative", padding: 0, }}>
       {/* Status & Phase row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <TypeBadge type={vehicleData?.typeOfVehicle} />
@@ -1291,10 +1313,10 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
       {/* Info grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,  }}>
         <Section title="Driver">
-          <Row label="Name"             value={vehicle?.driver?.driverName} />
-          <Row label="Contact"          value={vehicle?.driver?.driverContact} />
-          <Row label="ID Type"          value={vehicle?.driver?.driverIdType} />
-          <Row label="ID Number"        value={vehicle?.driver?.driverIdNumber} />
+          <Row label="Name"             value={driver?.driverName} />
+          <Row label="Contact"          value={driver?.driverContact} />
+          <Row label="ID Type"          value={driver?.driverIdType} />
+          <Row label="ID Number"        value={driver?.driverIdNumber} />
         </Section>
         <Section title="Vehicle">
           <Row label="Number"           value={vehicleData?.vehicleNumber} accent />
@@ -1384,7 +1406,7 @@ export default function VehicleDetailModal({ vehicle, selectedTripLoading, onClo
               ✏️ Edit Trip
             </button>
           )}
-        <WorkflowActions vehicle={vehicle} factory={factories} onAction={() => { onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
+        <WorkflowActions vehicle={trip} factory={factories} onAction={() => { onClose(); }} userFactoryId={userFactoryId} userRole={userRole} />
         <CreateVehicleModal
             open={editModalOpen}
             onClose={() => setEditModalOpen(false)}
