@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import ExcelJS from "exceljs";
+
 
 // models
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
@@ -3362,7 +3364,6 @@ export const getVehicleLiveStatus = asyncHandler(
 
 });
 
-import ExcelJS from "exceljs";
 
 
 const fmtDT = (d) =>

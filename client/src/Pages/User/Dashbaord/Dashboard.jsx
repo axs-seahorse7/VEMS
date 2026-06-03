@@ -703,7 +703,7 @@ export default function VehicleDashboard() {
         {viewMode === "grid" ? (
           isLoading ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0" }}>
-              <div style={{ color: "#6366f1", fontSize: 14, fontWeight: 600 }}>Loading vehicles…</div>
+              <div style={{ color: "#6366f1", fontSize: 14, fontWeight: 600 }}><Spin size="medium" /></div>
             </div>
           ) : filteredVehicles.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 20px", color: "#9ca3af", background: "#fff", borderRadius: 12, border: "1.5px dashed #e5e7eb", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
