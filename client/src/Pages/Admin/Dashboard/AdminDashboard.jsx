@@ -3,17 +3,25 @@ import api from "../../../../services/API/Api/api"; // adjust path
 import {Divider, Select   } from "antd";
 import { debounce } from "lodash";
 import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
-import {
-Chart as ChartJS,
-  CategoryScale, LinearScale,
-  PointElement, LineElement,
-  Tooltip, Filler, Legend, ArcElement, BarElement, Chart, 
-} from "chart.js";
 import { Line, Doughnut  } from "react-chartjs-2";
 import { useQuery } from "@tanstack/react-query";
 import TripHeatmap from "../components/Trends/HeatMaps.jsx";
+// remove the duplicate — use ChartJS everywhere
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale,
+  PointElement, LineElement,
+  Tooltip, Filler, Legend,
+  ArcElement, BarElement,
+} from "chart.js";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, BarElement, Tooltip, Filler, Legend);
+ChartJS.register(
+  CategoryScale, LinearScale,
+  PointElement, LineElement,
+  ArcElement, BarElement,
+  Tooltip, Filler, Legend
+);
+
 
 const TRANSPORTERS = [
   { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" },
@@ -140,7 +148,7 @@ function Donut({ segments, size = 120, stroke = 14, label, sublabel }) {
     <svg width={size} height={size} style={{ display: "block" }}>
       {/* track */}
       <circle cx={cx} cy={cx} r={r} fill="none" stroke={C.slateLight} strokeWidth={stroke} />
-      {segments.map((seg, i) => {
+      {segments?.map((seg, i) => {
         const dash = (seg.pct / 100) * circ;
         const gap  = circ - dash;
         const el = (
@@ -195,17 +203,17 @@ function AreaSparkline({ data, height = 70, color = C.teal }) {
 
   const pts = (() => {
     if (!data || data.length === 0 || width === 0) return [];
-    const vals = data.map(d => d.count);
+    const vals = data?.map(d => d.count);
     const max  = Math.max(...vals, 1);
-    return data.map((d, i) => {
+    return data?.map((d, i) => {
       const x = data.length === 1 ? width / 2 : (i / (data.length - 1)) * width;
       const y = height - (d.count / max) * (height - 10) - 5;
       return { x, y, ...d };
     });
   })();
 
-  const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
-  const areaPath = pts.length ? `${linePath} L${width},${height} L0,${height} Z` : "";
+  const linePath = pts?.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+  const areaPath = pts?.length ? `${linePath} L${width},${height} L0,${height} Z` : "";
   const gradId   = `sparkGrad-${color.replace("#", "")}`;
 
   // Find nearest point by mouse X
@@ -251,7 +259,7 @@ function AreaSparkline({ data, height = 70, color = C.teal }) {
             )}
 
             {/* regular dots */}
-            {pts.map((p, i) =>
+            {pts?.map((p, i) =>
               p.count > 0 ? (
                 <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} />
               ) : null
@@ -340,7 +348,7 @@ function TooltipBubble({ day, svgX, svgY, containerWidth, color }) {
         <div style={{ fontSize: 11, color: C.muted }}>No trips</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {factories.slice(0, 5).map((f, i) => {
+          {factories.slice(0, 5)?.map((f, i) => {
             const barPct = day.count > 0 ? (f.count / day.count) * 100 : 0;
             return (
               <div key={i}>
@@ -406,10 +414,10 @@ function FactoryBarChart({ data, color }) {
   const chartW = Math.max(0, width - PADDING_LEFT - PADDING_RIGHT);
   const chartH = HEIGHT - PADDING_TOP - PADDING_BOT;
 
-  const maxVal  = Math.max(...data.map(d => d.count), 1);
+  const maxVal  = Math.max(...data?.map(d => d.count), 1);
   const yTicks  = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * maxVal));
 
-  const groupW  = chartW / data.length;
+  const groupW  = chartW / data?.length;
   const barW    = Math.max(6, Math.min(40, groupW * 0.55));
 
   const barX = (i) => PADDING_LEFT + i * groupW + groupW / 2 - barW / 2;
@@ -455,7 +463,7 @@ function FactoryBarChart({ data, color }) {
           })}
 
           {/* Bars */}
-          {data.map((item, i) => {
+          {data?.map((item, i) => {
             const bx        = barX(i);
             const bh        = barH(item.count);
             const by        = barY(item.count);
@@ -628,7 +636,7 @@ function FlowChart({ title, modes = [], defaultMode, onModeChange, dropDown }) {
               transition:       "border-color 0.2s, color 0.2s",
             }}
           >
-            {modes.map(m => (
+            { Array.isArray(modes) && modes.map(m => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
@@ -650,7 +658,7 @@ function FlowChart({ title, modes = [], defaultMode, onModeChange, dropDown }) {
         <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
           {current?.countLabel} trips
           {" · "}
-          {chartData.length} factor{chartData.length !== 1 ? "ies" : "y"}
+          {chartData?.length} factor{chartData?.length !== 1 ? "ies" : "y"}
         </span>
       </div>
 
@@ -936,7 +944,7 @@ function DriverAnalyticsCard({ driverAnalytics }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((driver, idx) => {
+              {filtered?.map((driver, idx) => {
                 const isExp  = expanded === String(driver.driverId);
                 const rc     = rateColor(driver.completionRate);
                 const maxVal = Math.max(driver.completed, driver.cancelled, driver.active, 1);
@@ -1122,10 +1130,10 @@ function HBar({ label, value, max = 100, color = C.teal, suffix = "" }) {
 // Vertical bar (driver behavior — mimics screenshot bar chart)
 // ─────────────────────────────────────────────────────────────────────────────
 function VBarGroup({ bars }) {
-  const max = Math.max(...bars.map(b => b.value), 1);
+  const max = Math.max(...bars?.map(b => b.value), 1);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90, marginTop: 8 }}>
-      {bars.map((b, i) => {
+      {bars?.map((b, i) => {
         const pct = (b.value / max) * 100;
         return (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: 5 }}>
@@ -1151,12 +1159,12 @@ function VBarGroup({ bars }) {
 
 function TripExecutionDonut({ segments }) {
   const data = {
-    labels: segments.map((s) => s.label),
+    labels: segments?.map((s) => s.label),
     datasets: [
       {
-        data: segments.map((s) => s.value),
-        backgroundColor: segments.map((s) => s.color),
-        hoverBackgroundColor: segments.map((s) => s.colorLight),
+        data: segments?.map((s) => s.value),
+        backgroundColor: segments?.map((s) => s.color),
+        hoverBackgroundColor: segments?.map((s) => s.colorLight),
         borderColor: "#ffffff",
         borderWidth: 3,
         hoverOffset: 6,
@@ -1178,7 +1186,7 @@ function TripExecutionDonut({ segments }) {
           color: "#6b7280",
           padding: 14,
           generateLabels: (chart) =>
-            chart.data.labels.map((label, i) => ({
+            chart.data.labels?.map((label, i) => ({
               text: `${label}  ${chart.data.datasets[0].data[i]}%`,
               fillStyle: chart.data.datasets[0].backgroundColor[i],
               strokeStyle: "#fff",
@@ -1289,11 +1297,11 @@ function BarChart({ labels, datasets, title, subtitle }) {
   useEffect(() => {
     if (chartRef.current) chartRef.current.destroy();
  
-    chartRef.current = new Chart(canvasRef.current.getContext("2d"), {
+    chartRef.current = new ChartJS(canvasRef.current.getContext("2d"), {
       type: "bar",
       data: {
-        labels,
-        datasets: datasets.map((ds) => ({
+        labels: labels?.slice() || [],
+        datasets: datasets?.map((ds) => ({
           ...ds,
           backgroundColor: ds.backgroundColor || "transparent", 
           borderColor: "transparent",
@@ -1732,7 +1740,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
   const [period,    setPeriod]    = useState("week");
 
   const [vehicleType, setVehicleType] = useState("all"); // "all" | "internal" | "external"
-  const [selectTransporter, setSelectTransporter] = useState(TRANSPORTERS[0]);
+  const [selectTransporter, setSelectTransporter] = useState("");
   const [trendsByTransporter, setTrendsByTransporter] = useState(null);
 
   const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
@@ -1755,7 +1763,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
   
  useEffect(() => {
-  if (!selectTransporter || selectTransporter === "") return; // ← skip empty
+  if (!selectTransporter || selectTransporter === "") return; 
   const fetchTrends = async () => {
     try {
       const response = await api.get("/analytics/transporter-customer-trend", {
@@ -1985,10 +1993,10 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
                 size={110} stroke={14}
                 label={`${sameDayColouser?.total}`}
                 sublabel="Total Trips"
-                segments={sameDayColouser?.segments.map(s => ({ pct: s.pct, color: s.color }))}
+                segments={sameDayColouser?.segments?.map(s => ({ pct: s.pct, color: s.color }))}
               />
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {sameDayColouser?.segments.map(seg => (
+                {sameDayColouser?.segments?.map(seg => (
                   <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 3, background: seg.color, flexShrink: 0 }} />
                     <div>
@@ -2278,10 +2286,10 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
               color:       "#39B1D1",
               countLabel:  "total",
               footerLabel: `${trendsByTransporter.totalTrips} trips · ${trendsByTransporter.customers?.length} customers`,
-              data: trendsByTransporter.customers?.map(c => ({
+              data: Array.isArray(trendsByTransporter.customers) ? trendsByTransporter.customers.map(c => ({
                 factoryName: c.customerName,
                 count:       c.totalTrips,   // ← changed from tripCount to totalTrips
-              })),
+              })) : [],
             }]}
           />
         ):(
@@ -2295,9 +2303,9 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           <div style={{ flex: "1 1 600px", minWidth: 0 }}>
             <TripHeatmap
               vehicles={top25Vehicles}
-              dates={top25Vehicles[0].dailyTrips.map(d => ({ date: d.date }))}
+              dates={top25Vehicles[0]?.dailyTrips?.map(d => ({ date: d.date }))}
               matrix={top25Vehicles.map(v =>
-                top25Vehicles[0].dailyTrips.map(dateRef =>
+                top25Vehicles[0]?.dailyTrips?.map(dateRef =>
                   v.dailyTrips.find(d => d.date === dateRef.date)?.tripCount ?? 0
                 )
               )}
