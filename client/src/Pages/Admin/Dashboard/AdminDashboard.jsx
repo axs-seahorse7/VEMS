@@ -7,20 +7,7 @@ import { Line, Doughnut  } from "react-chartjs-2";
 import { useQuery } from "@tanstack/react-query";
 import TripHeatmap from "../components/Trends/HeatMaps.jsx";
 // remove the duplicate — use ChartJS everywhere
-import {
-  Chart as ChartJS,
-  CategoryScale, LinearScale,
-  PointElement, LineElement,
-  Tooltip, Filler, Legend,
-  ArcElement, BarElement,
-} from "chart.js";
-
-ChartJS.register(
-  CategoryScale, LinearScale,
-  PointElement, LineElement,
-  ArcElement, BarElement,
-  Tooltip, Filler, Legend
-);
+import Chart from "chart.js/auto";
 
 
 const TRANSPORTERS = [
@@ -1297,7 +1284,7 @@ function BarChart({ labels, datasets, title, subtitle }) {
   useEffect(() => {
     if (chartRef.current) chartRef.current.destroy();
  
-    chartRef.current = new ChartJS(canvasRef.current.getContext("2d"), {
+    chartRef.current = new Chart(canvasRef.current.getContext("2d"), {
       type: "bar",
       data: {
         labels: labels?.slice() || [],
