@@ -7,8 +7,11 @@ import { emailTemplates } from "../Templates/Emails/emailsTemplates.js";
 
 export const createUser = async (req, res) => {
   const {  email, password, } = req.body;
+  console.log("Creating user:", req.body);
   try {
-    const existingUser = await User.findOne({ email });
+    const emailInLower = email.toLowerCase();
+
+    const existingUser = await User.findOne({ email: emailInLower });
     if (existingUser) {
       console.warn(`Attempt to register with existing email: ${email}`);
       return res.status(400).json({ message: "User already exists" });
@@ -30,9 +33,7 @@ export const createUser = async (req, res) => {
   }
 };
 
-// ─── In-memory OTP store (swap for Redis in production) ───
 const otpStore = new Map();
-// Structure: { [email]: { otp, expiresAt, userId } }
 
 // ─────────────────────────────────────────
 // STEP 1: Validate credentials → send OTP
@@ -46,7 +47,8 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and password are required" });
     }
     // Check user
-    const user = await User.findOne({ email }).populate("factory", "name location");
+    const emailInLower = email.toLowerCase();
+    const user = await User.findOne({ email: emailInLower }).populate("factory", "name location");
     if (!user) {
       return res.status(401).json({ success: false, message: "User not registered" });
     }
@@ -70,11 +72,11 @@ export const loginUser = async (req, res) => {
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
     // Store OTP against email
-    otpStore.set(email, { otp, expiresAt, userId: user._id });
+    otpStore.set(emailInLower, { otp, expiresAt, userId: user._id });
 
     // Send OTP email
     await sendMail({
-      to: email,
+      to: emailInLower,
       type: "OTP",
       payload: { name: user.name, otp },
     });
@@ -88,6 +90,7 @@ export const loginUser = async (req, res) => {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
+
 };
 
 // ─────────────────────────────────────────
@@ -102,7 +105,8 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and OTP are required" });
     }
 
-    const record = otpStore.get(email);
+    const emailInLower = email.toLowerCase();
+    const record = otpStore.get(emailInLower);
 
     // Check existence
     if (!record) {
@@ -111,7 +115,7 @@ export const verifyOtp = async (req, res) => {
 
     // Check expiry
     if (Date.now() > record.expiresAt) {
-      otpStore.delete(email);
+      otpStore.delete(emailInLower);
       return res.status(400).json({ success: false, message: "OTP has expired. Please login again." });
     }
 
@@ -121,7 +125,7 @@ export const verifyOtp = async (req, res) => {
     }
 
     // OTP valid — clean up
-    otpStore.delete(email);
+    otpStore.delete(emailInLower);
 
     // Fetch full user
     const user = await User.findById(record.userId).populate("factory", "name location");
@@ -165,7 +169,8 @@ export const resendOtp = async (req, res) => {
     }
 
     // User must have attempted login already
-    const existing = otpStore.get(email);
+    const emailInLower = email.toLowerCase();
+    const existing = otpStore.get(emailInLower);
     if (!existing) {
       console.warn(`Resend OTP requested for email with no existing OTP: ${email}`);
       return res.status(400).json({ success: false, message: "Session expired. Please login again." });
@@ -177,10 +182,10 @@ export const resendOtp = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000;
 
-    otpStore.set(email, { otp, expiresAt, userId: existing.userId });
+    otpStore.set(emailInLower, { otp, expiresAt, userId: existing.userId });
 
     await sendMail({
-      to: email,
+      to: emailInLower,
       type: "OTP",
       payload: { name: user.name, otp },
     });

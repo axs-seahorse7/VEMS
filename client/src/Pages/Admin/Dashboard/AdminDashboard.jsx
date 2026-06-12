@@ -1,21 +1,98 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import api from "../../../../services/API/Api/api"; // adjust path
-import {Divider} from "antd";
+import {Divider, Select   } from "antd";
+import { debounce } from "lodash";
 import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
 import {
 Chart as ChartJS,
   CategoryScale, LinearScale,
   PointElement, LineElement,
-  Tooltip, Filler, Legend, ArcElement
+  Tooltip, Filler, Legend, ArcElement, BarElement, Chart, 
 } from "chart.js";
 import { Line, Doughnut  } from "react-chartjs-2";
 import { useQuery } from "@tanstack/react-query";
+import TripHeatmap from "../components/Trends/HeatMaps.jsx";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Filler, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, BarElement, Tooltip, Filler, Legend);
 
+const TRANSPORTERS = [
+  { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" },
+  { v: "NGM : Next Generation Mfg", l: "NGM : Next Generation Mfg" },
+  { v: "PGTI-2/Sanjeevani", l: "PGTI-2/Sanjeevani" },
+  { v: "PG4: PG Electroplast", l: "PG4: PG Electroplast" },
+  { v: "TRIUMPH Warehouse", l: "TRIUMPH Warehouse" },
+  { v: "VIHAAN Warehouse", l: "VIHAAN Warehouse" },
+  { v: "D111 Warehouse", l: "D111 Warehouse" },
+  { v: "Pg Bhiwadi", l: "Pg Bhiwadi" },
+  { v: "STYROTECH INDUSTRIES", l: "STYROTECH INDUSTRIES" },
+  { v: "KSH DISTRIPARKS PVT.LTD", l: "KSH DISTRIPARKS PVT.LTD" },
+  { v: "MD GRAPHICS PRIVATE LIMITED", l: "MD GRAPHICS PRIVATE LIMITED" },
+  { v: "Carrier Midea", l: "Carrier Midea" },
+  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
+  { v: "SAI AUTO COMPONENTS PVT.LTD", l: "SAI AUTO COMPONENTS PVT.LTD" },
+  { v: "Hakimuddin", l: "Hakimuddin" },
+  { v: "Prijai cooltech", l: "Prijai cooltech" },
+  { v: "V G ENGINEERING ENTERPRISES", l: "V G ENGINEERING ENTERPRISES" },
+  { v: "SUMITI PACKING", l: "SUMITI PACKING" },
+  { v: "YEEMAK PVT LTD", l: "YEEMAK PVT LTD" },
+  { v: "ALIGN COMPONENTS PVT.LTD", l: "ALIGN COMPONENTS PVT.LTD" },
+  { v: "VAIBHAV AMIT IND HP GAS AGENCY.", l: "VAIBHAV AMIT IND HP GAS AGENCY." },
+  { v: "SP INDUSTRIES", l: "SP INDUSTRIES" },
+  { v: "MD Graphics", l: "MD Graphics" },
+  { v: "YASH ENGINEERING", l: "YASH ENGINEERING" },
+  { v: "ATUL PLAST", l: "ATUL PLAST" },
+  { v: "Unipack Packaging Pvt Ltd", l: "Unipack Packaging Pvt Ltd" },
+  { v: "Productive technologies", l: "Productive technologies" },
+  { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
+  { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" },
+  { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
+  { v: "MADAN ELECTRO", l: "MADAN ELECTRO" },
+  { v: "KV BOXCORP", l: "KV BOXCORP" },
+  { v: "Suyog eng", l: "Suyog eng" },
+  { v: "AVADHOOT PAPER PRO", l: "AVADHOOT PAPER PRO" },
+  { v: "SAMARTH", l: "SAMARTH" },
+  { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
+  { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" },
+  { v: "Macdermid alpha", l: "Macdermid alpha" },
+  { v: "SHRI JI FOAM", l: "SHRI JI FOAM" },
+  { v: "Metacool", l: "Metacool" },
+  { v: "OM SANTOSHI", l: "OM SANTOSHI" },
+  { v: "M/S. S.B", l: "M/S. S.B" },
+  { v: "CRAFTED SOLUTION", l: "CRAFTED SOLUTION" },
+  { v: "SKM GALVA", l: "SKM GALVA" },
+  { v: "Axalta coating", l: "Axalta coating" },
+  { v: "M/s S.B. PRECISON SPRINGS - 2025-26", l: "M/s S.B. PRECISON SPRINGS - 2025-26" },
+  { v: "METCAP TUB PVT. LTD.", l: "METCAP TUB PVT. LTD." },
+  { v: "Royal polymer", l: "Royal polymer" },
+  { v: "ANUSHKA INDUS", l: "ANUSHKA INDUS" },
+  { v: "OIENTECH INDIA PVT.LTD.", l: "OIENTECH INDIA PVT.LTD." },
+  { v: "Nahata plastikos llp", l: "Nahata plastikos llp" },
+  { v: "KINGFA", l: "KINGFA" },
+  { v: "Nidec INDIA", l: "Nidec INDIA" },
+  { v: "Steel Suppliers Ltd", l: "Steel Suppliers Ltd" },
+  { v: "Plastic Materials Co", l: "Plastic Materials Co" },
+  { v: "Empire Fastner", l: "Empire Fastner" },
+  { v: "Asian Paint", l: "Asian Paint" },
+  { v: "SHREE ENTERPRISES", l: "SHREE ENTERPRISES" },
+  { v: "MACHHAR PACKAGING", l: "MACHHAR PACKAGING" },
+  { v: "PRAVIN ENGINEERING WORKS", l: "PRAVIN ENGINEERING WORKS" },
+  { v: "ATUL PLAST-CR", l: "ATUL PLAST-CR" },
+  { v: "SPF LIMITED", l: "SPF LIMITED" },
+  { v: "SUPREME PETROCHEM LTD", l: "SUPREME PETROCHEM LTD" },
+  { v: "FRIENDS AND COMPANY UNIT-2", l: "FRIENDS AND COMPANY UNIT-2" },
+  { v: "VINDHYAWASNI INDUSTRIES", l: "VINDHYAWASNI INDUSTRIES" },
+  { v: "TUSHAR ENG.", l: "TUSHAR ENG." },
+  { v: "SHARDA INDUSTRIES", l: "SHARDA INDUSTRIES" },
+  { v: "BHARGAVI ENTERPRISES", l: "BHARGAVI ENTERPRISES" },
+  { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" },
+  { v: "MAULI POLYMER", l: "MAULI POLYMER" },
+  { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
+  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" },
+];
 
 const PERIODS = [
   { key: "today",   label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
   { key: "week",    label: "Week" },
   { key: "month",   label: "Month" },
   { key: "quarter", label: "Quarter" },
@@ -26,6 +103,9 @@ const VEHICLE_ICONS = {
   waterTanker: "🚒", tractor: "🚜", car: "🚗", bus: "🚌",
   ambulance: "🚑", van: "🚐", trailer: "🚋",
 };
+
+// const TRANSPORTERS = ["SHIVTARA", "BHATI GOLDEN", "BHATI", "BG", "OM SHIVA"];
+
 
 // ── colour palette (teal-based, matches screenshot) ───────────────────────────
 const C = {
@@ -300,6 +380,7 @@ function FactoryBarChart({ data, color }) {
   const [width,   setWidth]   = useState(0);
   const [tooltip, setTooltip] = useState(null);
 
+
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
@@ -403,7 +484,7 @@ function FactoryBarChart({ data, color }) {
                   style={{ transition: "opacity 0.15s" }}
                 />
                 {/* count label above bar */}
-                {bh > 16 && (
+                {bh > 0 && (
                   <text
                     x={bx + barW / 2} y={by - 5}
                     textAnchor="middle"
@@ -483,54 +564,73 @@ function FactoryBarChart({ data, color }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VehicleUsageCard
-// ─────────────────────────────────────────────────────────────────────────────
-function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
-  const [mode, setMode] = useState("closed"); // "closed" | "cancelled"
-  const chartData  = mode === "closed"
-    ? (vehicleUsage.factoryChart?.closed    ?? [])
-    : mode === "active"
-    ? (vehicleUsage.factoryChart?.active    ?? [])
-    : (vehicleUsage.factoryChart?.cancelled ?? []);
 
-  const chartColor = mode === "closed" ? C.teal : mode === "active" ? C.blue : "#EA5252";
-  const totalShown = chartData?.reduce((s, d) => s + d.count, 0);
+function FlowChart({ title, modes = [], defaultMode, onModeChange, dropDown }) {
+  const [mode, setMode] = useState(defaultMode ?? modes[0]?.value ?? "");
+
+  const current = modes.find(m => m.value === mode) ?? modes[0];
+  const chartData  = current?.data  ?? [];
+  const chartColor = current?.color ?? C.blue;
+  const totalShown = chartData.reduce((s, d) => s + d.count, 0);
+
+  const handleModeChange = (newMode) => {
+    setMode(newMode);
+    if (onModeChange) onModeChange(newMode);
+  };
+
+  useEffect(() => {
+    setMode(defaultMode ?? modes[0]?.value ?? "");
+  }, [defaultMode]);  
+
+  if(modes.length > 0 && chartData.length === 0) {
+    return (
+      <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <CardLabel>{title}</CardLabel>
+          </div>
+        </div>
+        <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: C.muted }}>
+          No data for this period
+        </div>
+      </Card>
+    );
+  }
 
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 10,}}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
         <div>
-          <CardLabel>Vehicle — Factory Flow</CardLabel>
-          
+          <CardLabel>{title}</CardLabel>
         </div>
 
         {/* Dropdown */}
-        <div style={{ position: "relative" }}>
-          <select
-            value={mode}
-            onChange={e => setMode(e.target.value)}
-            style={{
-              appearance:        "none",
-              WebkitAppearance:  "none",
-              background:        "#fff",
-              border:            `1.5px solid ${chartColor}`,
-              borderRadius:      8,
-              padding:           "6px 28px 6px 10px",
-              fontSize:          12,
-              fontWeight:        700,
-              color:             chartColor,
-              cursor:            "pointer",
-              outline:           "none",
-              fontFamily:        "'DM Sans', sans-serif",
-              transition:        "border-color 0.2s, color 0.2s",
+       { dropDown && (
+          <div style={{ position: "relative" }}>
+            <select
+              value={mode}
+              onChange={e => handleModeChange(e.target.value)}
+              style={{
+              appearance:       "none",
+              WebkitAppearance: "none",
+              background:       "#fff",
+              border:           `1.5px solid ${chartColor}`,
+              borderRadius:     8,
+              padding:          "6px 28px 6px 10px",
+              fontSize:         12,
+              fontWeight:       700,
+              color:            chartColor,
+              cursor:           "pointer",
+              outline:          "none",
+              fontFamily:       "'DM Sans', sans-serif",
+              transition:       "border-color 0.2s, color 0.2s",
             }}
           >
-            <option value="closed">✓  Completed Trips</option>
-            <option value="active">✓  Active Trips</option>
-            <option value="cancelled">✕  Cancelled Trips</option>
+            {modes.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
           </select>
           <span style={{
             position:      "absolute",
@@ -541,13 +641,14 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
             color:         chartColor,
           }}>▾</span>
         </div>
+        )}
       </div>
 
       {/* Big number */}
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <BigNumber style={{ color: chartColor }}>{totalShown}</BigNumber>
         <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
-          {mode === "closed" ? "completed" : mode === "active" ? "active" : "cancelled"} trips
+          {current?.countLabel} trips
           {" · "}
           {chartData.length} factor{chartData.length !== 1 ? "ies" : "y"}
         </span>
@@ -555,14 +656,12 @@ function VehicleUsageCard({ vehicle, weeklyStats, vehicleUsage }) {
 
       {/* Bar chart */}
       <FactoryBarChart data={chartData} color={chartColor} />
-        <div style={{ fontSize: 11, color: C.muted, marginTop: -16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}> 
-          {mode === "closed"
-            ? "Distribution of completed trips across factories"
-            : mode === "active"
-            ? "Distribution of active trips across factories"
-            : "Distribution of cancelled trips across factories"}
-        </div>
-      
+
+      {/* Footer */}
+      <div style={{ fontSize: 11, color: C.muted, marginTop: -16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+        {current?.footerLabel}
+      </div>
+
     </Card>
   );
 }
@@ -708,8 +807,6 @@ function BottleneckBar({ label, pct, count, total, color, description }) {
     </div>
   );
 }
-
-
 
 
 function DriverAnalyticsCard({ driverAnalytics }) {
@@ -1147,6 +1244,132 @@ function TripExecutionDonut({ segments }) {
   );
 }
 
+const gradientPlugin = {
+  id: "gradientFill",
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    chart.data.datasets.forEach((dataset) => {
+      // read the base color stored on the dataset
+      const baseColor = dataset._baseColor;
+      if (!baseColor) return; // skip if no base color set
+
+      const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+      gradient.addColorStop(0, baseColor);
+      gradient.addColorStop(1, baseColor + "88"); // 53% opacity at bottom
+      dataset.backgroundColor = gradient;
+    });
+  },
+};
+ 
+const topLabelsPlugin = {
+  id: "topLabels",
+  afterDatasetsDraw(chart) {
+    const { ctx, data } = chart;
+    data.datasets.forEach((dataset, i) => {
+      chart.getDatasetMeta(i).data.forEach((bar, index) => {
+        const value = dataset.data[index];
+        if (value == null) return;
+        ctx.save();
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "600 11px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(value, bar.x, bar.y - 4);
+        ctx.restore();
+      });
+    });
+  },
+};
+ 
+function BarChart({ labels, datasets, title, subtitle }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+ 
+  useEffect(() => {
+    if (chartRef.current) chartRef.current.destroy();
+ 
+    chartRef.current = new Chart(canvasRef.current.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: datasets.map((ds) => ({
+          ...ds,
+          backgroundColor: ds.backgroundColor || "transparent", 
+          borderColor: "transparent",
+          borderWidth: 0,
+          borderRadius: 4,
+          borderSkipped: false,
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            backgroundColor: "#fff",
+            borderColor: "#e2e8f0",
+            borderWidth: 1,
+            titleColor: "#0f172a",
+            bodyColor: "#64748b",
+            padding: 10,
+            cornerRadius: 6,
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 11, family: "Inter, sans-serif" },
+              maxRotation: 0,
+            },
+            grid: { display: false },
+            border: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 11, family: "Inter, sans-serif" },
+              padding: 8,
+            },
+            grid: { color: "#f1f5f9" },
+            border: { display: false },
+          },
+        },
+        animation: { duration: 500, easing: "easeOutQuart" },
+        barPercentage: 0.5,
+        categoryPercentage: 0.6,
+      },
+      plugins: [gradientPlugin, topLabelsPlugin],
+    });
+ 
+    return () => chartRef.current?.destroy();
+  }, [labels, datasets]);
+ 
+  return (
+    <div
+      style={{
+        background: "#ffffff",
+        border: "1px solid #e2e8f0",
+        borderRadius: 12,
+        padding: "20px 24px 16px",
+        fontFamily: "Inter, sans-serif",
+      }}
+    >
+      {(title || subtitle) && (
+        <div style={{ marginBottom: 16 }}>
+          {title && <div style={{ color: "#0f172a", fontWeight: 700, fontSize: 13 }}>{title}</div>}
+          {subtitle && <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 3 }}>{subtitle}</div>}
+        </div>
+      )}
+      <div style={{ height: 200 }}>
+        <canvas ref={canvasRef} />
+      </div>
+    </div>
+  );
+}
 
 
 // ── Main card ─────────────────────────────────────────────────────────────────
@@ -1500,16 +1723,20 @@ function BigNumber({ children, style = {} }) {
   );
 }
 
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }) {
   const [period,    setPeriod]    = useState("week");
+
   const [vehicleType, setVehicleType] = useState("all"); // "all" | "internal" | "external"
+  const [selectTransporter, setSelectTransporter] = useState(TRANSPORTERS[0]);
+  const [trendsByTransporter, setTrendsByTransporter] = useState(null);
 
   const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
   const fetchDashboard = ({ vehicleId, period }) => api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period } }).then(r => r.data);
-
 
   const { data: resolvedVehicleId, isError: isTopError } = useQuery({
     queryKey: ["topVehicle"],
@@ -1517,6 +1744,31 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
     enabled: !propVehicleId,           
     staleTime: 5 * 60 * 1000,       
   });
+
+  const handleSearch = useCallback(
+    debounce((val) => {
+      if (val) setSelectTransporter(val);
+    }, 500),
+    []
+  );
+
+
+  
+ useEffect(() => {
+  if (!selectTransporter || selectTransporter === "") return; // ← skip empty
+  const fetchTrends = async () => {
+    try {
+      const response = await api.get("/analytics/transporter-customer-trend", {
+        params: { transporterName: selectTransporter }
+      });
+      setTrendsByTransporter(response.data);
+    } catch (error) {
+      console.error("Error fetching trends:", error);
+    }
+  };
+  fetchTrends();
+}, [selectTransporter]);
+
 
   const vehicleId = propVehicleId ?? resolvedVehicleId;
 
@@ -1558,11 +1810,28 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
   if (!data) return null;
 
-  const { vehicle, weeklyStats, stateOfHealth, driverBehavior, vehicleUsage, idleAnalysis, tripTypeSplit, topVehicles, availability } = data;
+  const { 
+    vehicle, 
+    weeklyStats, 
+    sameDayColouser, 
+    tripExecution, 
+    vehicleUsage, 
+    idleAnalysis, 
+    tripTypeSplit, 
+    topVehicles, 
+    availability, 
+    topVehiclesAndTransporters 
+  } = data;
+  const top5Vehicles      = topVehiclesAndTransporters?.top5Vehicles      ?? [];
+  const top5Transporters  = topVehiclesAndTransporters?.top5Transporters  ?? [];
+  const dailyTripsTrend   = topVehiclesAndTransporters?.dailyTripsTrend   ?? [];
+  const top25Vehicles     = topVehiclesAndTransporters?.top25Vehicles     ?? [];
+
+
 
   // ── derive a fake-previous-period delta (±) for display ──────────────────
   // Since we don't have historical comparison, we show absolute metrics.
-  const sohDelta = +(stateOfHealth.sohPct - 80).toFixed(1); // 80% baseline
+  const sohDelta = +(sameDayColouser.sohPct - 80).toFixed(1); // 80% baseline
 
   return (
     <div style={s.page}>
@@ -1601,8 +1870,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
       {/* ── main grid ── */}
       <div style={s.grid}>
-
-
+          
         <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr",  gap: 14 }}>
 
           <Card style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14,  }}>
@@ -1658,39 +1926,69 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
 
           </Card>
-
+ 
           <div style={{ gridColumn: "span 2" }}>   {/* ← wrapping div */}
-            <VehicleUsageCard
-              vehicle={vehicle}
-              weeklyStats={weeklyStats}
-              vehicleUsage={vehicleUsage}
+            <FlowChart
+              title="Vehicle — Factory Flow"
+              dropDown={true}
+              defaultMode="active"
+              modes={[
+                {
+                  value:       "active",
+                  label:       "✓ Active Trips",
+                  color:       C.blue,
+                  countLabel:  "active",
+                  footerLabel: "Distribution of active trips across factories",
+                  data:        vehicleUsage.factoryChart?.active ?? [],
+                },
+                {
+                  value:       "closed",
+                  label:       "⟳  Completed Trips",
+                  color:       C.teal,
+                  countLabel:  "completed",
+                  footerLabel: "Distribution of completed trips across factories",
+                  data:        vehicleUsage.factoryChart?.closed ?? [],
+                },
+                {
+                  value:       "cancelled",
+                  label:       "✕  Cancelled Trips",
+                  color:       "#EA5252",
+                  countLabel:  "cancelled",
+                  footerLabel: "Distribution of cancelled trips across factories",
+                  data:        vehicleUsage.factoryChart?.cancelled ?? [],
+                },
+              ]}
             />
           </div>
 
         </div>
 
+
+          
         <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
           <Card>
-            <CardLabel>State Of Health</CardLabel>
-            <BigNumber style={{ color: stateOfHealth.totalIssues > 0 ? C.redDark : C.teal }}>
-              {stateOfHealth.totalIssues > 0
-                ? `${stateOfHealth.totalIssues} Trip${stateOfHealth.totalIssues !== 1 ? "s" : ""} cancelled`
+            <CardLabel>Same Day Colosure Rate</CardLabel>
+            <BigNumber style={{ color: sameDayColouser.totalIssues > 0 ? C.redDark : C.teal }}>
+              {sameDayColouser.totalIssues > 0
+                ? `${sameDayColouser.totalIssues} Trip${sameDayColouser.totalIssues !== 1 ? "s" : ""} cancelled`
                 : "All Clear"}
             </BigNumber>
             <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
               This period
               <Delta val={sohDelta} />
+
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          
+            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", gap: 16 }}>
               <Donut
                 size={110} stroke={14}
-                label={`${stateOfHealth.sohPct}%`}
-                sublabel="SOH"
-                segments={stateOfHealth.segments.map(s => ({ pct: s.pct, color: s.color }))}
+                label={`${sameDayColouser.total}`}
+                sublabel="Total Trips"
+                segments={sameDayColouser.segments.map(s => ({ pct: s.pct, color: s.color }))}
               />
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {stateOfHealth.segments.map(seg => (
+                {sameDayColouser.segments.map(seg => (
                   <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 3, background: seg.color, flexShrink: 0 }} />
                     <div>
@@ -1704,33 +2002,49 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           </Card>
 
           <Card  >
-            <CardLabel>Trip Execution (P2P vs Non-PG) </CardLabel>
+            <CardLabel>Trip Execution (Internal vs External) </CardLabel>
             <div style={{ display: "flex", height: 190, justifyContent: "center", alignItems: "center", }}>
-              <TripExecutionDonut segments={driverBehavior.bars} />
+              <TripExecutionDonut segments={tripExecution.bars} />
             </div>
           </Card>
+          
+              <BarChart
+                title="Daily Trends"
+                labels={dailyTripsTrend?.map(d => d._id) ?? []}
+                datasets={[
+                  { label: "Trips", data: dailyTripsTrend?.map(d => d.count), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
+                ]}
+              />
+        
+          <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: " 1fr 1fr 1fr", gap: 14 }}>
 
-          <Card>
-            <CardLabel>Trip Type Split</CardLabel>
-            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", marginTop: 12 }}>
-              {tripTypeSplit.donuts.map(d => (
-                <div key={d.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <Donut
-                    size={72} stroke={10}
-                    label={`${d.pct}%`}
-                    segments={[
-                      { pct: d.pct,       color: d.color },
-                      { pct: 100 - d.pct, color: C.slateLight },
-                    ]}
-                  />
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: C.text }}>{d.label}</div>
-                  <div style={{ fontSize: 10, color: C.muted }}>{d.value} trips</div>
-                </div>
-              ))}
+            <div style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
+              <BarChart
+                title="Top 5 Vehicles"
+                labels={top5Vehicles?.map(v => v.vehicleNumber)}
+                datasets={[
+                  { label: "Trips", data: top5Vehicles?.map(v => v.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
+                ]}
+              />
             </div>
-          </Card>
+            
+            <div style={{ gridColumn: "span 2", display: "flex", flexDirection: "column", gap: 14 }}>
 
-        </div>
+              <BarChart
+                title="Top 5 Transporters"
+                labels={top5Transporters?.map(t => t.transporterName)}
+                datasets={[
+                  { label: "Trips", data: top5Transporters?.map(t => t.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
+                  { label: "Vehicles", data: top5Transporters?.map(t => t.vehicleCount), backgroundColor: "#09637E", borderColor: "#09637E", borderWidth: 1.5, borderRadius: 5 },
+                ]}
+              />
+            </div>
+
+            
+              </div>
+          </div>
+          
+
 
           {/* ════ RIGHT 3-col grid ════ */}
         <div style={{ gridColumn:  "span 2", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
@@ -1919,30 +2233,88 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           </Card>
 
          <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr ", gridTemplateRows: "auto", gap: 14 }}>
-          <WaitingAnalysisCard waitingAnalysis={data.waitingAnalysis} />
-          <PGBreakdownCard
-            delivery={{
-              p2p:              { count: 20  }, 
-              customerDelivery: { count: 94  }, 
-            }}
-            pickup={{
-              p2p:      { count: 55 }, 
-              external: { count: 30 }, 
-            }}
-          />
+            <WaitingAnalysisCard waitingAnalysis={data.waitingAnalysis} />
+            <PGBreakdownCard
+              delivery={{
+                p2p:              { count: 20  }, 
+                customerDelivery: { count: 94  }, 
+              }}
+              pickup={{
+                p2p:      { count: 55 }, 
+                external: { count: 30 }, 
+              }}
+            />
+          </div>
+
         </div>
-      </div>
+
+        </div>
+        <Card style={{ marginTop: 14, marginBottom: 14, minHeight: 300, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "end", padding: "0 40px", gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>Transporter:</span>
+          <Select
+              showSearch
+              value={selectTransporter }
+              placeholder="Type transporter name..."
+              defaultActiveFirstOption={false}
+              filterOption={(input, option) =>
+                option.label.toLowerCase().includes(input.toLowerCase())
+              }
+              style={{ width: 240 }}
+              onChange={(val) => setSelectTransporter(val)}
+              onSearch={handleSearch}
+              options={TRANSPORTERS.filter(t => t.v).map(t => ({ value: t.v, label: t.l }))}
+            />
+        </div>
+
+        {trendsByTransporter? (
+          <FlowChart
+            title={`${selectTransporter} — Customer Flow`}
+            dropDown={false}
+            defaultMode="data"
+            modes={[{
+              value:       "data",
+              label:       selectTransporter,
+              color:       "#39B1D1",
+              countLabel:  "total",
+              footerLabel: `${trendsByTransporter.totalTrips} trips · ${trendsByTransporter.customers.length} customers`,
+              data: trendsByTransporter.customers.map(c => ({
+                factoryName: c.customerName,
+                count:       c.totalTrips,   // ← changed from tripCount to totalTrips
+              })),
+            }]}
+          />
+        ):(
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
+            <span style={{ fontSize: 12, color: C.muted }}>Select a transporter to view customer trends.</span>
+          </div>
+        )}
+      </Card>
+
+        {top25Vehicles?.length > 0 && (
+          <div style={{ flex: "1 1 600px", minWidth: 0 }}>
+            <TripHeatmap
+              vehicles={top25Vehicles}
+              dates={top25Vehicles[0].dailyTrips.map(d => ({ date: d.date }))}
+              matrix={top25Vehicles.map(v =>
+                top25Vehicles[0].dailyTrips.map(dateRef =>
+                  v.dailyTrips.find(d => d.date === dateRef.date)?.tripCount ?? 0
+                )
+              )}
+              title="Top 25 Vehicles Trip Heatmap"
+              subtitle="Trips per vehicle per day"
+            />
+          </div>
+        )}
+
+      
 
 
-
-
-      </div>
-
-      <Card 
-      style={{ marginTop: 14 }}
-      >
-        <div style={{ gridColumn: "span 1", display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+      <Card style={{ marginTop: 14 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+          <div style={{ flex: "1 1 300px", minWidth: 0 }}>
             <DriverAnalyticsCard driverAnalytics={data.driverAnalytics} />
+          </div>
         </div>
       </Card>
 

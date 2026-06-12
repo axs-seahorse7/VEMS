@@ -238,6 +238,7 @@ const lsGet = (key, fallback) => {
     return { ...fallback, ...parsed };
   } catch { return fallback; }
 };
+
 const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
 const lsDel = (...keys) => keys.forEach(k => { try { localStorage.removeItem(k); } catch {} });
 

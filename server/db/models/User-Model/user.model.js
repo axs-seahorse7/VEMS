@@ -53,12 +53,6 @@ const userSchema = new mongoose.Schema({
         default:"active"
     },
 
-    // additional details operators
-    factoryLocation:{
-        type:String,
-        enum:["NGM","PGTL"],
-        required:true
-    },
     workLocation:{
         type:String,
         required:true,

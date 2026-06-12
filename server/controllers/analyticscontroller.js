@@ -359,7 +359,6 @@ export const getTopPerformers = async (req, res) => {
   }
 };
 
-
 // ── 5. Time-Based Analysis ────────────────────────────────────────────────────
 export const getTimeAnalysis = async (req, res) => {
   try {
@@ -406,7 +405,6 @@ export const getTimeAnalysis = async (req, res) => {
     return res.status(500).json({ message: "Time analysis failed", error: err.message });
   }
 };
-
 
 // ── 6. Transporter / Supplier Customer Visits ─────────────────────────────────
 export const getTransporterVisits = async (req, res) => {
@@ -469,6 +467,8 @@ const periodBounds = (period = "week") => {
     since = startOfDay(now);
   } else if (period === "week") {
     since = new Date(now); since.setDate(now.getDate() - 7);  since.setHours(0,0,0,0);
+  }else if (period === "yesterday") {
+    since = new Date(now); since.setDate(now.getDate() - 1);  since.setHours(0,0,0,0);
   } else if (period === "month") {
     since = new Date(now); since.setDate(now.getDate() - 30); since.setHours(0,0,0,0);
   } else if (period === "quarter") {
@@ -484,6 +484,9 @@ const getISTDateKey = (date) => {
     timeZone: "Asia/Kolkata",
   }).format(new Date(date));
 };
+
+
+// --------------------------------- Overview Dashboard aggregation --------------------------
 
 export const getVehicleDashboard = async (req, res) => {
   try {
@@ -510,17 +513,15 @@ export const getVehicleDashboard = async (req, res) => {
     const cancelled = periodTrips.filter(t => t.tripState === "CANCELLED");
     const total     = periodTrips.length;
 
-    const [totalTrips, totalClosedTrips, totalActiveTrips, totalCanceledTrips, totalInternalTrips, totalExternalTrips] = await Promise.all([
-      Trip.find({ createdAt: { $gte: since, $lte: now } }).countDocuments(),
-      Trip.countDocuments({tripState: "CLOSED", completedAt: { $gte: since, $lte: now }, destinationFactoryId: { $ne: null }, }),
+    const [totalTrips, totalClosedTrips,  totalActiveTrips, totalCancelledTrips,  totalInternalTrips, totalExternalTrips] = await Promise.all([
+      Trip.countDocuments({createdAt: { $gte: since, $lte: now } }),
+      Trip.countDocuments({tripState: "CLOSED", createdAt: { $gte: since, $lte: now }, }),
       Trip.countDocuments({tripState: {$in: ["ACTIVE", "COMPLETED"]}, createdAt: { $gte: since, $lte: now } }),
-      Trip.countDocuments({tripState: "CANCELLED", completedAt: { $gte: since, $lte: now } }),
+      Trip.countDocuments({tripState: "CANCELLED", createdAt: { $gte: since, $lte: now } }),
       Trip.countDocuments({type: "internal_transfer", createdAt: { $gte: since, $lte: now } }),
       Trip.countDocuments({type: "external_delivery", createdAt: { $gte: since, $lte: now } }),
     ]);
 
-
- 
     // ── 3. weeklyStats ────────────────────────────────────────────────────
     const daysSinceFirst  = firstTrip ? Math.max(1, Math.ceil((now - new Date(firstTrip.createdAt)) / 86400000)) : 1;
     const monthsActive    = +(daysSinceFirst / 30).toFixed(1);
@@ -531,13 +532,11 @@ export const getVehicleDashboard = async (req, res) => {
       : `${months} Month${months !== 1 ? "s" : ""}`;
  
     // ── 4. State of Health (donut) ────────────────────────────────────────
-    const closedPct    = total ? +((totalClosedTrips   / totalTrips) * 100).toFixed(1) : 0;
-    const openPct      = total ? +((totalActiveTrips   / totalTrips) * 100).toFixed(1) : 0;
-    const cancelledPct = total ? +((totalCanceledTrips / totalTrips) * 100).toFixed(1) : 0;
+    const closedPct    =  ((totalClosedTrips   / totalTrips) * 100).toFixed(1) ;
+    const activePct    =  ((totalActiveTrips   / totalTrips) * 100).toFixed(1) ;
+    const cancelledPct =  ((totalCancelledTrips / totalTrips) * 100).toFixed(1) ;
     // SOH = % of trips that closed successfully
     const sohPct = closedPct;
-
-
     
 
     const allClosedInPeriod = await Trip.find({
@@ -589,21 +588,15 @@ export const getVehicleDashboard = async (req, res) => {
     const totalTripHours = +closed.reduce((sum, trip) => sum + getTripHours(trip), 0).toFixed(2);
     const avgTripsPerDay    = +(closed.length / days).toFixed(1);
 
-    const [totalP2PTrips, totalDeliveryTrips] = await Promise.all([
-    Trip.countDocuments({ tripState: "CLOSED", type: "internal_transfer", completedAt: { $gte: since, $lte: now } }),
-    Trip.countDocuments({ tripState: "CLOSED", type: "external_delivery", externalSource: { $ne: null }, completedAt: { $gte: since, $lte: now } }),
-    ]);
+    const internalPct = totalTrips ? +((totalInternalTrips / totalTrips) * 100).toFixed(1) : 0;
+    const externalPct = totalTrips ? +((totalExternalTrips / totalTrips) * 100).toFixed(1) : 0;
 
-    const p2pPct      = totalTrips ? +((totalP2PTrips / totalTrips) * 100).toFixed(1) : 0;
-    const pg2nonPgPct = totalTrips ? +((totalDeliveryTrips / totalTrips) * 100).toFixed(1) : 0;
-
-    
     const [factoryClosedTrips, factoryCancelledTrips, factoryActiveTrips] = await Promise.all([
       Trip.aggregate([
         {
           $match: {
             tripState: "CLOSED",
-            completedAt: { $gte: since, $lte: now }
+            createdAt: { $gte: since, $lte: now }
           }
         },
         {
@@ -647,7 +640,7 @@ export const getVehicleDashboard = async (req, res) => {
         {
           $match: {
             tripState: "CANCELLED",
-            completedAt: { $gte: since, $lte: now },
+            createdAt: { $gte: since, $lte: now },
           },
         },
         {
@@ -682,7 +675,6 @@ export const getVehicleDashboard = async (req, res) => {
         {
           $match: {
             tripState:{$in : [ "ACTIVE", "COMPLETED" ]},
-            // type: "internal_transfer",
             createdAt: { $gte: since, $lte: now },
             destinationFactoryId: { $ne: null },
           },
@@ -703,6 +695,7 @@ export const getVehicleDashboard = async (req, res) => {
         },
         { $sort: { count: -1 } },
       ])
+
     ]);
 
     // Merge into dailyArr so every date slot exists (fills zero-days too)
@@ -1018,9 +1011,223 @@ export const getVehicleDashboard = async (req, res) => {
       }
     }
 
-   
+    const regex = new RegExp(vehicleType === "all" ? "^(internal|external)$" : vehicleType, "i");
+
+    const [top5Vehicles, top5Transporters, dailyTripsTrend, top25Vehicles] = await Promise.all([
+      // Top 5 vehicles by trip count in the period, with type info for filtering on frontend
+      Trip.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: since, $lte: now },
+            vehicleId: { $ne: null },
+          },
+        },
+        {
+          $group: {
+            _id: "$vehicleId",
+            tripCount: { $sum: 1 },
+          },
+        },
+        { $sort: { tripCount: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: "vehicles",
+            localField: "_id",
+            foreignField: "_id",
+            as: "v",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            vehicleId: "$_id",
+            tripCount: 1,
+            vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
+            type:          { $ifNull: [{ $arrayElemAt: ["$v.type", 0] },          "unknown"] },
+          },
+        },
+      ]),
+
+      Vehicle.aggregate([
+      {
+        $match: {
+          type: "external",
+          transporterName: { $ne: [" ", null] }
+        }
+      },
+      {
+        $lookup: {
+          from: "trips",
+          localField: "_id",
+          foreignField: "vehicleId",
+          as: "trips"
+        }
+      },
+      {
+        $addFields: {
+          tripCount: {
+            $size: {
+              $filter: {
+                input: "$trips",
+                as: "trip",
+                cond: {
+                  $and: [
+                    { $gte: ["$$trip.createdAt", since] },
+                    { $lte: ["$$trip.createdAt", now] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: "$transporterName",
+          tripCount: { $sum: "$tripCount" },
+          vehicleCount: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { tripCount: -1 }
+      },
+      {
+        $limit: 5
+      },
+      {
+        $project: {
+          _id: 0,
+          transporterName: "$_id",
+          tripCount: 1,
+          vehicleCount: 1
+        }
+      }
+      ]),
+
+      Trip.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: since, $lte: now },
+            vehicleId: { $ne: null },
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $sort: { _id: 1 }
+        }
+      ]),
+
+      // top 25 vehicles for the period, for the "Top Vehicles" tab (unpaginated since it's just 25) and with selected date range filter
+      // We'll slice this in frontend into internal/external/all, so fetch all and filter on server too for safety
+      // Also join vehicle info for display and filtering
+
+      TripSegment.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: since, $lte: now },
+            vehicleId: { $ne: null },
+          },
+        },
+
+        // Group by vehicle + date
+        {
+          $group: {
+            _id: {
+              vehicleId: "$vehicleId",
+              date: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: "$createdAt",
+                },
+              },
+            },
+            tripCount: { $sum: 1 },
+          },
+        },
+        {
+          $sort: {
+            "_id.vehicleId": 1,
+            "_id.date": 1,
+          },
+        },
+        // Group again by vehicle
+        {
+          $group: {
+            _id: "$_id.vehicleId",
+            totalTrips: { $sum: "$tripCount" },
+
+            dailyTrips: {
+              $push: {
+                date: "$_id.date",
+                tripCount: "$tripCount",
+              },
+            },
+          },
+        },
+
+        // Vehicle details
+        {
+          $lookup: {
+            from: "vehicles",
+            localField: "_id",
+            foreignField: "_id",
+            as: "vehicle",
+          },
+        },
+
+        {
+          $project: {
+            _id: 0,
+            vehicleId: "$_id",
+
+            vehicleNumber: {
+              $ifNull: [
+                { $arrayElemAt: ["$vehicle.vehicleNumber", 0] },
+                "Unknown",
+              ],
+            },
+
+            type: {
+              $ifNull: [
+                { $arrayElemAt: ["$vehicle.type", 0] },
+                "unknown",
+              ],
+            },
+
+            totalTrips: 1,
+            dailyTrips: 1,
+          },
+        },
+
+        // Filter vehicle type
+        {
+          $match: {
+            type: regex,
+          },
+        },
+
+        // Top 25 by total trips
+        {
+          $sort: {
+            totalTrips: -1,
+          },
+        },
+
+        {
+          $limit: 25,
+        },
+      ])
+  
+    ]);
 
 
+    
  
     return res.json({
       period,
@@ -1044,32 +1251,32 @@ export const getVehicleDashboard = async (req, res) => {
         avgTripsPerDay,
         totalTripHours,
       },
- 
-      stateOfHealth: {
-        sohPct,          // big number shown in donut centre
-        segments: [
-          { label: "Completed", value: totalClosedTrips,    pct: closedPct,    color: "#0d9488" },
-          { label: "Active",    value: totalActiveTrips,    pct: openPct,      color: "#94a3b8" },
-          { label: "Cancelled", value: totalCanceledTrips,  pct: cancelledPct, color: "#fca5a5" },
-        ],
-        totalIssues: totalCanceledTrips,   // "issues detected" headline
-      },
- 
-      driverBehavior: {
-        p2pPct,
-        pg2nonPgPct,
-        bars: [
-          { label: "PG to PG",  value: p2pPct,    color: "#0d9488" },
-          { label: "PG to Non-PG",  value: pg2nonPgPct, color: "#FF9D23" },
-        ],
-      },
- 
+
       vehicleUsage: {
         totalHours:     totalTripHours,
         avgTripsPerDay,
         dailyTrend:     dailyArr,   // [{date, count}] — UI draws area chart
       },
-      
+ 
+      sameDayColouser: {
+        sohPct, 
+        total: totalTrips,         // big number shown in donut centre
+        segments: [
+          { label: "Completed",  value: totalClosedTrips,    pct: closedPct,      color: "#0d9488" },
+          { label: "Active",     value: totalActiveTrips,    pct: activePct,      color: "#94a3b8" },
+          { label: "Cancelled",  value: totalCancelledTrips, pct: cancelledPct,   color: "#fca5a5" },
+        ],
+        totalIssues: totalCancelledTrips,   // "issues detected" headline
+      },
+ 
+      tripExecution: {
+        internalPct, 
+        externalPct,
+        bars: [
+          { label: "Internal",  value: internalPct,    color: "#0d9488" },
+          { label: "External",  value: externalPct, color: "#FF9D23" },
+        ],
+      },
 
       vehicleUsage: {
         totalHours:     totalTripHours,
@@ -1115,7 +1322,14 @@ export const getVehicleDashboard = async (req, res) => {
           },
         ],
       },
- 
+
+      topVehiclesAndTransporters: {
+        top5Vehicles,
+        top5Transporters,
+        dailyTripsTrend,
+        top25Vehicles, 
+      },
+
       topVehicles: {
         all:      slice(allTopVehicles),
         internal: slice(allTopVehicles.filter(v => internalSet.has(String(v.vehicleId)))),
@@ -1130,6 +1344,7 @@ export const getVehicleDashboard = async (req, res) => {
           label:       "Outside Gate",
           description: "Arrived but not checked-in > 4hrs",
         },
+
         insideWaiting: {
           count:      insideWaiting,
           total:      totalCheckedIn,
@@ -1137,6 +1352,7 @@ export const getVehicleDashboard = async (req, res) => {
           label:      "Inside Plant",
           description:"Checked-in but operations not performed by 4hrs",
         },
+
         congestion: {
           totalWaiting,
           totalActiveTrips,
@@ -1551,6 +1767,123 @@ export const vehicleSearch = async (req, res) => {
   } catch (err) {
     console.error("Vehicle search error:", err);
     return res.status(500).json({ message: "Vehicle search failed", error: err.message });
+  }
+};
+
+export const getTransporterCustomerTrend = async (req, res) => {
+  try {
+    const { transporterName, startDate, endDate } = req.query;
+
+    if (!transporterName) {
+      return res.status(400).json({ message: "transporterName is required" });
+    }
+
+    const now = new Date();
+    const since = startDate
+      ? new Date(startDate)
+      : (() => { const d = new Date(now); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
+    const until = endDate
+      ? (() => { const d = new Date(endDate); d.setHours(23,59,59,999); return d; })()
+      : now;
+
+    const trend = await Trip.aggregate([
+
+      // Step 1: trips in date range with this supplier
+      {
+        $match: {
+          createdAt: { $gte: since, $lte: until },
+          "materials.supplier": transporterName,
+        },
+      },
+
+      // Step 2: get all segments for these trips
+      {
+        $lookup: {
+          from:         "tripsegments",
+          localField:   "_id",
+          foreignField: "tripId",
+          as:           "segments",
+        },
+      },
+
+      { $unwind: "$segments" },
+
+      // Step 3: only EXTERNAL segments
+      {
+        $match: {
+          "segments.triptype": "EXTERNAL",
+        },
+      },
+
+      // Step 4: group by customer + vehicle → trip count
+      {
+        $group: {
+          _id: {
+            customer:  "$segments.externalSource",
+            vehicleId: "$vehicleId",
+          },
+          tripCount: { $sum: 1 },
+        },
+      },
+
+      // Step 5: group by customer → collect vehicles with their trip counts
+      {
+        $group: {
+          _id: "$_id.customer",
+          totalTrips:   { $sum: "$tripCount" },
+          vehicles: {
+            $push: {
+              vehicleId: "$_id.vehicleId",
+              tripCount: "$tripCount",
+            },
+          },
+        },
+      },
+
+      // Step 6: join vehicle details
+      {
+        $lookup: {
+          from:         "vehicles",
+          localField:   "vehicles.vehicleId",
+          foreignField: "_id",
+          as:           "vehicleDetails",
+        },
+      },
+
+      { $sort: { totalTrips: -1 } },
+    ]);
+
+    const totalTrips = trend.reduce((sum, i) => sum + i.totalTrips, 0);
+
+    const result = trend.map((item) => ({
+      customerName:  item._id ?? "Unknown",
+      totalTrips:    item.totalTrips,
+      vehicleCount:  item.vehicles.length,
+      percentage:    totalTrips > 0
+                       ? Number(((item.totalTrips / totalTrips) * 100).toFixed(0))
+                       : 0,
+      vehicles: item.vehicles.map((v) => {
+        const detail = item.vehicleDetails.find(
+          (d) => d._id.toString() === v.vehicleId.toString()
+        );
+        return {
+          vehicleId:     v.vehicleId,
+          vehicleNumber: detail?.vehicleNumber ?? "Unknown",
+          tripCount:     v.tripCount,
+        };
+      }),
+    }));
+
+    return res.status(200).json({
+      transporterName,
+      totalTrips,
+      customerCount: result.length,
+      customers: result,
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Failed to fetch transporter trend", error: err.message });
   }
 };
 
