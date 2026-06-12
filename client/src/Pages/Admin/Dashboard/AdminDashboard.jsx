@@ -1831,7 +1831,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
   // ── derive a fake-previous-period delta (±) for display ──────────────────
   // Since we don't have historical comparison, we show absolute metrics.
-  const sohDelta = +(sameDayColouser.sohPct - 80).toFixed(1); // 80% baseline
+  const sohDelta = +(sameDayColouser?.sohPct - 80).toFixed(1); // 80% baseline
 
   return (
     <div style={s.page}>
