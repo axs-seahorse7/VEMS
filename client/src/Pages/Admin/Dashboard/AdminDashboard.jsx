@@ -1969,9 +1969,9 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
           <Card>
             <CardLabel>Same Day Colosure Rate</CardLabel>
-            <BigNumber style={{ color: sameDayColouser.totalIssues > 0 ? C.redDark : C.teal }}>
-              {sameDayColouser.totalIssues > 0
-                ? `${sameDayColouser.totalIssues} Trip${sameDayColouser.totalIssues !== 1 ? "s" : ""} cancelled`
+            <BigNumber style={{ color: sameDayColouser?.totalIssues > 0 ? C.redDark : C.teal }}>
+              {sameDayColouser?.totalIssues > 0
+                ? `${sameDayColouser?.totalIssues} Trip${sameDayColouser?.totalIssues !== 1 ? "s" : ""} cancelled`
                 : "All Clear"}
             </BigNumber>
             <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
@@ -1983,12 +1983,12 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
             <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", gap: 16 }}>
               <Donut
                 size={110} stroke={14}
-                label={`${sameDayColouser.total}`}
+                label={`${sameDayColouser?.total}`}
                 sublabel="Total Trips"
-                segments={sameDayColouser.segments.map(s => ({ pct: s.pct, color: s.color }))}
+                segments={sameDayColouser?.segments.map(s => ({ pct: s.pct, color: s.color }))}
               />
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {sameDayColouser.segments.map(seg => (
+                {sameDayColouser?.segments.map(seg => (
                   <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 3, background: seg.color, flexShrink: 0 }} />
                     <div>
@@ -2004,7 +2004,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           <Card  >
             <CardLabel>Trip Execution (Internal vs External) </CardLabel>
             <div style={{ display: "flex", height: 190, justifyContent: "center", alignItems: "center", }}>
-              <TripExecutionDonut segments={tripExecution.bars} />
+              <TripExecutionDonut segments={tripExecution?.bars} />
             </div>
           </Card>
           
