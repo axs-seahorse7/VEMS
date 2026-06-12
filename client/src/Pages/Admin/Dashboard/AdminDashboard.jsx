@@ -2073,7 +2073,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {visibleVehicles.vehicles.map((v, i) => (
+              {visibleVehicles.vehicles?.map((v, i) => (
                 <div key={v.vehicleId} style={{ display: "flex", alignItems: "center", gap: 10 }}>
 
                   {/* Rank */}
@@ -2140,14 +2140,14 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
               <Line
                 key={period}
                 data={{
-                  labels: idleAnalysis.dailyTrend.map(d => {
+                  labels: idleAnalysis?.dailyTrend?.map(d => {
                     const dt = new Date(d.date);
                     return `${dt.getDate()}/${dt.getMonth() + 1}`;
                   }),
                   datasets: [
                     {
                       label: "Trips",
-                      data: idleAnalysis.dailyTrend.map(d => d.count),
+                      data: idleAnalysis?.dailyTrend?.map(d => d.count),
                       borderColor: "#0d9488",
                       borderWidth: 2,
                       backgroundColor: (ctx) => {
@@ -2161,13 +2161,13 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
                       },
                       fill: true,
                       tension: 0.4,
-                      pointBackgroundColor: idleAnalysis.dailyTrend.map(d =>
+                      pointBackgroundColor: idleAnalysis?.dailyTrend?.map(d =>
                         d.count === 0 ? "#ef4444" : "#0d9488"
                       ),
-                      pointBorderColor: idleAnalysis.dailyTrend.map(d =>
+                      pointBorderColor: idleAnalysis?.dailyTrend?.map(d =>
                         d.count === 0 ? "#fca5a5" : "#fff"
                       ),
-                      pointRadius: idleAnalysis.dailyTrend.map(d => d.count === 0 ? 4 : 3),
+                      pointRadius: idleAnalysis?.dailyTrend?.map(d => d.count === 0 ? 4 : 3),
                       pointHoverRadius: 6,
                       pointBorderWidth: 1.5,
                     },
@@ -2190,8 +2190,8 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
                       callbacks: {
                         title: (items) => {
                           const idx = items[0].dataIndex;
-                          const dt = new Date(idleAnalysis.dailyTrend[idx].date);
-                          return dt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                          const dt = new Date(idleAnalysis?.dailyTrend?.[idx]?.date);
+                          return dt?.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
                         },
                         label: (item) => `  ${item.raw} trip${item.raw !== 1 ? "s" : ""}`,
                       },
@@ -2277,8 +2277,8 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
               label:       selectTransporter,
               color:       "#39B1D1",
               countLabel:  "total",
-              footerLabel: `${trendsByTransporter.totalTrips} trips · ${trendsByTransporter.customers.length} customers`,
-              data: trendsByTransporter.customers.map(c => ({
+              footerLabel: `${trendsByTransporter.totalTrips} trips · ${trendsByTransporter.customers?.length} customers`,
+              data: trendsByTransporter.customers?.map(c => ({
                 factoryName: c.customerName,
                 count:       c.totalTrips,   // ← changed from tripCount to totalTrips
               })),
