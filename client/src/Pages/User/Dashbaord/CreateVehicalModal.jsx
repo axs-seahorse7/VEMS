@@ -3,6 +3,7 @@ import api from "../../../../services/API/Api/api";
 import { message, Select, AutoComplete  } from "antd";
 import { Factory, Truck, User, Car, ClipboardList, ChevronDown, ChevronUp } from "lucide-react";
 const { Option } = Select;
+import getDeviceInfo from "../../../utils/Get-DeviceInfo/getDeviceInfo.js";
 
 // ─── Document & Vehicle Format Rules ─────────────────────────────────────────
 const ID_FORMAT = {
@@ -479,6 +480,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
   const showExternal  = workLocation === "atGate";
   const canAutoLookup = true;
   const [messageApi, contextHolder] = message.useMessage()
+  const deviceInfo = getDeviceInfo();
 
   const [activeTab, setActiveTab]       = useState(() => workLocation === "atGate" ? lsGet(LS_TAB, "external") : lsGet(LS_TAB, "internal"));
   const [factories, setFactories]       = useState([]);
@@ -686,6 +688,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     if (!internalForm.driverName)           e.driverName = "Required";
     if (!internalForm.driverIdNumber)       e.driverIdNumber = "Required";
     if (!internalForm.vehicleNumber)        e.vehicleNumber = "Required";
+    if (!externalForm.transporterName) e.transporterName = "Required";
     if (!internalForm.destinationFactoryId) e.destinationFactoryId = "Required";
     if (!internalForm.purpose)              e.purpose = "Required";
     if (!internalForm.materialType)         e.materialType = "Required";
@@ -707,6 +710,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     if (!externalForm.driverName)      e.driverName = "Required";
     if (!externalForm.driverIdNumber)  e.driverIdNumber = "Required";
     if (!externalForm.vehicleNumber)   e.vehicleNumber = "Required";
+    if (!externalForm.typeOfVehicle)   e.typeOfVehicle = "Required";
+    if (!externalForm.transporterName) e.transporterName = "Required";
     if (!externalForm.purpose)         e.purpose = "Required";
     if (!externalForm.materialType)    e.materialType = "Required";
     if (!externalForm.source)          e.source = "Required";
@@ -734,6 +739,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     if (isEditMode) {
       await api.patch(`/trip/update/${tripToEdit._id}`, {
         ...internalForm,
+        deviceDetails: deviceInfo,
         vehicleNumber: cleanVehicleNumber(internalForm.vehicleNumber),
         sourceFactoryId: user.factory?._id,
       });
@@ -764,6 +770,7 @@ const handleSubmitExternal = async () => {
     if (isEditMode) {
       await api.patch(`/trip/update/${tripToEdit._id}`, {
         ...externalForm,
+        deviceDetails: deviceInfo,
         vehicleNumber: cleanVehicleNumber(externalForm.vehicleNumber),
         sourceFactoryId: user.factory?._id,
       });
@@ -771,6 +778,7 @@ const handleSubmitExternal = async () => {
     } else {
       const response = await api.post("/new/external-trip", {
         ...externalForm,
+        deviceDetails: deviceInfo,
         vehicleNumber:   cleanVehicleNumber(externalForm.vehicleNumber),
         sourceFactoryId: user.factory?._id,
       });

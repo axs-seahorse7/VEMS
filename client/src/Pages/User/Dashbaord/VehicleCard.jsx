@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { Tag, Divider, Badge } from "antd";
+import { Card, Tag, Badge, Divider, Tooltip, Typography, Space, Row, Col } from "antd";
+import {
+  CarOutlined,
+  WarningFilled,
+  UserOutlined,
+  RocketOutlined,
+  SwapRightOutlined,
+  ReloadOutlined,
+  InboxOutlined,
+  SafetyOutlined,
+  ClockCircleOutlined,
+  ArrowRightOutlined,
+  EnvironmentOutlined,
+} from "@ant-design/icons";
+
+const { Text } = Typography;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function isPUCExpired(date) {
@@ -16,506 +31,552 @@ function fmtTime(ts) {
   });
 }
 
-// Returns hours since trip was created
-function  hoursWaiting(createdAt) {
+function hoursWaiting(createdAt) {
   if (!createdAt) return 0;
   return (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60);
 }
 
 const getWaitingTime = (arrivedAt) => {
   if (!arrivedAt) return "—";
-
   const arrivedTime = new Date(arrivedAt).getTime();
-
   if (isNaN(arrivedTime)) return "Invalid Date";
-
   const diff = Date.now() - arrivedTime;
-
   const minutes = Math.floor(diff / (1000 * 60));
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-
-  if (minutes < 60) {
-    return `${minutes} min`;
-  }
-
+  if (minutes < 60) return `${minutes} min`;
   if (hours < 24) {
     const remainingMin = minutes % 60;
-
-    return remainingMin
-      ? `${hours}h ${remainingMin}m`
-      : `${hours}h`;
+    return remainingMin ? `${hours}h ${remainingMin}m` : `${hours}h`;
   }
-
   const remainingHours = hours % 24;
-
-  return remainingHours
-    ? `${days}d ${remainingHours}h`
-    : `${days}d`;
-};
-
-const Icon = {
-  truck: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
-  alert: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
-};
-
-// ─── State-based top border colors ────────────────────────────────────────────
-
-const STATE_BORDER = {
-  waiting: { bar: "linear-gradient(90deg, #f59e0b, #d97706, #f59e0b)", glow: "#f59e0b" },
-  inside:  { bar: "linear-gradient(90deg, #10b981, #059669, #10b981)", glow: "#10b981" },
-  enroute: { bar: "linear-gradient(90deg, #3b82f6, #2563eb, #3b82f6)", glow: "#3b82f6" },
-  closed:  { bar: "linear-gradient(90deg, #94a3b8, #64748b, #94a3b8)", glow: "#94a3b8" },
-  canceled:{ bar: "linear-gradient(90deg, #ef4444, #dc2626, #ef4444)", glow: "#ef4444" },
-  unknown: { bar: "linear-gradient(90deg, #e5e7eb, #d1d5db, #e5e7eb)", glow: "#d1d5db" },
-};
-
-const LOAD_STATUS_THEME = {
-  pending:  { border: "#E2E8F0", accent: "#6366F1", bg: "#FFFFFF", dot: "#6366F1", label: "#4F46E5", labelBg: "#EEF2FF" },
-  loaded:   { border: "#BBF7D0", accent: "#059669", bg: "#F0FDF4", dot: "#10B981", label: "#047857", labelBg: "#D1FAE5" },
-  unloaded: { border: "#C7D2FE", accent: "#4F46E5", bg: "#F5F7FF", dot: "#6366F1", label: "#4338CA", labelBg: "#E0E7FF" },
-};
-
-// Premium amber override theme for long-waiting cards
-const OVERDUE_THEME = {
-  border: "#fde68a",
-  accent: "#d97706",
-  bg: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 60%, #fde68a22 100%)",
-  dot: "#d97706",
-  label: "#92400e",
-  labelBg: "#fef3c7",
+  return remainingHours ? `${days}d ${remainingHours}h` : `${days}d`;
 };
 
 const vehicleTypeLabel = {
   truck: "Truck", miniTruck: "Mini Truck", containerTruck: "Container Truck",
-  mixerTruck: "Mixer Truck", waterTanker: "Water Tanker", tractor: "Tractor",
-  car: "Car", bus: "Bus", ambulance: "Ambulance", autoRikshaw: "Auto Rickshaw", bike: "Motorcycle", other: "Other"
+  mixerTruck: "Mixer Truck", waterTanker: "Water Tanker", trackter: "Tractor",
+  car: "Car", bus: "Bus", ambulance: "Ambulance", autoRikshaw: "Auto Rickshaw",
+  bike: "Motorcycle", other: "Other"
 };
 
 const STAGE_META = {
-  waiting: { label: "Waiting",  bg: "#fef9c3", color: "#92400e" },
-  inside:  { label: "Inside",   bg: "#dcfce7", color: "#15803d" },
-  enroute: { label: "Transit",  bg: "#dbeafe", color: "#1d4ed8" },
-  closed:  { label: "Closed",   bg: "#D6F4ED", color: "#3A8B95" },
-  canceled:{ label: "Canceled", bg: "#D70040", color: "#dc2626" },
-  exited:  { label: "Exited",   bg: "#fee2e2", color: "#dc2626" },
-  unknown: { label: "Unknown",  bg: "#f3f4f6", color: "#131314" },
+  waiting: { label: "Waiting",  color: "gold" },
+  inside:  { label: "Inside",   color: "green" },
+  enroute: { label: "Transit",  color: "blue" },
+  closed:  { label: "Closed",   color: "default" },
+  canceled:{ label: "Canceled", color: "red" },
+  exited:  { label: "Exited",   color: "red" },
+  unknown: { label: "Unknown",  color: "default" },
 };
 
-function CBadge({ stage }) {
-  const s = STAGE_META[stage] || STAGE_META.unknown;
+// ─── InfoRow ──────────────────────────────────────────────────────────────────
+function InfoRow({ icon, label, value, T }) {
   return (
-    <span style={{ background: s.bg, color: s.color, fontSize: 9.5, fontWeight: 700, borderRadius: 4, padding: "1px 6px", letterSpacing: .3, whiteSpace: "nowrap" }}>
-      {s.label}
-    </span>
+    <Row align="middle" style={{ minHeight: 26, padding: "1px 0", borderBottom: `1px solid ${T.divider}` }}>
+      <Col flex="18px" style={{ display: "flex", alignItems: "center", color: T.iconColor }}>
+        {icon}
+      </Col>
+      <Col flex="56px" style={{ paddingLeft: 6 }}>
+        <Text style={{ fontSize: 11, color: T.textLabel, whiteSpace: "nowrap" }}>{label}</Text>
+      </Col>
+      <Col flex="auto" style={{ paddingLeft: 4, minWidth: 0, overflow: "hidden" }}>
+        <Text
+          ellipsis
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: T.textValue,
+            display: "block",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {value}
+        </Text>
+      </Col>
+    </Row>
   );
 }
 
-function InfoRow({ icon, iconColor, label, value }) {
+// ─── OriginTracker ────────────────────────────────────────────────────────────
+function OriginTracker({ vehicle, isOverdue }) {
+  const phase = vehicle.phase;
+  const isAtOrigin = phase === "ORIGIN";
+  const isAtDestination = phase === "DESTINATION";
+  const isAtInTransit = vehicle.status === "IN_TRANSIT";
+
+  // Derive a numeric step: 0 = at origin, 1 = in transit, 2 = at destination
+  // "completed" means we've passed that stage, "current" means we're there now
+  const currentStep = isAtDestination ? 2 : isAtInTransit ? 1 : 0;
+
+  // A stop is "done" (fully colored, no pulse) if we're past it
+  // A stop is "current" (colored + pulse) if we're exactly on it
+  // A stop is "pending" (gray) if we haven't reached it yet
+  const getStopState = (stepIndex) => {
+    if (currentStep > stepIndex) return "done";
+    if (currentStep === stepIndex) return "current";
+    return "pending";
+  };
+
+  const COLORS = {
+    origin:  isOverdue ? "#93c5fd" : "#3b82f6",
+    enroute: isOverdue ? "#d8b4fe" : "#a855f7",
+    dest:    isOverdue ? "#6ee7b7" : "#10b981",
+  };
+
+  const pendingDotColor = isOverdue ? "rgba(255,255,255,0.25)" : "#d1d5db";
+  const pendingLabelColor = isOverdue ? "rgba(255,255,255,0.4)" : "#9ca3af";
+
+  const Stop = ({ stepIndex, color, label }) => {
+    const state = getStopState(stepIndex);
+    const isActive = state !== "pending";
+    const isCurrent = state === "current";
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+        <div style={{ position: "relative", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {/* Pulse ring — only on current active stop */}
+          {isCurrent && (
+            <span style={{
+              position: "absolute",
+              width: 16, height: 16,
+              borderRadius: "50%",
+              background: color,
+              opacity: 0,
+              animation: "trackerPing 1.5s ease-out infinite",
+            }} />
+          )}
+          <span style={{
+            width: isActive ? 9 : 7,
+            height: isActive ? 9 : 7,
+            borderRadius: "50%",
+            background: isActive ? color : pendingDotColor,
+            boxShadow: isActive ? `0 0 0 2.5px ${color}44` : "none",
+            display: "block",
+            flexShrink: 0,
+          }} />
+        </div>
+        <span style={{
+          fontSize: 10,
+          fontWeight: isActive ? 600 : 400,
+          color: isActive ? color : pendingLabelColor,
+          textAlign: "center",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          maxWidth: 72, display: "block", marginTop: 4,
+        }}>
+          {label}
+        </span>
+      </div>
+    );
+  };
+
+  // Connector line — green if both endpoints are done/current, gray if not yet reached
+  const lineColor = (fromStep, toStep) => {
+    if (currentStep >= toStep) return isOverdue ? "rgba(255,255,255,0.6)" : "#10b981"; // fully completed
+    if (currentStep >= fromStep) {
+      // partially done — gradient
+      const from = fromStep === 0 ? (isOverdue ? "#93c5fd" : "#3b82f6") : (isOverdue ? "#d8b4fe" : "#a855f7");
+      const to = pendingDotColor;
+      return `linear-gradient(to bottom, ${from}, ${to})`;
+    }
+    return pendingDotColor; // not reached at all
+  };
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#374151" }} className="border-b  border-gray-100 " >
-      <i className={`${icon}`} style={{ fontSize: 11, color: iconColor, width: 13, textAlign: "center", flexShrink: 0 }} />
-      <span style={{ color: "black", flexShrink: 0, width: 50 }}>{label}</span>
-      <span style={{ fontWeight: 600, color: "#1e40af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
-    </div>
+    <>
+      <style>{`
+        @keyframes trackerPing {
+          0%   { transform: scale(0.6); opacity: 0.75; }
+          80%  { transform: scale(2.4); opacity: 0; }
+          100% { transform: scale(2.4); opacity: 0; }
+        }
+      `}</style>
+      <div style={{
+        position: "absolute",
+        top:"35%",
+        right: 14,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        width: 76,
+      }}>
+        <Stop
+          stepIndex={0}
+          color={COLORS.origin}
+          label={vehicle?.sourceFactory?.name || vehicle.externalSource || "Source"}
+        />
+
+        <div style={{
+          width: 1.5, height: 28, margin: "4px 0",
+          background: lineColor(0, 1),
+          borderRadius: 2,
+        }} />
+
+        <Stop
+          stepIndex={1}
+          color={COLORS.enroute}
+          label="Enroute"
+        />
+
+        <div style={{
+          width: 1.5, height: 28, margin: "4px 0",
+          background: lineColor(1, 2),
+          borderRadius: 2,
+        }} />
+
+        <Stop
+          stepIndex={2}
+          color={COLORS.dest}
+          label={vehicle?.destinationFactory?.name || vehicle.externalDestination || "Dest."}
+        />
+      </div>
+    </>
   );
 }
 
 // ─── VehicleCard ──────────────────────────────────────────────────────────────
-const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref) => {  const vehicleData  = vehicle.vehicle || {};
-  const location     = vehicle.location;
-  const phase        = vehicle.phase;
-  const pucAlert     = isPUCExpired(vehicleData?.PUCExpiry);
-  const loadStatus   = vehicle?.loadStatus || "pending";
-  const user         = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
-// console.log("VehicleCard render",  vehicle);
+const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref) => {
+  const vehicleData = vehicle.vehicle || {};
+  const location = vehicle.location;
+  const phase = vehicle.phase;
+  const pucAlert = isPUCExpired(vehicleData?.PUCExpiry);
+  const loadStatus = vehicle?.loadStatus || "pending";
+  const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
+
   // ── Overdue logic ────────────────────────────────────────────────────────
-  // A card is "overdue" when: still waiting outside AND has been waiting > 4 hrs
   const isWaitingOutside =
-  location === "outside_factory" &&
-  vehicle.tripState !== "CLOSED" &&
-  vehicle.tripState !== "CANCELLED";
+    location === "outside_factory" &&
+    vehicle.tripState !== "CLOSED" &&
+    vehicle.tripState !== "CANCELLED";
 
-const isWaitingInside =
-  location === "inside_factory" &&
-  vehicle.type === "external_delivery" &&
-  vehicle.tripState !== "CLOSED" &&
-  vehicle.tripState !== "CANCELLED";
+  const isWaitingInside =
+    location === "inside_factory" &&
+    vehicle.type === "external_delivery" &&
+    vehicle.tripState !== "CLOSED" &&
+    vehicle.tripState !== "CANCELLED";
 
-const outsideWaitingHours = hoursWaiting(vehicle?.arrivedAt);
-const insideWaitingHours = hoursWaiting(vehicle?.checkedInAt);
+  const outsideWaitingHours = hoursWaiting(vehicle?.arrivedAt);
+  const insideWaitingHours = hoursWaiting(vehicle?.checkedInAt);
+  const waitingHours = isWaitingOutside ? outsideWaitingHours : isWaitingInside ? insideWaitingHours : 0;
 
-const isOutsideOverdue = isWaitingOutside && outsideWaitingHours >= 4;
-const isInsideOverdue = isWaitingInside && insideWaitingHours >= 4;
-const isOverdue = isOutsideOverdue || isInsideOverdue;
-  
-  // ── Shake toggle: fires every 30 s, active for ~1 s ─────────────────────
+  // 3-tier urgency: warn=4h+  alert=12h+  critical=24h+
+  const urgency = (() => {
+    if (!isWaitingOutside && !isWaitingInside) return 'none';
+    if (waitingHours >= 24) return 'critical';
+    if (waitingHours >= 12) return 'alert';
+    if (waitingHours >= 4)  return 'warn';
+    return 'none';
+  })();
+
+  const isOverdue = urgency !== 'none';
+
+  // ── Shake ────────────────────────────────────────────────────────────────
   const [shaking, setShaking] = useState(false);
-
   useEffect(() => {
     if (!isOverdue) return;
-    const trigger = () => {
-      setShaking(true);
-      setTimeout(() => setShaking(false), 900);
-    };
-    trigger(); // fire immediately on mount too
+    const trigger = () => { setShaking(true); setTimeout(() => setShaking(false), 900); };
+    trigger();
     const id = setInterval(trigger, 10_000);
     return () => clearInterval(id);
   }, [isOverdue]);
 
-  // ── Theme ────────────────────────────────────────────────────────────────
-  const baseTheme  = LOAD_STATUS_THEME[loadStatus] || LOAD_STATUS_THEME.pending;
-  const theme      = isOverdue ? OVERDUE_THEME : baseTheme;
-
-  // ── State key for border bar ─────────────────────────────────────────────
+  // ── Stage key ────────────────────────────────────────────────────────────
   const stageKey = (() => {
-    if (location === "inside_factory" && (vehicle.tripState !== "CLOSED" || vehicle.tripState !== "CANCELLED")) return "inside";
+    if (location === "inside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "inside";
     if (location === "enroute") return "enroute";
     if (location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "waiting";
     if (location === "outside_factory" && (vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED")) return "exited";
     return "unknown";
   })();
 
-  const borderMeta = STATE_BORDER[stageKey];
+  const stageTag = STAGE_META[stageKey] || STAGE_META.unknown;
+
+  const isRouteChanged = vehicle.status === "ROUTE_CHANGED";
+  const isIncoming = user?.factory?._id === vehicle.destinationFactory?._id;
 
   const route = vehicle.type === "internal_transfer" ? (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-        {vehicle.sourceFactory?.name || "Source"}
-        <i className="ri-arrow-right-long-line"></i>
-        {vehicle.destinationFactory?.name || "Unknown"}
+    <Space size={3}>
+      <span>{vehicle.sourceFactory?.name || "Source"}</span>
+      <ArrowRightOutlined style={{ fontSize: 9 }} />
+      <span>{vehicle.destinationFactory?.name || "Unknown"}</span>
+    </Space>
+  ) : (
+    <Space size={3} style={{ overflow: "hidden" }}>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 60, display: "inline-block", whiteSpace: "nowrap" }}>
+        {vehicle.sourceFactory?.name || vehicle?.externalSource || "External"}
       </span>
-    ) : (
-      <div className="flex items-center gap-1 min-w-0 w-full overflow-hidden">
-        <span className="truncate min-w-0 flex-1">{ vehicle.sourceFactory?.name? vehicle.sourceFactory?.name : vehicle?.externalSource ?? "External"}</span>
-        <i className="ri-arrow-right-long-line flex-shrink-0"></i>
-        <span className="truncate min-w-0 flex-1">{vehicle.destinationFactory?.name || (vehicle?.externalDestination?? "Unknown") }</span>
-      </div>
-    );
+      <ArrowRightOutlined style={{ fontSize: 9 }} />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 60, display: "inline-block", whiteSpace: "nowrap" }}>
+        {vehicle.destinationFactory?.name || vehicle?.externalDestination || "Unknown"}
+      </span>
+    </Space>
+  );
 
-  const isAtOrigin      = phase === "ORIGIN";
-  const isAtDestination = phase === "DESTINATION";
-  const isAtInTransit   = vehicle.status === "IN_TRANSIT";
-  const isRouteChanged    = vehicle.status === "ROUTE_CHANGED";
+  // ── Card styles ──────────────────────────────────────────────────────────
+  const URGENCY_THEME = {
+    none:     { bg: '#ffffff', border: '#e5e7eb', shadow: '0 1px 4px rgba(0,0,0,0.07)',       badgeBg: 'transparent',          badgePulse: 'transparent', textPrimary: '#111827', textSub: '#9ca3af', textLabel: '#6b7280', textValue: '#1e40af', divider: 'rgba(0,0,0,0.06)',        iconBox: '#f3f4f6',                iconColor: '#374151' },
+    warn:     { bg: '#fffbeb', border: '#fcd34d', shadow: '0 2px 8px rgba(245,158,11,0.15)',  badgeBg: 'rgba(161,98,7,0.08)',   badgePulse: '#d97706',     textPrimary: '#78350f', textSub: '#92400e', textLabel: '#92400e', textValue: '#78350f', divider: 'rgba(217,119,6,0.2)',    iconBox: '#fef3c7',                iconColor: '#d97706' },
+    alert:    { bg: '#fff7ed', border: '#fb923c', shadow: '0 2px 10px rgba(234,88,12,0.18)', badgeBg: 'rgba(154,52,18,0.10)',  badgePulse: '#ea580c',     textPrimary: '#7c2d12', textSub: '#9a3412', textLabel: '#9a3412', textValue: '#7c2d12', divider: 'rgba(234,88,12,0.2)',    iconBox: '#ffedd5',                iconColor: '#ea580c' },
+    critical: { bg: '#c0392b', border: '#b91c1c', shadow: '0 2px 12px rgba(185,28,28,0.25)', badgeBg: 'rgba(127,29,29,0.7)',  badgePulse: '#fca5a5',     textPrimary: '#ffffff', textSub: '#fca5a5', textLabel: '#ffd6b8', textValue: '#ffffff', divider: 'rgba(255,255,255,0.18)', iconBox: 'rgba(255,255,255,0.15)', iconColor: '#ffffff' },
+  };
+  const T = URGENCY_THEME[urgency];
 
-  const materialNames = Array.isArray(vehicle?.materials) ? vehicle.materials
-  .filter((m) => m && m.material) // remove null / invalid
-  .map((m) =>
-    typeof m.material === "string" ? m.material : m.material?.name
-  )
-  : [];
+  const cardStyle = {
+    borderRadius: 10,
+    overflow: 'hidden',
+    cursor: 'pointer',
+    border: `1.5px solid ${T.border}`,
+    boxShadow: T.shadow,
+    background: T.bg,
+    animation: shaking && isOverdue ? 'cardShake 0.9s ease-in-out' : undefined,
+    transition: 'box-shadow 0.15s, transform 0.15s',
+    position: 'relative',
+  };
+
+  const accentColor = urgency === 'critical' ? '#7f1d1d'
+    : urgency === 'alert'    ? '#ea580c'
+    : urgency === 'warn'     ? '#d97706'
+    : stageKey === 'inside'  ? '#059669'
+    : stageKey === 'enroute' ? '#2563eb'
+    : stageKey === 'waiting' ? '#d97706'
+    : '#94a3b8';
+
+  const overdueWaitTime = getWaitingTime(
+    location === "inside_factory" ? vehicle.checkedInAt : vehicle.arrivedAt
+  );
 
   return (
     <>
       <style>{`
-        @keyframes livePulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.3; transform: scale(0.6); }
-        }
-
-        /* Gentle but noticeable shake — premium feel */
         @keyframes cardShake {
-          0%   { transform: translateX(0)    rotate(0deg); }
+          0%   { transform: translateX(0) rotate(0deg); }
           10%  { transform: translateX(-4px) rotate(-0.6deg); }
-          20%  { transform: translateX(4px)  rotate(0.6deg); }
+          20%  { transform: translateX(4px) rotate(0.6deg); }
           30%  { transform: translateX(-3px) rotate(-0.4deg); }
-          40%  { transform: translateX(3px)  rotate(0.4deg); }
+          40%  { transform: translateX(3px) rotate(0.4deg); }
           50%  { transform: translateX(-2px) rotate(-0.2deg); }
-          60%  { transform: translateX(2px)  rotate(0.2deg); }
+          60%  { transform: translateX(2px) rotate(0.2deg); }
           70%  { transform: translateX(-1px) rotate(-0.1deg); }
-          80%  { transform: translateX(1px)  rotate(0.1deg); }
-          90%  { transform: translateX(0)    rotate(0deg); }
-          100% { transform: translateX(0)    rotate(0deg); }
+          80%  { transform: translateX(1px) rotate(0.1deg); }
+          100% { transform: translateX(0) rotate(0deg); }
         }
-
-        /* Slow amber shimmer across the card background */
-        // @keyframes ambientGlow {
-        //   0%, 100% { box-shadow: 0 0 0 1.5px #d97706, 0 4px 20px #f59e0b33; }
-        //   50%       { box-shadow: 0 0 0 1.5px #f59e0b, 0 6px 28px #f59e0b55; }
-        // }
-
-        /* Top bar slide shimmer */
-        @keyframes barShimmer {
-          0%   { background-position: -200% center; }
-          100% { background-position:  200% center; }
+        @keyframes pulseDot {
+          0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.7); }
+          70%  { box-shadow: 0 0 0 5px rgba(255,255,255,0); }
+          100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
         }
-
-        .vehicle-card-overdue {
-          animation: ambientGlow 2.4s ease-in-out infinite;
-        }
-        .vehicle-card-overdue.shaking {
-          animation: cardShake 0.9s ease-in-out, ambientGlow 2.4s ease-in-out infinite;
-        }
-        .state-bar {
-          height: 3px;
-          background-size: 200% auto;
-          animation: barShimmer 3s linear infinite;
+        @keyframes livePulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
         }
       `}</style>
 
       <div
-      ref={ref}
+        ref={ref}
+        style={cardStyle}
         onClick={onClick}
-        className={isOverdue ? ` vehicle-card-overdue border border-gray-200 shadow-sm ${shaking ? " shaking" : ""}  ` : "border border-gray-200 shadow-md "}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor:"white",
-          borderRadius: 10,
-          overflow: "hidden",
-          cursor: "pointer",
-          transition: "box-shadow .15s, transform .15s",
-          position: "relative",
-        }}
         onMouseEnter={e => {
-          e.currentTarget.style.boxShadow = `0 4px 16px ${theme.accent}22, 0 0 0 1.5px ${theme.accent}`;
-          e.currentTarget.style.transform = "translateY(-1px)";
+          e.currentTarget.style.boxShadow = urgency === 'critical'
+            ? '0 6px 20px rgba(185,28,28,0.40)'
+            : urgency === 'alert'
+            ? '0 6px 16px rgba(234,88,12,0.30)'
+            : urgency === 'warn'
+            ? '0 6px 14px rgba(245,158,11,0.25)'
+            : '0 4px 16px rgba(0,0,0,0.12)';
+          e.currentTarget.style.transform = 'translateY(-1px)';
         }}
         onMouseLeave={e => {
-          e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
-          e.currentTarget.style.transform = "";
+          e.currentTarget.style.boxShadow = T.shadow;
+          e.currentTarget.style.transform = '';
         }}
-        
       >
-        {/* ── State-based top accent bar ── */}
-        <div
-          className="state-bar"
-          style={{ background: borderMeta?.bar }}
-          title={`Vehicle is ${stageKey}`}
-        />
+        {/* ── Accent top bar ── */}
+        <div style={{ height: 3, background: accentColor, width: "100%" }} />
 
-        {/* ── Overdue amber corner badge ── */}
+        {/* ── Overdue badge ── */}
         {isOverdue && (
           <div style={{
             position: "absolute",
             top: 3,
-            right: 140,
+            right: 8,
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            background: "rgb(244, 179, 66, 0.20)",
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
-            color: "#D75656",
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: 0.6,
-            padding: "2px 6px",
+            gap: 5,
+            background: T.badgeBg,
+            border: `1px solid ${T.border}`,
             borderRadius: 4,
-            border: "1px solid rgba(200, 50, 20, 0.35)",
-            boxShadow: "0 0 6px rgba(220, 60, 30, 0.18), inset 0 0 4px rgba(220, 60, 30, 0.07)",
+            padding: "2px 7px",
             zIndex: 2,
           }}>
-            {/* pulse dot — the real urgency signal */}
             <span style={{
-              width: 5,
-              height: 5,
-              borderRadius: "50%",
-              background: "#e03e1a",
-              flexShrink: 0,
-              boxShadow: "0 0 0 0 rgba(220, 60, 30, 0.6)",
-              animation: "waitPulse 1.6s ease-out infinite",
+              width: 5, height: 5, borderRadius: '50%', background: T.badgePulse, flexShrink: 0,
+              animation: 'pulseDot 1.6s ease-out infinite',
             }} />
-
-            {getWaitingTime(location === "inside_factory" ? vehicle.checkedInAt : vehicle.arrivedAt)}
-
-            <span style={{ fontSize: 11, fontWeight: 500 }}>
-              {location === "inside_factory" ? "inside" : "waiting"}
-            </span>
-
-            <style>{`
-              @keyframes waitPulse {
-                0%   { box-shadow: 0 0 0 0 rgba(220, 60, 30, 0.6); }
-                70%  { box-shadow: 0 0 0 4px rgba(220, 60, 30, 0); }
-                100% { box-shadow: 0 0 0 0 rgba(220, 60, 30, 0); }
-              }
-            `}</style>
+            <Text style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary, letterSpacing: 0.3 }}>
+              {overdueWaitTime}
+            </Text>
+            <Text style={{ fontSize: 10, color: T.textSub }}>
+              {location === "inside_factory" ? "Delay inside" : "Waiting at Gate"}
+            </Text>
           </div>
         )}
 
-        <div style={{ padding: "9px 12px 10px", paddingTop: isOverdue ? 22 : 9 }}>
+        <div style={{ padding: "10px 12px 10px", paddingTop: isOverdue ? 26 : 10 }}>
 
-          
+          {/* ── Row 1: Vehicle info + Tracker ── */}
+          {/* ── OriginTracker (absolute) ── */}
+          <OriginTracker vehicle={vehicle} T={T} />
 
-          {/* ── Row 1: Icon + Vehicle No + Phase + Type tags ── */}
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: 7,
-              background: theme.accent + "18",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: theme.accent, flexShrink: 0,
-            }}>
-              <span style={{ width: 15, height: 15 }}>{Icon.truck}</span>
-            </div>
+          {/* ── Row 1: icon + vehicle name ── */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 7, alignItems: "flex-start", paddingRight: 10 }}>
 
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 800, fontSize: 12.5, color: "#111", letterSpacing: .2, lineHeight: 1.2 }}>
-                {vehicleData?.vehicleNumber}
-                {pucAlert && (
-                  <div style={{  color: "#dc2626", width: 14, height: 14 }} title="PUC Expired">
-                    {Icon.alert}
-                  </div>
-                )}
+            {/* Left: icon + name */}
+            <div style={{ display: "flex", gap: 7,  minWidth: 0, alignItems: "flex-start" }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 7, flexShrink: 0,
+                background: T.iconBox,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: T.iconColor,
+              }}>
+                <CarOutlined style={{ fontSize: 15 }} />
               </div>
-              <div style={{ fontSize: 10, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {vehicleData?.transporterName} {/* PUC alert */}
 
+              <div style={{ display: "flex", flexDirection: "column", gap: 2,  flex: 1 }}>
+                <Space size={4} align="center">
+                  <Text strong style={{ fontSize: 13, color: T.textPrimary, letterSpacing: 0.2, fontWeight: 700 }}>
+                    {vehicleData?.vehicleNumber}
+                  </Text>
+                  {pucAlert && (
+                    <Tooltip title="PUC Expired">
+                      <WarningFilled style={{ fontSize: 13, color: urgency === 'critical' ? '#fca5a5' : '#dc2626' }} />
+                    </Tooltip>
+                  )}
+                </Space>
+                <div>
+                  <Text style={{ fontSize: 10, color: T.textSub }}>
+                    {vehicleData?.transporterName}
+                  </Text>
+                </div>
               </div>
-            </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-              {phase && (
-                <Tag style={{
-                  fontSize: 8, fontWeight: 800, letterSpacing: .5,
-                  textTransform: "uppercase", padding: "1px 5px", margin: 0,
-                  background: phase === "ORIGIN" ? "#ede9fe" : "#dcfce7",
-                  color: phase === "ORIGIN" ? "#6366f1" : "#15803d",
-                  border: "none", display: "flex", alignItems: "center", gap: 3,
-                }}>
-                  <span style={{
-                    width: 4, height: 4, borderRadius: "50%", flexShrink: 0,
-                    background: phase === "ORIGIN" ? "#6366f1" : "#15803d",
-                    animation: "livePulse 1.8s ease-in-out infinite",
-                  }} />
-                  {phase === "ORIGIN"
-                    ? vehicle.sourceFactory?.name
-                    : phase === "DESTINATION"
-                    ? vehicle.destinationFactory?.name
-                    : phase}
+              {vehicleData?.typeOfVehicle && (
+                <Tag style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.3, margin: 0, padding: "1px 10px", background: T.iconBox, border: `1px solid ${T.border}`, borderRadius: 30, color: T.textPrimary }}>
+                  {vehicleTypeLabel[vehicleData.typeOfVehicle] || vehicleData.typeOfVehicle}
                 </Tag>
               )}
 
-              <Tag
-                color={vehicle.type === "external_delivery" ? "red" : "cyan"}
-                style={{ fontSize: 9, fontWeight: 700, letterSpacing: .5, margin: 0, padding: "1px 5px" }}
-              >
-                {vehicle.type === "external_delivery" ? "External" : "Internal"}
-              </Tag>
+              {/* {phase && (
+                <Tag
+                  color={phase === "ORIGIN" ? "purple" : "green"}
+                  style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px",  }}
+                >
+                  <span style={{
+                    display: "inline-block", width: 4, height: 4, borderRadius: "50%", marginRight: 3, verticalAlign: "middle",
+                    background: phase === "ORIGIN" ? "#7c3aed" : "#059669",
+                    animation: "livePulse 1.8s ease-in-out infinite",
+                  }} />
+                  {phase === "ORIGIN"
+                  ? vehicle.sourceFactory?.name
+                  : phase === "DESTINATION"
+                  ? vehicle.destinationFactory?.name
+                  : phase}
+                </Tag>
+            )} */}
+
             </div>
           </div>
 
-          {/* ── Row 2: Status badges ── */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 7, flexWrap: "wrap", alignItems: "center", justifyContent:"space-between" }}>
-            <section style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ background: "#f3f4f6", color: "#374151", fontSize: 9.5, fontWeight: 600, borderRadius: 4, border: "1px solid #e5e7eb", padding: "1px 6px", whiteSpace: "nowrap" }}>
-                {vehicleTypeLabel[vehicleData?.typeOfVehicle] || vehicleData?.typeOfVehicle}
-              </span>
+          {/* ── Row 2: Tags ── */}
+          <Space size={4} wrap style={{ marginBottom: 7 }}>
+            
 
-              <CBadge stage={stageKey} />
+            <Tag
+              color={vehicle.type === "external_delivery" ? "red" : "cyan"}
+              style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px" }}
+            >
+              {vehicle.type === "external_delivery" ? "External" : "Internal"}
+            </Tag>
 
-              {vehicle.tripState && (<Tag size="small" color={vehicle.tripState === "CANCELLED"? "red": vehicle.tripState === "CLOSED" ? "gray" : "green"} style={{fontWeight:600, fontSize:9}} >{ vehicle.tripState }</Tag>)}
-              
-              {isRouteChanged && (
-              <Tag 
-                style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing:0.5
-                 }}
-                // variant="border"
-                color="red"
-                >
-                {"Route Changed"}
+            <Tag color={stageTag.color} style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px" }}>
+              {stageTag.label}
+            </Tag>
+
+            {vehicle.tripState && (
+              <Tag
+                color={vehicle.tripState === "CANCELLED" ? "red" : vehicle.tripState === "CLOSED" ? "default" : "green"}
+                style={{ fontSize: 9, fontWeight: 600, margin: 0, padding: "1px 5px" }}
+              >
+                {vehicle.tripState}
               </Tag>
-              )}
-            </section>
+            )}
 
-              <Tag 
-                style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing:0.5
-                 }}
-                variant="border"
-                color={user.factory._id === vehicle.destinationFactory?._id ? "green" : "blue"}
-                >
-                {user.factory._id === vehicle.destinationFactory?._id ? "Incoming" : "Outgoing"}
+            {isRouteChanged && (
+              <Tag color="orange" style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px" }}>
+                Route Changed
               </Tag>
-              
+            )}
 
-          </div>
+            <Tag
+              color={isIncoming ? "green" : "blue"}
+              style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px" }}
+            >
+              {isIncoming ? "Incoming" : "Outgoing"}
+            </Tag>
 
-          <Divider style={{ margin: "5px 0" }} />
+            
+          </Space>
+
+          <Divider style={{ margin: "5px 0", borderColor: T.divider }} />
 
           {/* ── Row 3: Info rows ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <InfoRow icon="ri-map-pin-user-line" iconColor="#2563eb" color={theme.label} label="Driver" value={ ( <> {vehicle?.driver?.name}  ({vehicle?.driver?.phone}) </>) || "—"} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             <InfoRow
-              icon="ri-truck-fill" iconColor="#ea580c"
+              icon={<UserOutlined style={{ fontSize: 12 }} />}
+              label="Driver"
+              value={vehicle?.driver ? `${vehicle.driver.name} (${vehicle.driver.phone})` : "—"}
+              T={T}
+            />
+            <InfoRow
+              icon={<RocketOutlined style={{ fontSize: 12 }} />}
               label="Purpose"
               value={vehicle?.purpose === "Pickup" ? "Pickup" : "Delivery"}
+              T={T}
             />
-            <InfoRow icon="ri-route-line" iconColor="#ca8a04" label="Route" value={route} />
             <InfoRow
-              icon="ri-restart-fill" iconColor="#059669"
+              icon={<SwapRightOutlined style={{ fontSize: 12 }} />}
+              label="Route"
+              value={route}
+              T={T}
+            />
+            <InfoRow
+              icon={<ReloadOutlined style={{ fontSize: 12 }} />}
               label="Load"
               value={loadStatus.charAt(0).toUpperCase() + loadStatus.slice(1)}
+              T={T}
             />
             <InfoRow
-              icon="ri-box-1-line"
-              iconColor="#059669"
+              icon={<InboxOutlined style={{ fontSize: 12 }} />}
               label="Material"
-              value={vehicle?.material?.name?? vehicle?.material?.material?? "Empty"}
-              />
-            <InfoRow
-              icon="ri-attachment-2" iconColor="#7c3ae7"
-              label="Seal"
-              value={vehicle?.material?.seal === "sealed"? "Sealed" : "-"}
+              value={vehicle?.material?.name ?? vehicle?.material?.material ?? "Empty"}
+              T={T}
             />
             <InfoRow
-              icon="ri-time-line" iconColor="#7c3aed"
+              icon={<SafetyOutlined style={{ fontSize: 12 }} />}
+              label="Seal"
+              value={vehicle?.material?.seal === "sealed" ? "Sealed" : "—"}
+              T={T}
+            />
+            <InfoRow
+              icon={<ClockCircleOutlined style={{ fontSize: 12 }} />}
               label="Started"
               value={fmtTime(vehicle?.createdAt)}
+              T={T}
             />
           </div>
-
-          {/* ── Origin → Destination tracker ── */}
-         <div className="absolute right-5 top-22 flex flex-col items-center text-[10px] w-20">
-
-            {/* ORIGIN */}
-            <div className="flex flex-col items-center w-full">
-              <div className="relative flex items-center justify-center">
-                {isAtOrigin && (
-                  <span className="absolute inline-flex w-4 h-4 rounded-full bg-blue-400 opacity-75 animate-ping"></span>
-                )}
-                <div className="relative w-2 h-2 rounded-full bg-blue-500"></div>
-              </div>
-              <span className="mt-1 text-blue-600 w-full text-center truncate">
-                {vehicle?.sourceFactory?.name || (vehicle.externalSource ?? "Out Source")}
-              </span>
-            </div>
-
-            {/* GRADIENT LINE */}
-            <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #3b82f6, #10b981)" }}></div>
-
-            {/* IN TRANSIT */}
-            <div className="flex flex-col items-center w-full">
-              <div className="relative flex items-center justify-center">
-                {isAtInTransit && (
-                  <span className="absolute inline-flex w-4 h-4 rounded-full bg-purple-500 opacity-75 animate-ping"></span>
-                )}
-                <div className="relative w-2 h-2 rounded-full bg-purple-500"></div>
-              </div>
-              <span className={`mt-1 w-full text-center truncate ${isAtInTransit ? "text-purple-600" : "text-purple-500"}`}>
-                Enroute
-              </span>
-            </div>
-
-            <div className="w-[1.5px] h-4 my-1 rounded-full" style={{ background: "linear-gradient(to bottom, #a855f7, #10b981)" }}></div>
-
-            {/* DESTINATION */}
-            <div className="flex flex-col items-center w-full">
-              <div className="relative flex items-center justify-center">
-                {isAtDestination && (
-                  <span className="absolute inline-flex w-4 h-4 rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
-                )}
-                <div className={`relative w-2 h-2 rounded-full ${isAtDestination ? "bg-emerald-500" : "bg-gray-300"}`}></div>
-              </div>
-              <span className={`mt-1 w-full text-center truncate ${isAtDestination ? "text-emerald-600" : "text-gray-400"}`}>
-                {vehicle?.destinationFactory?.name ?? vehicle.externalDestination ?? "Destination"}
-              </span>
-            </div>
-
-          </div>
-
         </div>
       </div>
-
     </>
   );
 });

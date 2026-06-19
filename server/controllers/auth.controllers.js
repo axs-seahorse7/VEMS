@@ -22,6 +22,8 @@ export const createUser = async (req, res) => {
     // Create new user
     const newUser = new User({
       ...req.body,
+      email: emailInLower,
+      workLocation: req.body.role === "admin"? null : req.body.workLocation, // Set workLocation to null for admin
       password: hashedPassword,
     });
     
@@ -53,9 +55,12 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "User not registered" });
     }
 
+
+
     if(user.isBlocked){
       return res.status(403).json({ success: false, message: "Your account is blocked. Please contact support." });
     }
+
 
     console.log("User found for login:", { email: user.email, id: user._id });
 
@@ -229,3 +234,104 @@ export const getMe = async (req, res) => {
   }
 };
 
+
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword)
+      return res.status(400).json({ success: false, message: "currentPassword and newPassword are required" });
+
+    if (newPassword.length < 6)
+      return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) return res.status(401).json({ success: false, message: "Your current password is invalid." });
+
+    const sameAsOld = await bcrypt.compare(newPassword, user.password);
+    if (sameAsOld) return res.status(400).json({ success: false, message: "New password must be different from current password" });
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res.json({ success: true, message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export const searchUsers = async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email || !email.trim())
+      return res.status(400).json({ success: false, message: "email query param is required" });
+
+    const adminFactoryId = req.userId ? (await User.findById(req.userId)).factory : null;
+    console.log("Admin factory ID for search:", adminFactoryId);
+    if (!adminFactoryId)
+      return res.status(403).json({ success: false, message: "No factory associated with this account" });
+
+    const safeEmail = escapeRegex(email.trim());
+
+    const users = await User.find({
+        factory: adminFactoryId,
+        email: { $regex: safeEmail, $options: "i" },
+        role: { $ne: "superadmin" }
+      })
+      .select("name email role factory")
+      .populate("factory", "name location")
+      .limit(20)
+      .lean();
+
+    const normalized = users.map(u => ({
+      _id: u._id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      factoryName: u.factory?.name ?? null,
+    }));
+
+    return res.json({ success: true, data: normalized, total: normalized.length });
+  } catch (error) {
+    console.error("Error searching users:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+export const resetUserPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    const { id } = req.params;
+
+    if (!newPassword || newPassword.length < 6)
+      return res.status(400).json({ success: false, message: "newPassword must be at least 6     characters" });
+
+    const adminFactoryId = req.userId ? (await User.findById(req.userId)).factory : null;
+    if (!adminFactoryId) return res.status(403).json({ success: false, message: "No factory associated with this account" });
+
+   
+    const targetUser = await User.findOne({ _id: id, factory: adminFactoryId });
+    if (!targetUser)
+      return res.status(404).json({ success: false, message: "User not found in your factory" });
+
+    targetUser.password = await bcrypt.hash(newPassword, 10);
+    await targetUser.save();
+
+    return res.json({
+      success: true,
+      message: `Password updated for ${targetUser.name}`,
+    });
+  } catch (error) {
+    console.error("Error resetting user password:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};

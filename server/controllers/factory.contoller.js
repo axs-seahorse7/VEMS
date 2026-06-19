@@ -33,6 +33,23 @@ export const getFactories = async (req, res) => {
     }
 };
 
+export const getFactoriesByLocation = async (req, res) => {
+    try {
+        const { location } = req.query;
+        if (!location) {
+            return res.status(400).json({ message: "Location query parameter is required" });
+        }
+
+        const regexLocation = new RegExp(`^${location}$`, "i");
+
+        const factories = await factoryModel.find({ location: regexLocation, isDeleted: false, status: "active" })
+        return res.status(200).json({ success: true, factories });
+    } catch (error) {
+        console.error("Error getting factories by location:", error);
+        return res.status(500).json({ message: "Server error" });
+    }
+};
+
 export const getFactoryById = async (req, res) => {
     try {
         const { id } = req.params;

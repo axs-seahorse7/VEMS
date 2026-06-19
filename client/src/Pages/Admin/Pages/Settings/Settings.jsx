@@ -1,56 +1,80 @@
 import { useState, useEffect } from "react";
 import {
-  Layout, Menu, Typography, Button, Table, Tag, Switch, Popconfirm,
+  Layout, Menu, Typography, Button, Table, Tag, Popconfirm,
   Modal, Form, Input, Select, Space, Badge, Statistic, Row, Col,
-  Card, message, Tooltip, Divider
+  Card, message, Tooltip, Divider, InputNumber
 } from "antd";
 import {
-  BellOutlined, GlobalOutlined, SafetyOutlined, PlusOutlined,
-  DeleteOutlined, MailOutlined, ShopOutlined, UserOutlined,
+  MailOutlined, GlobalOutlined, SafetyOutlined, PlusOutlined,
+  DeleteOutlined, BellOutlined, ShopOutlined, UserOutlined,
   SettingOutlined, ExclamationCircleOutlined, EnvironmentOutlined,
+  EditOutlined, PauseCircleOutlined, PlayCircleOutlined,
 } from "@ant-design/icons";
 
 import api from "../../../../../services/API/Api/api";
 import NotificationSender from "../Settings-Pages/NotificationSender";
 import VersionManager from "../Settings-Pages/VersionManager";
+import SecurityManager from "../Settings-Pages/SecurityManager";
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-// ─── API helpers (swap baseURL to match your environment) ────────────────────
-
-// ─── Settings Nav Config — add new sections here ─────────────────────────────
-// To add a new section: push an entry here and add its component in renderSection()
 const SETTINGS_SECTIONS = [
-  { key: "alerts",   label: "Email Alerts",   icon: <BellOutlined />,   component: "AlertsSection" },
+  { key: "alerts",   label: "Email Alerts",   icon: <MailOutlined />,   component: "AlertsSection"  },
   { key: "notifications",   label: "Notifications",   icon: <BellOutlined />,   component: "NotificationsSection" },
-  { key: "security", label: "Security", icon: <SafetyOutlined />, component: "ComingSoon",   disabled: true },
+  { key: "security", label: "Security", icon: <SafetyOutlined />, component: "SecurityManager" },
   { key: "general",  label: "General",  icon: <GlobalOutlined />, component: "ComingSoon",   disabled: true },
   { key: "versions", label: "Versions", icon: <SettingOutlined />, component: "VersionManager" },
 ];
 
-// ─── Add Alert User Modal ─────────────────────────────────────────────────────
-function AddAlertUserModal({ open, factories, onSave, onClose }) {
+const ALERT_TYPE_OPTIONS = [
+  { label: "Trip Cancelled", value: "tripCancelled" },
+  { label: "Delay Trips",    value: "delayTrips" },
+  { label: "Vehicle Entry",  value: "vehicleEntry" },
+  { label: "Vehicle Exit",   value: "vehicleExit" },
+];
+
+// ─── Add / Edit Alert User Modal ──────────────────────────────────────────────
+function AlertUserModal({ open, mode, factories, initialValues, onSave, onClose }) {
   const [form]    = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const isEdit = mode === "edit";
 
+  useEffect(() => {
+    if (!open) return;
+    if (isEdit && initialValues) {
+      form.setFieldsValue({
+        name: initialValues.name,
+        email: initialValues.email,
+        factoryId: typeof initialValues.factoryId === "object" ? initialValues.factoryId?._id : initialValues.factoryId,
+        alertTypes: initialValues.alertTypes ?? ["tripCancelled"],
+        alertInterval: initialValues.alertInterval ?? 15,
+      });
+    } else {
+      form.resetFields();
+    }
+  }, [open, isEdit, initialValues, form]);
 
   const handleFinish = async (values) => {
     setLoading(true);
     try {
-      const res = await api.post("/settings/alert-users", values);
-        message.success("Alert recipient added successfully");
-        form.resetFields();
+      if (isEdit) {
+        const res = await api.patch(`/settings/alert-users/${initialValues._id}`, values);
+        message.success("Alert recipient updated successfully");
         onSave(res.data.data);
-     
+      } else {
+        const res = await api.post("/settings/alert-users", values);
+        message.success("Alert recipient added successfully");
+        onSave(res.data.data);
+      }
+      form.resetFields();
     } catch (error) {
       message.error(error.response?.data?.message || "Network error. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
 
   return (
     <Modal
@@ -60,17 +84,23 @@ function AddAlertUserModal({ open, factories, onSave, onClose }) {
       title={
         <Space>
           <BellOutlined style={{ color: "#3B82F6" }} />
-          <span>Add Alert Recipient</span>
+          <span>{isEdit ? "Edit Alert Recipient" : "Add Alert Recipient"}</span>
         </Space>
       }
       width={480}
       destroyOnClose
     >
-      <Text type="secondary" style={{ display: "block", marginBottom: 24, color: "red" }}>
-        This user will receive automated system alert emails when trip cancellations occur.
+      <Text type="secondary" style={{ display: "block", marginBottom: 24 }}>
+        This user will receive automated system alert emails for the selected alert types.
       </Text>
 
-      <Form form={form} layout="vertical" onFinish={handleFinish} requiredMark={false}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleFinish}
+        requiredMark={false}
+        initialValues={{ alertTypes: ["tripCancelled"], alertInterval: 15 }}
+      >
         <Form.Item
           name="name"
           label="Full Name"
@@ -113,13 +143,29 @@ function AddAlertUserModal({ open, factories, onSave, onClose }) {
           </Select>
         </Form.Item>
 
+        <Form.Item
+          name="alertTypes"
+          label="Alert Types"
+          rules={[{ required: true, message: "Select at least one alert type" }]}
+        >
+          <Select mode="multiple" placeholder="Select alert types…" size="large" options={ALERT_TYPE_OPTIONS} />
+        </Form.Item>
+
+        <Form.Item
+          name="alertInterval"
+          label="Alert Interval (minutes)"
+          rules={[{ required: true, message: "Interval is required" }]}
+        >
+          <InputNumber min={1} size="large" style={{ width: "100%" }} placeholder="e.g. 15" />
+        </Form.Item>
+
         <Divider style={{ margin: "16px 0" }} />
 
         <Form.Item style={{ marginBottom: 0 }}>
           <Space style={{ width: "100%", justifyContent: "flex-end" }}>
             <Button onClick={() => { form.resetFields(); onClose(); }}>Cancel</Button>
-            <Button type="primary" htmlType="submit" loading={loading} icon={<PlusOutlined />}>
-              Save Recipient
+            <Button type="primary" htmlType="submit" loading={loading} icon={isEdit ? <EditOutlined /> : <PlusOutlined />}>
+              {isEdit ? "Save Changes" : "Save Recipient"}
             </Button>
           </Space>
         </Form.Item>
@@ -133,11 +179,10 @@ function AlertsSection() {
   const [users,       setUsers]       = useState([]);
   const [factories,   setFactories]   = useState([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [showModal,   setShowModal]   = useState(false);
+  const [modalState,  setModalState]  = useState({ open: false, mode: "add", record: null });
   const [filterFac,   setFilterFac]   = useState("all");
   const [updateLoading, setupdateLoading] = useState(false);
 
-  // Fetch factories and alert users on mount
   useEffect(() => {
     const load = async () => {
       setLoadingData(true);
@@ -157,38 +202,38 @@ function AlertsSection() {
     load();
   }, []);
 
-  const handleToggle = async (id, isActive) => {
+  const handlePauseToggle = async (id, isPaused) => {
     try {
-        setupdateLoading(true);
-      const res = await api.patch(`/settings/alert-users/${id}`, { isActive: !isActive });
-        setUsers(prev => prev.map(x => x._id === id ? { ...x, isActive: !isActive } : x));
-        message.success(`Recipient ${!isActive ? "activated" : "paused"}`);
-    } catch (error) { 
-        message.error( error.response?.data?.message || "Failed to update status"); 
-    }finally {
-        setupdateLoading(false);
+      setupdateLoading(true);
+      await api.patch(`/settings/alert-users/${id}/pause`, { isPaused: !isPaused });
+      setUsers(prev => prev.map(x => x._id === id ? { ...x, isPaused: !isPaused } : x));
+      message.success(`Recipient ${!isPaused ? "paused" : "resumed"}`);
+    } catch (error) {
+      message.error(error.response?.data?.message || "Failed to update status");
+    } finally {
+      setupdateLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      const res = await api.delete(`/settings/alert-users/${id}`);
-        setUsers(prev => prev.filter(x => x._id !== id));
-        message.success("Recipient removed");
-    } catch (error) { 
-        message.error( error.response?.data?.message || "Failed to delete recipient"); 
+      await api.delete(`/settings/alert-users/${id}`);
+      setUsers(prev => prev.filter(x => x._id !== id));
+      message.success("Recipient removed");
+    } catch (error) {
+      message.error(error.response?.data?.message || "Failed to delete recipient");
     }
   };
 
   const getFactory = (id) => factories.find(f => f._id === id);
 
-    const displayed = filterFac === "all"
+  const displayed = filterFac === "all"
     ? users
     : users.filter(u => {
         const fid = typeof u.factoryId === "object" ? u.factoryId?._id : u.factoryId;
         return fid === filterFac;
-        });
-        
+      });
+
   const columns = [
     {
       title: "Name",
@@ -198,9 +243,9 @@ function AlertsSection() {
         <Space>
           <div style={{
             width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-            background: record.isActive ? "linear-gradient(135deg, #3B82F6, #0EA5E9)" : "#E2E8F0",
+            background: !record.isPaused ? "linear-gradient(135deg, #3B82F6, #0EA5E9)" : "#E2E8F0",
             display: "flex", alignItems: "center", justifyContent: "center",
-            color: record.isActive ? "#fff" : "#94A3B8", fontWeight: 700, fontSize: 13
+            color: !record.isPaused ? "#fff" : "#94A3B8", fontWeight: 700, fontSize: 13
           }}>
             {name?.split(" ").map(n => n[0]).slice(0, 2).join("")}
           </div>
@@ -223,9 +268,7 @@ function AlertsSection() {
         return f ? (
           <Space>
             <ShopOutlined style={{ color: "#94A3B8" }} />
-            <div>
-              <Text style={{ display: "block", fontSize: 13 }}>{f.name}</Text>
-            </div>
+            <Text style={{ fontSize: 13 }}>{f.name}</Text>
           </Space>
         ) : <Text type="secondary">—</Text>;
       },
@@ -233,28 +276,46 @@ function AlertsSection() {
     {
       title: "Location",
       dataIndex: "factoryId",
-      key: "factory",
+      key: "location",
       render: (factoryId) => {
         const id = typeof factoryId === "object" ? factoryId?._id : factoryId;
         const f = getFactory(id);
         return f ? (
           <Space>
             <EnvironmentOutlined style={{ color: "#94A3B8" }} />
-            <div>
-              <Text style={{ display: "block", fontSize: 13 }}>{f.location}</Text>
-            </div>
+            <Text style={{ fontSize: 13 }}>{f.location}</Text>
           </Space>
         ) : <Text type="secondary">—</Text>;
       },
     },
     {
+      title: "Alert Types",
+      dataIndex: "alertTypes",
+      key: "alertTypes",
+      render: (types) => (
+        <Space size={4} wrap>
+          {(types ?? []).map(t => (
+            <Tag key={t} color="blue" style={{ fontSize: 11 }}>
+              {ALERT_TYPE_OPTIONS.find(o => o.value === t)?.label ?? t}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: "Interval",
+      dataIndex: "alertInterval",
+      key: "alertInterval",
+      render: (mins) => <Text type="secondary" style={{ fontSize: 13 }}>{mins ?? "—"} min</Text>,
+    },
+    {
       title: "Status",
-      dataIndex: "isActive",
+      dataIndex: "isPaused",
       key: "status",
-      render: (isActive) => (
+      render: (isPaused) => (
         <Badge
-          status={isActive ? "success" : "default"}
-          text={<Tag color={isActive ? "green" : "default"}>{isActive ? "Active" : "Paused"}</Tag>}
+          status={isPaused ? "default" : "success"}
+          text={<Tag color={isPaused ? "default" : "green"}>{isPaused ? "Paused" : "Active"}</Tag>}
         />
       ),
     },
@@ -265,39 +326,46 @@ function AlertsSection() {
       render: (d) => <Text type="secondary" style={{ fontSize: 12 }}>{new Date(d).toLocaleDateString()}</Text>,
     },
     {
-      title: "Active",
-      key: "toggle",
-      render: (_, record) => (
-        <Switch
-          checked={record.isActive}
-          onChange={() => handleToggle(record._id, record.isActive)}
-          size="small"
-          loading={updateLoading}
-        />
-      ),
-    },
-    {
       title: "",
       key: "actions",
       render: (_, record) => (
-        <Popconfirm
-          title="Remove recipient"
-          description="Are you sure you want to remove this alert recipient?"
-          icon={<ExclamationCircleOutlined style={{ color: "#EF4444" }} />}
-          onConfirm={() => handleDelete(record._id)}
-          okText="Remove"
-          okButtonProps={{ danger: true }}
-          cancelText="Cancel"
-        >
-          <Tooltip title="Remove">
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+        <Space size={4}>
+          <Tooltip title="Edit">
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              size="small"
+              onClick={() => setModalState({ open: true, mode: "edit", record })}
+            />
           </Tooltip>
-        </Popconfirm>
+          <Tooltip title={record.isPaused ? "Resume" : "Pause"}>
+            <Button
+              type="text"
+              icon={record.isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
+              size="small"
+              loading={updateLoading}
+              onClick={() => handlePauseToggle(record._id, record.isPaused)}
+            />
+          </Tooltip>
+          <Popconfirm
+            title="Remove recipient"
+            description="Are you sure you want to remove this alert recipient?"
+            icon={<ExclamationCircleOutlined style={{ color: "#EF4444" }} />}
+            onConfirm={() => handleDelete(record._id)}
+            okText="Remove"
+            okButtonProps={{ danger: true }}
+            cancelText="Cancel"
+          >
+            <Tooltip title="Remove">
+              <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
 
-  if(loadingData) {
+  if (loadingData) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
         <Title level={4}>Loading Alert Recipients...</Title>
@@ -308,18 +376,20 @@ function AlertsSection() {
 
   return (
     <>
-      <AddAlertUserModal
-        open={showModal}
+      <AlertUserModal
+        open={modalState.open}
+        mode={modalState.mode}
         factories={factories}
+        initialValues={modalState.record}
         onSave={(u) => {
-        const normalized = {
-            ...u,
-            factoryId: u.factoryId?._id ?? u.factoryId,
-        };
-        setUsers(p => [...p, normalized]);
-        setShowModal(false);
+          const normalized = { ...u, factoryId: u.factoryId?._id ?? u.factoryId };
+          setUsers(prev => {
+            const exists = prev.some(x => x._id === normalized._id);
+            return exists ? prev.map(x => x._id === normalized._id ? normalized : x) : [...prev, normalized];
+          });
+          setModalState({ open: false, mode: "add", record: null });
         }}
-        onClose={() => setShowModal(false)}
+        onClose={() => setModalState({ open: false, mode: "add", record: null })}
       />
 
       {/* Header */}
@@ -327,10 +397,14 @@ function AlertsSection() {
         <div>
           <Title level={4} style={{ margin: 0 }}>Alert Recipients</Title>
           <Text style={{ fontSize: 14, color: "#FF5722" }}>
-            Users will receive automated alert emails when vehicle cancellations occur at the factory.
+            Users will receive automated alert emails for the selected alert types at the factory.
           </Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowModal(true)}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setModalState({ open: true, mode: "add", record: null })}
+        >
           Add Alert User
         </Button>
       </div>
@@ -344,12 +418,12 @@ function AlertsSection() {
         </Col>
         <Col span={8}>
           <Card size="small" style={{ borderColor: "#DCFCE7", background: "#F0FDF4" }}>
-            <Statistic title="Active" value={ Array.isArray(users) ? users.filter(u => u.isActive).length : 0} valueStyle={{ color: "#16A34A", fontWeight: 800 }} />
+            <Statistic title="Active" value={Array.isArray(users) ? users.filter(u => !u.isPaused).length : 0} valueStyle={{ color: "#16A34A", fontWeight: 800 }} />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small" style={{ borderColor: "#FEF3C7", background: "#FFFBEB" }}>
-            <Statistic title="Paused" value={Array.isArray(users) ? users.filter(u => !u.isActive).length : 0} valueStyle={{ color: "#D97706", fontWeight: 800 }} />
+            <Statistic title="Paused" value={Array.isArray(users) ? users.filter(u => u.isPaused).length : 0} valueStyle={{ color: "#D97706", fontWeight: 800 }} />
           </Card>
         </Col>
       </Row>
@@ -405,13 +479,15 @@ function ComingSoon({ label }) {
 // ─── Main Settings Panel ──────────────────────────────────────────────────────
 export default function SettingsPanel() {
   const [activeSection, setActiveSection] = useState("alerts");
+  const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const renderSection = () => {
     const section = SETTINGS_SECTIONS.find(s => s.key === activeSection);
     if (!section) return null;
-    if (section.component === "AlertsSection") return <AlertsSection />;
-    if (section.component === "NotificationsSection") return <NotificationSender />;
-    if (section.component === "VersionManager") return <VersionManager />;
+    if (section.component === "AlertsSection" && user.isSystemAdmin) return <AlertsSection />;
+    if (section.component === "NotificationsSection" && user.isSystemAdmin) return <NotificationSender />;
+    if (section.component === "VersionManager" && user.isSystemAdmin) return <VersionManager />;
+    if (section.component === "SecurityManager") return <SecurityManager />;
     return <ComingSoon label={section.label} />;
   };
 
@@ -419,20 +495,12 @@ export default function SettingsPanel() {
     key:      s.key,
     icon:     s.icon,
     label:    s.disabled ? <Space>{s.label}<Tag style={{ fontSize: 9, padding: "0 5px", lineHeight: "16px" }}>soon</Tag></Space> : s.label,
-    disabled: s.disabled,
+    disabled: s.disabled || (s.component === "AlertsSection" && !user.isSystemAdmin) || (s.component === "NotificationsSection" && !user.isSystemAdmin) || (s.component === "VersionManager" && !user.isSystemAdmin),
   }));
 
   return (
     <Layout style={{ height: "calc(100vh - 80px)", background: "#F1F5F9" }}>
-      {/* ── Settings Sidebar ── */}
-      <Sider
-        width={224}
-        style={{
-          background: "#fff",
-          borderRight: "1px solid #E2E8F0",
-          overflow: "hidden",
-        }}
-      >
+      <Sider width={224} style={{ background: "#fff", borderRight: "1px solid #E2E8F0", overflow: "hidden" }}>
         <div style={{ padding: "28px 20px 16px" }}>
           <Text style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#CBD5E1", display: "block", marginBottom: 4 }}>
             Admin Panel
@@ -461,7 +529,6 @@ export default function SettingsPanel() {
         </div>
       </Sider>
 
-      {/* ── Content Area ── */}
       <Content style={{ padding: "36px 40px", overflowY: "auto", background: "#fff" }}>
         {renderSection()}
       </Content>

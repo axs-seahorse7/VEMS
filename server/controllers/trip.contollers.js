@@ -294,6 +294,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         externalSource: isInternalShifting ? null : req.body.source,
         sourceFactoryId: isInternalShifting ? user.factory._id: null,
         destinationFactoryId: isInternalShifting? req.body.destinationFactoryId: req.body.sourceFactoryId,
+        currentFactoryId:user.factory._id || null,
         purpose: req.body.purpose || "Delivery",
         reason:null,
         status: isInternalShifting? "ORIGIN" : "ARRIVED",
@@ -1345,6 +1346,7 @@ export const markArrived = asyncHandler( async (req, res) => {
               actionBy: user?.email || "system",
               actionLocation: user?.workLocation,
               factoryId: trip.destinationFactoryId || null,
+              currentFactoryId: trip.destinationFactoryId || null,
               action: "arrived",
               timestamp: new Date(),
               segment: {
@@ -1557,7 +1559,8 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
       }
 
       if (
-        !tripDetails ||
+        !tripDetails || 
+        // !tripDetails.materialType ||
         !tripDetails.material ||
         !tripDetails.quantity ||
         !tripDetails.invoiceNo ||
@@ -2789,7 +2792,7 @@ export const getVehiclesLength = async (req, res) => {
       totalRM,              
     ] = await Promise.all([
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }], }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "inside_factory",  phase: "DESTINATION", destinationFactoryId: factoryId }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "inside_factory",  $or: [{ phase: "ORIGIN", sourceFactoryId: factoryId }, { phase: "DESTINATION", destinationFactoryId: factoryId }] }),
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId }),
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "enroute",         phase: "ORIGIN",      destinationFactoryId: factoryId }),
       // Dispatch -------
@@ -2800,7 +2803,12 @@ export const getVehiclesLength = async (req, res) => {
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Pickup",   $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Delivery", $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "FG" }, { "materials.0.name": "FG" }], $and: [{ $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }] }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "RM" }, { "materials.0.name": "RM" }], $and: [{ $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }] }),
+      Trip.countDocuments({tripState:  { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "RM" }, { "materials.0.name": "RM" }], $and: [{$or:  [{ location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },{ location: "inside_factory", $or: [{ phase: "ORIGIN", sourceFactoryId: factoryId }, { phase: "DESTINATION", destinationFactoryId: factoryId },]},
+        { location: "enroute", destinationFactoryId: factoryId },
+            ],
+          },
+        ],
+      })    
     ]);
 
      return res.status(200).json({
@@ -3410,8 +3418,7 @@ const styleData = (cell, bgHex) => {
   };
 };
  
-const styleRow = (row, bgHex) =>
-  row.eachCell({ includeEmpty: true }, (cell) => styleData(cell, bgHex));
+const styleRow = (row, bgHex) => row.eachCell({ includeEmpty: true }, (cell) => styleData(cell, bgHex));
  
 
 const TOLERANCE_MS = 1000; 
@@ -3534,7 +3541,6 @@ export const getDownloadTrips = async (req, res) => {
   try {
     const { from, to } = req.query;
  
-    /* ── 1. Auth / factory resolution ───────────────────────── */
     const user = await User.findById(req.userId).select("factory").lean();
     if (!user?.factory) {
       return res.status(404).json({ message: "User or factory not found" });
@@ -3671,6 +3677,7 @@ export const getDownloadTrips = async (req, res) => {
       { key: "vehicleCat",    width: 16 },
       { key: "vehicleType",   width: 18 },
       { key: "pucExpiry",     width: 14 },
+      { key: "transporterName",width: 18 },
       // DRIVER (cols 9-13)
       { key: "driverName",    width: 18 },
       { key: "driverContact", width: 14 },
@@ -3730,7 +3737,7 @@ export const getDownloadTrips = async (req, res) => {
     // Row 2 — column headers
     const headerRow1 = wsDetail.addRow([
       "Trip ID", "Seg #", "Trip Type", "Purpose",
-      "Vehicle No.", "Category", "Vehicle Type", "PUC Expiry",
+      "Vehicle No.", "Category", "Vehicle Type", "PUC Expiry", "Transporter",
       "Driver Name", "Contact", "ID Type", "ID Number", "License No.",
       "Source Factory", "Source Location", "Dest. Factory", "Dest. Location", "Ext. Source", "Ext. Dest.",
       "Seg Started At", "Seg Completed At",
@@ -3898,6 +3905,7 @@ export const getDownloadTrips = async (req, res) => {
             vehicle.typeOfVehicle      || "",
             vehicle.type === "internal" ? "Internal" : "External",
             fmtDate(vehicle.PUCExpiry),
+            vehicle.transporterName     || "",
             // DRIVER
             driver.driverName          || "",
             driver.driverContact       || "",

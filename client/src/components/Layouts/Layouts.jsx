@@ -81,6 +81,7 @@ const NAV = [
     children: [
       { id: "overview", label: "Overview" },
       { id: "searchDrivers", label: "Search Drivers" },
+      { id: "vehiclePerformance", label: "Vehicle Performance" },
     ]
   },
   {
@@ -285,7 +286,6 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
       console.error("Logout failed:", err);
     }
   };
-
   const user = JSON.parse(localStorage.getItem("user"));
 
   return (
@@ -402,8 +402,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
                   <span style={{ width: 14, height: 14, display: "flex" }}>{Icons.user}</span>
                 </div>
                 <div style={{ textAlign: "left" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111" }}>{user?.name}</div>
-                  <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{user?.email}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111" }}>{user?.name} </div>
                 </div>
                 <span style={{ width: 13, height: 13, display: "flex", color: "#9ca3af" }}>{Icons.chevronDown}</span>
               </button>
@@ -417,7 +416,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
                     boxShadow: "0 10px 40px rgba(0,0,0,0.13)", border: "1px solid #e5e7eb",
                   }}>
                     <div style={{ padding: "8px 12px 10px", borderBottom: "1px solid #f0f0f0", marginBottom: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>System Admin</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{user?.name}</div>
                       <div style={{ fontSize: 11, color: "#9ca3af" }}>{user?.email}</div>
                     </div>
                     <button onClick={()=> handleSignOut()} style={{

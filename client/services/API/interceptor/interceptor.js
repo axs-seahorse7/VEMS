@@ -70,8 +70,8 @@ export const setupInterceptors = () => {
         return Promise.resolve({ data: { success: false, forceUpdate: true } });
       }
 
-      if (status === 401 && currentPath !== "/login") {
-        console.warn("🔒 Session expired");
+      if (status === 401 && currentPath !== "/login" && !error.config?.skipAuthRedirect) {
+        console.warn(" Session expired");
         localStorage.removeItem("user");
         window.location.href = "/login";
       }

@@ -18,7 +18,7 @@ export function AdminRoute({ children }) {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (!user.isSystemAdmin) {
+  if (!user.isSystemAdmin && user.role !== "admin") {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -41,7 +41,7 @@ export function UserRoute({ children }) {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (user.isSystemAdmin) {
+  if (user.isSystemAdmin || user.role === "admin") {
     return <Navigate to="/admin" replace />;
   }
 

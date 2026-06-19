@@ -13,7 +13,9 @@ import {
   Form ,
   Spin,
   Tabs,
+  Tag,
 } from "antd";
+import {WarningOutlined } from "@ant-design/icons";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
 import { useQuery } from "@tanstack/react-query";
 
@@ -299,7 +301,11 @@ function Badge({ stage }) {
 }
 
 function TypeBadge({ type }) {
-  return <span style={{ background: "#f3f4f6", color: "#374151", fontSize: 10.5, fontWeight: 600, borderRadius: 5, padding: "2px 7px", whiteSpace: "nowrap" }}>{vehicleTypeLabel[type] || type}</span>;
+  return (
+    <Tag bordered style={{ fontWeight: 700, fontSize: 10.5, borderRadius: 5, color: "#374151", background: "#f3f4f6" }}>
+      {vehicleTypeLabel[type] || type}
+    </Tag>
+  );
 }
 
 // ─── Horizontal Trip History Timeline ────────────────────────────────────────
@@ -438,7 +444,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
   const customers = [...CUSTOMER, ...SUPPLIERS]
 
   const DEFAULT_TRIP_INTERNAL = {
-    materialType: "",
+    materialType: null,
     material: "",
     quantity: "",
     invoiceNo: "",
@@ -489,6 +495,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
       try {
         if (
           !tripDetails.material ||
+          !tripDetails.materialType ||
           !tripDetails.quantity ||
           !tripDetails.invoiceNo ||
           !tripDetails.invoiceAmount
@@ -499,6 +506,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
           ...withTripFactory,
           tripDetails: {
             material: tripDetails.material,
+            materialType: tripDetails.materialType,
             quantity: tripDetails.quantity,
             invoiceNo: tripDetails.invoiceNo,
             invoiceAmount: tripDetails.invoiceAmount,
@@ -554,6 +562,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
     try {
       if (
         !tripInternal.material ||
+        !tripInternal.materialType ||
         !tripInternal.quantity ||
         !tripInternal.invoiceNo ||
         !tripInternal.invoiceAmount
@@ -596,6 +605,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
         }else{
           if (
             !tripInternal.material ||
+            !tripInternal.materialType ||
             !tripInternal.quantity ||
             !tripInternal.invoiceNo ||
             !tripInternal.invoiceAmount
@@ -609,6 +619,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
                 ...withTripFactory,
                 tripDetails: {
                   material: tripInternal.material,
+                  materialType: tripInternal.materialType,
                   quantity: tripInternal.quantity,
                   invoiceNo: tripInternal.invoiceNo,
                   invoiceAmount: tripInternal.invoiceAmount,
@@ -945,7 +956,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
 
             <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
               <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Invoice No.
+                Invoice No. <span className="text-red-500" >*</span>
               </label>
               <Input
                 required
@@ -961,7 +972,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
             <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
               <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Material
+                Material <span className="text-red-500" >*</span>
               </label>
               <Input
                 required
@@ -973,7 +984,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
             </div>
             <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
               <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Material Type
+                Material Type <span className="text-red-500" >*</span>
               </label>
               <Select
                 required
@@ -987,7 +998,8 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
                 }
                 options={[
                   { label: "RAW Material", value: "RM" },
-                  { label: "Finish Good", value: "FG" }
+                  { label: "Finish Good", value: "FG" },
+                  { label: "Other", value: "OTHER" }
                 ]}
                 style={{ borderRadius: 8 }}
               />
@@ -995,7 +1007,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
 
             <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
               <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Quantity
+                Quantity <span className="text-red-500" >*</span>
               </label>
               <InputNumber
                 required
@@ -1007,7 +1019,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
             </div>
             <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:20 }}>
               <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Invoice Amount (₹)
+                Invoice Amount (₹) <span className="text-red-500" >*</span>
               </label>
               <InputNumber
                 required
@@ -1248,16 +1260,32 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   })();
 
   const Row = ({ label, value, warn, accent }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid #f9fafb" }}>
-      <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, flexShrink: 0, minWidth: 110 }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 600, color: warn ? "#dc2626" : accent ? "#6366f1" : "#111", textAlign: "right" }}>{value || "—"}</span>
-    </div>
-  );
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid #f1f5f9" }}>
+    <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, flexShrink: 0, minWidth: 110 }}>{label}</span>
+    <span style={{
+      fontSize: 12,
+      fontWeight: warn || accent ? 700 : 600,
+      color: "#0f172a",
+      textAlign: "right",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
+    }}>
+      {warn && <WarningOutlined style={{ fontSize: 11 }} />}
+      {value || "—"}
+    </span>
+  </div>
+);
 
   const Section = ({ title, children }) => (
-    <div   style={{ marginBottom: 14 }}>
-      <div  style={{ fontSize: 10, fontWeight: 800, color: "#6366f1", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
-      <div  style={{ background: "#fafafa", borderRadius: 8, padding: "4px 10px" }}>{children}</div>
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 10, fontWeight: 800, color: "#6366f1", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
+      <div style={{
+        background: "#fafafa",
+        borderRadius: 8,
+        padding: "4px 10px",
+        boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
+      }}>{children}</div>
     </div>
   );
 
@@ -1326,8 +1354,8 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
         </Section>
         <Section title="Trip Details">
           <Row label="Type"             value={trip?.type === "external_delivery"? "External Trip" : "Internal Trip"} />
-          <Row label="Status"           value={trip?.status} />
-          <Row label="Load Status"      value={trip?.loadStatus} accent={trip?.loadStatus === "loaded"} />
+          <Row label="Status"           value={trip?.status === "IN_TRANSIT"? "In Transit" : trip?.status === "ROUTE_CHANGED"? "Route Changed" : trip?.status || "N/A"} />
+          <Row label="Load Status"      value={trip?.loadStatus?.charAt(0).toUpperCase() + trip?.loadStatus?.slice(1)} accent={trip?.loadStatus === "loaded"} />
           <Row label="Purpose"          value={trip?.purpose} />
         </Section>
         <Section title="Location">

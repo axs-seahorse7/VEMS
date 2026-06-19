@@ -1,96 +1,73 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import api from "../../../../services/API/Api/api"; // adjust path
-import {Divider, Select   } from "antd";
+import {Divider, Select, Card   } from "antd";
 import { debounce } from "lodash";
-import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
 import { Line, Doughnut  } from "react-chartjs-2";
 import { useQuery } from "@tanstack/react-query";
-import TripHeatmap from "../components/Trends/HeatMaps.jsx";
-// remove the duplicate — use ChartJS everywhere
 import Chart from "chart.js/auto";
+import dayjs from "dayjs";
+
+
+import AdminNavbar from "../Nav/AdminNavbar.jsx";
+import {DEFAULT_DATE_RANGE, DEFAULT_LOCATION } from "../Nav/AdminNavbar.jsx";
+import {useDashboard} from "../../../Global/Dashboard-Context/DashboardProvider.jsx";
+
+// imports for chartjs plugins
+import Donut from "../components/Analytics/Donut.jsx";
+import AreaSparkline from "../components/Analytics/AreaSparkline.jsx";
+import TooltipBubble from "../components/Analytics/TooltipBubble.jsx";
+import FactoryBarChart from "../components/Analytics/FactoryBarChart.jsx";
+import FlowChart from "../components/Analytics/FlowChart.jsx";
+import CongestionGauge from "../components/Analytics/CongestionGauge.jsx";
+import BottleneckBar from "../components/Analytics/BottleneckBar.jsx";
+import HBar from "../components/Analytics/HBar.jsx";
+import VBarGroup from "../components/Analytics/VBarGroup.jsx";
+import BarChart from "../components/Analytics/BarChart.jsx";
+import WaitingAnalysisCard from "../components/Analytics/WaitingAnalysisCard.jsx";
+import TripExecutionDonut from "../components/Analytics/TripExecutionDonut.jsx";
+import DriverAnalyticsCard from "../components/Analytics/DriverAnalyticsCard.jsx";
+import TripTypeDonut from "../components/Analytics/TripTypeDonut.jsx";
+import PGBreakdownCard from "../components/Analytics/PGBreakdownCard.jsx";
+import TripHeatmap from "../components/Trends/HeatMaps.jsx";
+import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
+import DailyTripLine from "../components/Analytics/DailyTripLine.jsx";
+
+
+// import custom components
+import Skeleton from "../components/Loader/Skeleton.jsx";
+import StatCell from "../components/Cards/StatCell.jsx";
+import Delta from "../components/Cards/Delta.jsx";
+import CardLabel from "../components/Cards/CardLabel.jsx";
+import BigNumber from "../components/Cards/BigNumber.jsx";
+
 
 
 const TRANSPORTERS = [
-  { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" },
-  { v: "NGM : Next Generation Mfg", l: "NGM : Next Generation Mfg" },
-  { v: "PGTI-2/Sanjeevani", l: "PGTI-2/Sanjeevani" },
-  { v: "PG4: PG Electroplast", l: "PG4: PG Electroplast" },
-  { v: "TRIUMPH Warehouse", l: "TRIUMPH Warehouse" },
-  { v: "VIHAAN Warehouse", l: "VIHAAN Warehouse" },
-  { v: "D111 Warehouse", l: "D111 Warehouse" },
-  { v: "Pg Bhiwadi", l: "Pg Bhiwadi" },
-  { v: "STYROTECH INDUSTRIES", l: "STYROTECH INDUSTRIES" },
-  { v: "KSH DISTRIPARKS PVT.LTD", l: "KSH DISTRIPARKS PVT.LTD" },
-  { v: "MD GRAPHICS PRIVATE LIMITED", l: "MD GRAPHICS PRIVATE LIMITED" },
-  { v: "Carrier Midea", l: "Carrier Midea" },
-  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
-  { v: "SAI AUTO COMPONENTS PVT.LTD", l: "SAI AUTO COMPONENTS PVT.LTD" },
-  { v: "Hakimuddin", l: "Hakimuddin" },
-  { v: "Prijai cooltech", l: "Prijai cooltech" },
-  { v: "V G ENGINEERING ENTERPRISES", l: "V G ENGINEERING ENTERPRISES" },
-  { v: "SUMITI PACKING", l: "SUMITI PACKING" },
-  { v: "YEEMAK PVT LTD", l: "YEEMAK PVT LTD" },
-  { v: "ALIGN COMPONENTS PVT.LTD", l: "ALIGN COMPONENTS PVT.LTD" },
-  { v: "VAIBHAV AMIT IND HP GAS AGENCY.", l: "VAIBHAV AMIT IND HP GAS AGENCY." },
-  { v: "SP INDUSTRIES", l: "SP INDUSTRIES" },
-  { v: "MD Graphics", l: "MD Graphics" },
-  { v: "YASH ENGINEERING", l: "YASH ENGINEERING" },
   { v: "ATUL PLAST", l: "ATUL PLAST" },
-  { v: "Unipack Packaging Pvt Ltd", l: "Unipack Packaging Pvt Ltd" },
-  { v: "Productive technologies", l: "Productive technologies" },
-  { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
-  { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" },
-  { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
-  { v: "MADAN ELECTRO", l: "MADAN ELECTRO" },
-  { v: "KV BOXCORP", l: "KV BOXCORP" },
-  { v: "Suyog eng", l: "Suyog eng" },
-  { v: "AVADHOOT PAPER PRO", l: "AVADHOOT PAPER PRO" },
-  { v: "SAMARTH", l: "SAMARTH" },
-  { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
-  { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" },
-  { v: "Macdermid alpha", l: "Macdermid alpha" },
-  { v: "SHRI JI FOAM", l: "SHRI JI FOAM" },
-  { v: "Metacool", l: "Metacool" },
-  { v: "OM SANTOSHI", l: "OM SANTOSHI" },
-  { v: "M/S. S.B", l: "M/S. S.B" },
-  { v: "CRAFTED SOLUTION", l: "CRAFTED SOLUTION" },
-  { v: "SKM GALVA", l: "SKM GALVA" },
-  { v: "Axalta coating", l: "Axalta coating" },
-  { v: "M/s S.B. PRECISON SPRINGS - 2025-26", l: "M/s S.B. PRECISON SPRINGS - 2025-26" },
-  { v: "METCAP TUB PVT. LTD.", l: "METCAP TUB PVT. LTD." },
-  { v: "Royal polymer", l: "Royal polymer" },
-  { v: "ANUSHKA INDUS", l: "ANUSHKA INDUS" },
-  { v: "OIENTECH INDIA PVT.LTD.", l: "OIENTECH INDIA PVT.LTD." },
-  { v: "Nahata plastikos llp", l: "Nahata plastikos llp" },
-  { v: "KINGFA", l: "KINGFA" },
-  { v: "Nidec INDIA", l: "Nidec INDIA" },
-  { v: "Steel Suppliers Ltd", l: "Steel Suppliers Ltd" },
-  { v: "Plastic Materials Co", l: "Plastic Materials Co" },
-  { v: "Empire Fastner", l: "Empire Fastner" },
-  { v: "Asian Paint", l: "Asian Paint" },
-  { v: "SHREE ENTERPRISES", l: "SHREE ENTERPRISES" },
-  { v: "MACHHAR PACKAGING", l: "MACHHAR PACKAGING" },
-  { v: "PRAVIN ENGINEERING WORKS", l: "PRAVIN ENGINEERING WORKS" },
-  { v: "ATUL PLAST-CR", l: "ATUL PLAST-CR" },
-  { v: "SPF LIMITED", l: "SPF LIMITED" },
-  { v: "SUPREME PETROCHEM LTD", l: "SUPREME PETROCHEM LTD" },
-  { v: "FRIENDS AND COMPANY UNIT-2", l: "FRIENDS AND COMPANY UNIT-2" },
-  { v: "VINDHYAWASNI INDUSTRIES", l: "VINDHYAWASNI INDUSTRIES" },
-  { v: "TUSHAR ENG.", l: "TUSHAR ENG." },
-  { v: "SHARDA INDUSTRIES", l: "SHARDA INDUSTRIES" },
-  { v: "BHARGAVI ENTERPRISES", l: "BHARGAVI ENTERPRISES" },
-  { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" },
-  { v: "MAULI POLYMER", l: "MAULI POLYMER" },
-  { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
-  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" },
+  { v: "CRAFTED", l: "CRAFTED" },
+  { v: "DSP", l: "DSP" },
+  { v: "DVS", l: "DVS" },
+  { v: "INDIAN LOGISTIC", l: "INDIAN LOGISTIC" },
+  { v: "KRISHNA", l: "KRISHNA" },
+  { v: "N/A", l: "N/A" },
+  { v: "PGEL", l: "PGEL" },
+  { v: "PGTL", l: "PGTL" },
+  { v: "RAJYOG", l: "RAJYOG" },
+  { v: "SHIVTARA", l: "SHIVTARA" },
+  { v: "SHIVTARA TRANSPORT", l: "SHIVTARA TRANSPORT" },
+  { v: "SVR LOGISTICS", l: "SVR LOGISTICS" },
+  { v: "Shivtara Transport", l: "Shivtara Transport" },
+  { v: "Shri Ram Transport", l: "Shri Ram Transport" },
+  { v: "shivtara", l: "shivtara" },
+  { v: "vishwash", l: "vishwash" },
 ];
 
 const PERIODS = [
-  { key: "today",   label: "Today" },
-  { key: "yesterday", label: "Yesterday" },
-  { key: "week",    label: "Week" },
-  { key: "month",   label: "Month" },
-  { key: "quarter", label: "Quarter" },
+  { key: "today",     label: "Today"      },
+  { key: "yesterday", label: "Yesterday"  },
+  { key: "week",      label: "Week"       },
+  { key: "month",     label: "Month"      },
+  { key: "quarter",   label: "Quarter"    },
 ];
 
 const VEHICLE_ICONS = {
@@ -99,10 +76,7 @@ const VEHICLE_ICONS = {
   ambulance: "🚑", van: "🚐", trailer: "🚋",
 };
 
-// const TRANSPORTERS = ["SHIVTARA", "BHATI GOLDEN", "BHATI", "BG", "OM SHIVA"];
 
-
-// ── colour palette (teal-based, matches screenshot) ───────────────────────────
 const C = {
   teal:     "#0d9488",
   blue:     "#24B1B1",
@@ -120,1623 +94,30 @@ const C = {
   micro:    "#94a3b8",
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tiny SVG Donut
-// ─────────────────────────────────────────────────────────────────────────────
-function Donut({ segments, size = 120, stroke = 14, label, sublabel }) {
-  const r   = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const cx   = size / 2;
-  let offset = 0;
-  // start from top
-  const startRotate = -90;
 
-  return (
-    <svg width={size} height={size} style={{ display: "block" }}>
-      {/* track */}
-      <circle cx={cx} cy={cx} r={r} fill="none" stroke={C.slateLight} strokeWidth={stroke} />
-      {segments?.map((seg, i) => {
-        const dash = (seg.pct / 100) * circ;
-        const gap  = circ - dash;
-        const el = (
-          <circle
-            key={i}
-            cx={cx} cy={cx} r={r}
-            fill="none"
-            stroke={seg.color}
-            strokeWidth={stroke}
-            strokeDasharray={`${dash} ${gap}`}
-            strokeDashoffset={-(offset / 100) * circ}
-            transform={`rotate(${startRotate} ${cx} ${cx})`}
-            style={{ transition: "stroke-dasharray 0.8s ease" }}
-          />
-        );
-        offset += seg.pct;
-        return el;
-      })}
-      {/* centre label */}
-      {label !== undefined && (
-        <>
-          <text x={cx} y={cx - 4} textAnchor="middle" dominantBaseline="middle"
-            style={{ fontSize: size * 0.17, fontWeight: 800, fill: C.text, fontFamily: "'DM Sans', sans-serif" }}>
-            {label}
-          </text>
-          {sublabel && (
-            <text x={cx} y={cx + size * 0.14} textAnchor="middle"
-              style={{ fontSize: size * 0.1, fill: C.muted, fontFamily: "'DM Sans', sans-serif" }}>
-              {sublabel}
-            </text>
-          )}
-        </>
-      )}
-    </svg>
-  );
-}
 
-
-
-function AreaSparkline({ data, height = 70, color = C.teal }) {
-  const containerRef = useRef(null);
-  const [width,   setWidth]   = useState(0);
-  const [tooltip, setTooltip] = useState(null); // { x, y, day }
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-    ro.observe(containerRef.current);
-    setWidth(containerRef.current.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
-  const pts = (() => {
-    if (!data || data.length === 0 || width === 0) return [];
-    const vals = data?.map(d => d.count);
-    const max  = Math.max(...vals, 1);
-    return data?.map((d, i) => {
-      const x = data.length === 1 ? width / 2 : (i / (data.length - 1)) * width;
-      const y = height - (d.count / max) * (height - 10) - 5;
-      return { x, y, ...d };
-    });
-  })();
-
-  const linePath = pts?.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
-  const areaPath = pts?.length ? `${linePath} L${width},${height} L0,${height} Z` : "";
-  const gradId   = `sparkGrad-${color.replace("#", "")}`;
-
-  // Find nearest point by mouse X
-  const handleMouseMove = (e) => {
-    if (!pts.length) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const mx   = e.clientX - rect.left;
-    let   best = 0;
-    let   bestDist = Infinity;
-    pts.forEach((p, i) => {
-      const d = Math.abs(p.x - mx);
-      if (d < bestDist) { bestDist = d; best = i; }
-    });
-    const p = pts[best];
-    setTooltip({ svgX: p.x, svgY: p.y, day: p });
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: "100%", height, display: "block", position: "relative" }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setTooltip(null)}
-    >
-      {width > 0 && (
-        <>
-          <svg
-            width={width}
-            height={height}
-            style={{ display: "block", overflow: "visible" }}
-          >
-            <defs>
-              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor={color} stopOpacity="0.22" />
-                <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-              </linearGradient>
-            </defs>
-
-            {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
-            {linePath && (
-              <path d={linePath} fill="none" stroke={color}
-                strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-            )}
-
-            {/* regular dots */}
-            {pts?.map((p, i) =>
-              p.count > 0 ? (
-                <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} />
-              ) : null
-            )}
-
-            {/* hover crosshair */}
-            {tooltip && (
-              <>
-                <line
-                  x1={tooltip.svgX} y1={0}
-                  x2={tooltip.svgX} y2={height}
-                  stroke={color} strokeWidth={1}
-                  strokeDasharray="3 3" opacity={0.5}
-                />
-                <circle
-                  cx={tooltip.svgX} cy={tooltip.svgY}
-                  r={5} fill={color}
-                  stroke="#fff" strokeWidth={2}
-                />
-              </>
-            )}
-          </svg>
-
-          {/* ── Tooltip bubble ── */}
-          {tooltip && (
-            <TooltipBubble
-              day={tooltip.day}
-              svgX={tooltip.svgX}
-              svgY={tooltip.svgY}
-              containerWidth={width}
-              color={color}
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tooltip bubble — factory breakdown for the hovered day
-// ─────────────────────────────────────────────────────────────────────────────
-function TooltipBubble({ day, svgX, svgY, containerWidth, color }) {
-  const TIP_W  = 200;
-  const OFFSET = 12;
-
-  // flip left when near right edge
-  const left = svgX + TIP_W + OFFSET > containerWidth
-    ? svgX - TIP_W - OFFSET
-    : svgX + OFFSET;
-
-  // sort factories desc
-  const factories = [...(day.factories ?? [])].sort((a, b) => b.count - a.count);
-
-  return (
-    <div style={{
-      position:   "absolute",
-      top:        Math.max(0, svgY - 12),
-      left,
-      width:      TIP_W,
-      background: "#fff",
-      border:     `1px solid ${C.border}`,
-      borderRadius: 10,
-      padding:    "10px 12px",
-      boxShadow:  "0 4px 20px rgba(0,0,0,0.10)",
-      pointerEvents: "none",
-      zIndex:     50,
-      fontFamily: "'DM Sans', sans-serif",
-    }}>
-      {/* Date + total */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>
-          {new Date(day.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-        </span>
-        <span style={{
-          fontSize: 11, fontWeight: 800,
-          background: color + "18", color,
-          borderRadius: 6, padding: "2px 8px",
-        }}>
-          {day.count} trip{day.count !== 1 ? "s" : ""}
-        </span>
-      </div>
-
-      {/* Factory rows */}
-      {factories.length === 0 ? (
-        <div style={{ fontSize: 11, color: C.muted }}>No trips</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {factories.slice(0, 5)?.map((f, i) => {
-            const barPct = day.count > 0 ? (f.count / day.count) * 100 : 0;
-            return (
-              <div key={i}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, marginBottom: 2 }}>
-                  <span style={{ color: C.text, fontWeight: 600, maxWidth: 130,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.factoryName}
-                  </span>
-                  <span style={{ color: C.muted, fontWeight: 700, flexShrink: 0, marginLeft: 6 }}>
-                    {f.count}
-                  </span>
-                </div>
-                {/* mini inline bar */}
-                <div style={{ height: 4, background: C.slateLight, borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{
-                    width: `${barPct}%`, height: "100%",
-                    background: color, borderRadius: 99,
-                  }} />
-                </div>
-              </div>
-            );
-          })}
-          {factories.length > 5 && (
-            <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
-              +{factories.length - 5} more factories
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-function FactoryBarChart({ data, color }) {
-  const containerRef = useRef(null);
-  const [width,   setWidth]   = useState(0);
-  const [tooltip, setTooltip] = useState(null);
-
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
-    ro.observe(containerRef.current);
-    setWidth(containerRef.current.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
-  if (!data || data.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: C.muted }}>
-        No data for this period
-      </div>
-    );
-  }
-
-  // layout constants
-  const PADDING_LEFT  = 38;
-  const PADDING_RIGHT = 0;
-  const PADDING_TOP   = 16;
-  const PADDING_BOT   = 56;
-  const HEIGHT        = 250;
-  const chartW = Math.max(0, width - PADDING_LEFT - PADDING_RIGHT);
-  const chartH = HEIGHT - PADDING_TOP - PADDING_BOT;
-
-  const maxVal  = Math.max(...data?.map(d => d.count), 1);
-  const yTicks  = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * maxVal));
-
-  const groupW  = chartW / data?.length;
-  const barW    = Math.max(6, Math.min(40, groupW * 0.55));
-
-  const barX = (i) => PADDING_LEFT + i * groupW + groupW / 2 - barW / 2;
-  const barH = (v) => Math.max(2, (v / maxVal) * chartH);
-  const barY = (v) => PADDING_TOP + chartH - barH(v);
-
-  return (
-    <div ref={containerRef} style={{ width: "100%", position: "relative" }}>
-      {width > 0 && (
-        <svg
-          width={width}
-          height={HEIGHT}
-          style={{ display: "block", overflow: "visible" }}
-          onMouseLeave={() => setTooltip(null)}
-        >
-          <defs>
-            <linearGradient id={`barGrad-${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor={color} stopOpacity="1"   />
-              <stop offset="100%" stopColor={color} stopOpacity="0.55" />
-            </linearGradient>
-          </defs>
-
-          {/* Y grid lines + labels */}
-          {yTicks.map((tick, i) => {
-            const cy = PADDING_TOP + chartH - (tick / maxVal) * chartH;
-            return (
-              <g key={i}>
-                <line
-                  x1={PADDING_LEFT} y1={cy}
-                  x2={PADDING_LEFT + chartW} y2={cy}
-                  stroke={C.slateLight} strokeWidth={1}
-                  strokeDasharray={tick === 0 ? "none" : "3 3"}
-                />
-                <text
-                  x={PADDING_LEFT - 5} y={cy + 4}
-                  textAnchor="end"
-                  style={{ fontSize: 9, fill: C.micro, fontFamily: "'DM Sans', sans-serif" }}
-                >
-                  {tick}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Bars */}
-          {data?.map((item, i) => {
-            const bx        = barX(i);
-            const bh        = barH(item.count);
-            const by        = barY(item.count);
-            const isHovered = tooltip?.item?.factoryName === item.factoryName;
-            const gradId    = `barGrad-${color.replace("#","")}`;
-
-            return (
-              <g
-                key={i}
-                onMouseMove={() => setTooltip({ x: bx + barW / 2, y: by, item })}
-                style={{ cursor: "pointer" }}
-              >
-                {/* invisible wide hover zone */}
-                <rect
-                  x={PADDING_LEFT + i * groupW} y={PADDING_TOP}
-                  width={groupW} height={chartH}
-                  fill="transparent"
-                />
-                {/* bar */}
-                <rect
-                  x={bx} y={by}
-                  width={barW} height={bh}
-                  rx={4} ry={4}
-                  fill={isHovered ? color : `url(#${gradId})`}
-                  opacity={tooltip && !isHovered ? 0.35 : 1}
-                  style={{ transition: "opacity 0.15s" }}
-                />
-                {/* count label above bar */}
-                {bh > 0 && (
-                  <text
-                    x={bx + barW / 2} y={by - 5}
-                    textAnchor="middle"
-                    style={{ fontSize: 9, fontWeight: 700, fill: color, fontFamily: "'DM Sans', sans-serif" }}
-                  >
-                    {item.count}
-                  </text>
-                )}
-                {/* X-axis factory label (rotated) */}
-                <text
-                  x={bx + barW / 2}
-                  y={PADDING_TOP + chartH + 10}
-                  textAnchor="end"
-                  transform={`rotate(-38, ${bx + barW / 2}, ${PADDING_TOP + chartH + 10})`}
-                  style={{
-                    fontSize:   Math.max(8, Math.min(11, groupW * 0.28)),
-                    fill:       isHovered ? color : C.muted,
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontWeight: isHovered ? 700 : 400,
-                    transition: "fill 0.15s",
-                  }}
-                >
-                  {item.factoryName.length > 14
-                    ? item.factoryName.slice(0, 13) + "…"
-                    : item.factoryName}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Y axis */}
-          <line
-            x1={PADDING_LEFT} y1={PADDING_TOP}
-            x2={PADDING_LEFT} y2={PADDING_TOP + chartH}
-            stroke={C.slateLight} strokeWidth={1.5}
-          />
-          {/* X axis */}
-          <line
-            x1={PADDING_LEFT}          y1={PADDING_TOP + chartH}
-            x2={PADDING_LEFT + chartW} y2={PADDING_TOP + chartH}
-            stroke={C.slateLight} strokeWidth={1.5}
-          />
-        </svg>
-      )}
-
-      {/* Tooltip */}
-      {tooltip && width > 0 && (
-        <div style={{
-          position:      "absolute",
-          top:           Math.max(0, tooltip.y - 8),
-          left:          tooltip.x + 170 + 10 > width ? tooltip.x - 170 - 10 : tooltip.x + 10,
-          width:         170,
-          background:    "#fff",
-          border:        `1px solid ${C.border}`,
-          borderRadius:  10,
-          padding:       "10px 12px",
-          boxShadow:     "0 4px 20px rgba(0,0,0,0.10)",
-          pointerEvents: "none",
-          zIndex:        50,
-          fontFamily:    "'DM Sans', sans-serif",
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, lineHeight: 1.3 }}>
-            {tooltip.item.factoryName}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
-            <span style={{ fontSize: 14, fontWeight: 800, color }}>
-              {tooltip.item.count}
-            </span>
-            <span style={{ fontSize: 11, color: C.muted }}>
-              trip{tooltip.item.count !== 1 ? "s" : ""}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-function FlowChart({ title, modes = [], defaultMode, onModeChange, dropDown }) {
-  const [mode, setMode] = useState(defaultMode ?? modes[0]?.value ?? "");
-
-  const current = modes.find(m => m.value === mode) ?? modes[0];
-  const chartData  = current?.data  ?? [];
-  const chartColor = current?.color ?? C.blue;
-  const totalShown = chartData.reduce((s, d) => s + d.count, 0);
-
-  const handleModeChange = (newMode) => {
-    setMode(newMode);
-    if (onModeChange) onModeChange(newMode);
-  };
-
-  useEffect(() => {
-    setMode(defaultMode ?? modes[0]?.value ?? "");
-  }, [defaultMode]);  
-
-  if(modes.length > 0 && chartData.length === 0) {
-    return (
-      <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <CardLabel>{title}</CardLabel>
-          </div>
-        </div>
-        <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: C.muted }}>
-          No data for this period
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <CardLabel>{title}</CardLabel>
-        </div>
-
-        {/* Dropdown */}
-       { dropDown && (
-          <div style={{ position: "relative" }}>
-            <select
-              value={mode}
-              onChange={e => handleModeChange(e.target.value)}
-              style={{
-              appearance:       "none",
-              WebkitAppearance: "none",
-              background:       "#fff",
-              border:           `1.5px solid ${chartColor}`,
-              borderRadius:     8,
-              padding:          "6px 28px 6px 10px",
-              fontSize:         12,
-              fontWeight:       700,
-              color:            chartColor,
-              cursor:           "pointer",
-              outline:          "none",
-              fontFamily:       "'DM Sans', sans-serif",
-              transition:       "border-color 0.2s, color 0.2s",
-            }}
-          >
-            { Array.isArray(modes) && modes.map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-          <span style={{
-            position:      "absolute",
-            right:         8, top: "50%",
-            transform:     "translateY(-50%)",
-            pointerEvents: "none",
-            fontSize:      10,
-            color:         chartColor,
-          }}>▾</span>
-        </div>
-        )}
-      </div>
-
-      {/* Big number */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <BigNumber style={{ color: chartColor }}>{totalShown}</BigNumber>
-        <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
-          {current?.countLabel} trips
-          {" · "}
-          {chartData?.length} factor{chartData?.length !== 1 ? "ies" : "y"}
-        </span>
-      </div>
-
-      {/* Bar chart */}
-      <FactoryBarChart data={chartData} color={chartColor} />
-
-      {/* Footer */}
-      <div style={{ fontSize: 11, color: C.muted, marginTop: -16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-        {current?.footerLabel}
-      </div>
-
-    </Card>
-  );
-}
-
-// ── Zone colour map ───────────────────────────────────────────────────────────
-const ZONE_COLOR = {
-  green:  { fill: "#0d9488", bg: "#ccfbf1", border: "#5eead4", text: "#0f766e", label: "Healthy"  },
-  yellow: { fill: "#eab308", bg: "#fef9c3", border: "#fde047", text: "#854d0e", label: "Moderate" },
-  red:    { fill: "#ef4444", bg: "#fee2e2", border: "#fca5a5", text: "#991b1b", label: "Critical" },
-};
-
-// ── Congestion donut gauge ────────────────────────────────────────────────────
-function CongestionGauge({ pct, zone }) {
-  const SIZE   = 130;
-  const STROKE = 14;
-  const r      = (SIZE - STROKE) / 2;
-  const circ   = 2 * Math.PI * r;
-  const cx     = SIZE / 2;
-  const zc     = ZONE_COLOR[zone] ?? ZONE_COLOR.green;
-
-  // Zone thresholds drawn as background arc segments (grey track then coloured fill)
-  const fillDash = Math.min((pct / 100) * circ, circ);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-      <div style={{ position: "relative" }}>
-        <svg width={SIZE} height={SIZE} style={{ display: "block" }}>
-          {/* grey track */}
-          <circle cx={cx} cy={cx} r={r} fill="none" stroke={C.slateLight} strokeWidth={STROKE} />
-          {/* coloured fill */}
-          <circle
-            cx={cx} cy={cx} r={r} fill="none"
-            stroke={zc.fill}
-            strokeWidth={STROKE}
-            strokeDasharray={`${fillDash} ${circ}`}
-            strokeDashoffset={0}
-            transform={`rotate(-90 ${cx} ${cx})`}
-            style={{ transition: "stroke-dasharray 1s ease, stroke 0.4s ease" }}
-          />
-          {/* centre text */}
-          <text x={cx} y={cx - 6} textAnchor="middle" dominantBaseline="middle"
-            style={{ fontSize: 22, fontWeight: 800, fill: zc.fill, fontFamily: "'DM Sans', sans-serif" }}>
-            {pct}%
-          </text>
-          <text x={cx} y={cx + 14} textAnchor="middle"
-            style={{ fontSize: 10, fill: C.muted, fontFamily: "'DM Sans', sans-serif" }}>
-            congestion
-          </text>
-        </svg>
-      </div>
-
-      {/* zone badge */}
-      <div style={{
-        background: zc.bg, border: `1px solid ${zc.border}`,
-        borderRadius: 20, padding: "4px 14px",
-        fontSize: 11, fontWeight: 700, color: zc.text,
-        letterSpacing: 0.3,
-      }}>
-        {zc.label}
-      </div>
-
-      {/* threshold legend */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
-        {[
-          { zone: "green",  label: "Healthy",  range: "< 10%"   },
-          { zone: "yellow", label: "Moderate", range: "10 – 20%" },
-          { zone: "red",    label: "Critical",  range: "> 20%"   },
-        ].map(t => {
-          const tc = ZONE_COLOR[t.zone];
-          const isActive = t.zone === zone;
-          return (
-            <div key={t.zone} style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "5px 8px", borderRadius: 7,
-              background: isActive ? tc.bg : "transparent",
-              border: `1px solid ${isActive ? tc.border : "transparent"}`,
-              transition: "background 0.3s",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: tc.fill }} />
-                <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? tc.text : C.muted }}>
-                  {t.label}
-                </span>
-              </div>
-              <span style={{ fontSize: 10, color: isActive ? tc.text : C.micro, fontWeight: 600 }}>
-                {t.range}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Bottleneck horizontal bar ─────────────────────────────────────────────────
-function BottleneckBar({ label, pct, count, total, color, description }) {
-  const isRed = pct >= 20;
-  const barColor = isRed ? "#ef4444" : pct >= 10 ? "#eab308" : color;
-
-  return (
-    <div style={{
-      background: "#f8fafc",
-      border: `1px solid ${C.border}`,
-      borderRadius: 10,
-      padding: "12px 14px",
-    }}>
-      {/* header row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{label}</div>
-          <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{description}</div>
-        </div>
-        <div style={{
-          fontSize: 18, fontWeight: 800,
-          color: barColor,
-          background: barColor + "18",
-          borderRadius: 8, padding: "3px 10px",
-          lineHeight: 1.4,
-        }}>
-          {pct}%
-        </div>
-      </div>
-
-      {/* bar track */}
-      <div style={{ height: 8, background: C.slateLight, borderRadius: 99, overflow: "hidden", marginBottom: 6 }}>
-        <div style={{
-          width: `${Math.min(pct, 100)}%`,
-          height: "100%",
-          borderRadius: 99,
-          background: barColor,
-          transition: "width 1s cubic-bezier(.4,0,.2,1)",
-        }} />
-      </div>
-
-      {/* count detail */}
-      <div style={{ fontSize: 10, color: C.muted }}>
-        <span style={{ fontWeight: 700, color: barColor }}>{count}</span>
-        {" waiting "}
-        <span style={{ fontWeight: 600, color: C.text }}>{total}</span>
-        {" total "}
-      </div>
-    </div>
-  );
-}
-
-
-function DriverAnalyticsCard({ driverAnalytics }) {
-  const [sortKey,  setSortKey]  = useState("completed"); // completed|cancelled|active|total
-  const [sortDir,  setSortDir]  = useState("desc");
-  const [search,   setSearch]   = useState("");
-  const [expanded, setExpanded] = useState(null); // driverId string
-
-  if (!driverAnalytics) return null;
-
-  const { drivers = [], totals } = driverAnalytics;
-
-  // ── filter + sort ───────────────────────────────────────────────────────
-  const filtered = drivers
-    .filter(d => d.driverName.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      const diff = a[sortKey] - b[sortKey];
-      return sortDir === "desc" ? -diff : diff;
-    });
-
-  const handleSort = (key) => {
-    if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc");
-    else { setSortKey(key); setSortDir("desc"); }
-  };
-
-  const sortIcon = (key) => {
-    if (sortKey !== key) return <span style={{ color: C.slateLight, marginLeft: 3 }}>↕</span>;
-    return <span style={{ color: C.teal, marginLeft: 3 }}>{sortDir === "desc" ? "↓" : "↑"}</span>;
-  };
-
-  // ── colour helpers ──────────────────────────────────────────────────────
-  const rateColor = (pct) =>
-    pct >= 80 ? C.teal : pct >= 50 ? "#eab308" : "#ef4444";
-
-  const rateBg = (pct) =>
-    pct >= 80 ? C.tealLight : pct >= 50 ? "#fef9c3" : "#fee2e2";
-
-  return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
-      {/* ── Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <CardLabel>Driver Analytics</CardLabel>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-            Trip performance per driver · Top {drivers.length} drivers
-          </div>
-        </div>
-
-        {/* Search */}
-        <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)",
-            fontSize: 12, color: C.muted, pointerEvents: "none" }}>🔍</span>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search driver…"
-            style={{
-              border: `1.5px solid ${C.border}`, borderRadius: 8,
-              padding: "6px 10px 6px 26px", fontSize: 12,
-              color: C.text, background: "#fff", outline: "none",
-              fontFamily: "'DM Sans', sans-serif", width: 160,
-            }}
-          />
-        </div>
-      </div>
-
-      {/* ── Summary KPI row ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-        {[
-          { label: "Drivers",   value: totals.totalDrivers,   color: C.text,     bg: "#f8fafc",    border: C.border        },
-          { label: "Completed", value: totals.totalCompleted, color: C.teal,     bg: C.tealLight,  border: C.tealMid       },
-          { label: "Cancelled", value: totals.totalCancelled, color: "#ef4444",  bg: "#fee2e2",    border: "#fca5a5"       },
-          { label: "Active",    value: totals.totalActive,    color: "#eab308",  bg: "#fef9c3",    border: "#fde047"       },
-        ].map(k => (
-          <div key={k.label} style={{
-            background: k.bg, border: `1px solid ${k.border}`,
-            borderRadius: 10, padding: "10px 12px", textAlign: "center",
-          }}>
-            <div style={{ fontSize: 10, color: C.muted, fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3 }}>
-              {k.label}
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: k.color,
-              fontFamily: "'DM Sans', sans-serif" }}>
-              {k.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Table ── */}
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "24px 0", fontSize: 13, color: C.muted }}>
-          No drivers found
-        </div>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                {[
-                  { key: null,        label: "#",          w: 32  },
-                  { key: null,        label: "Driver",     w: null },
-                  { key: "total",     label: "Total",      w: 70  },
-                  { key: "completed", label: "Completed",  w: 90  },
-                  { key: "cancelled", label: "Cancelled",  w: 90  },
-                  { key: "active",    label: "Active",     w: 70  },
-                  { key: "completionRate", label: "Rate",  w: 80  },
-                  { key: null,        label: "",           w: 32  },
-                ].map((col, i) => (
-                  <th key={i}
-                    onClick={() => col.key && handleSort(col.key)}
-                    style={{
-                      padding: "8px 10px",
-                      textAlign: i === 0 ? "center" : "left",
-                      fontWeight: 700, color: col.key === sortKey ? C.teal : C.muted,
-                      fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4,
-                      cursor: col.key ? "pointer" : "default",
-                      userSelect: "none",
-                      width: col.w ?? "auto",
-                      whiteSpace: "nowrap",
-                    }}>
-                    {col.label}{col.key && sortIcon(col.key)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered?.map((driver, idx) => {
-                const isExp  = expanded === String(driver.driverId);
-                const rc     = rateColor(driver.completionRate);
-                const maxVal = Math.max(driver.completed, driver.cancelled, driver.active, 1);
-
-                return (
-                  <>
-                    <tr
-                      key={driver.driverId}
-                      onClick={() => setExpanded(isExp ? null : String(driver.driverId))}
-                      style={{
-                        borderBottom: `1px solid ${C.border}`,
-                        background: isExp ? "#f8fafc" : "transparent",
-                        cursor: "pointer",
-                        transition: "background 0.15s",
-                      }}
-                      onMouseEnter={e => { if (!isExp) e.currentTarget.style.background = "#f8fafc"; }}
-                      onMouseLeave={e => { if (!isExp) e.currentTarget.style.background = "transparent"; }}
-                    >
-                      {/* rank */}
-                      <td style={{ padding: "10px 10px", textAlign: "center", color: C.muted,
-                        fontSize: 11, fontWeight: 700 }}>
-                        {idx + 1}
-                      </td>
-
-                      {/* name */}
-                      <td style={{ padding: "10px 10px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {/* avatar */}
-                          <div style={{
-                            width: 30, height: 30, borderRadius: "50%",
-                            background: `hsl(${(driver.driverName.charCodeAt(0) * 37) % 360}, 60%, 88%)`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 12, fontWeight: 800, flexShrink: 0,
-                            color: `hsl(${(driver.driverName.charCodeAt(0) * 37) % 360}, 50%, 35%)`,
-                          }}>
-                            {driver.driverName.charAt(0).toUpperCase()}
-                          </div>
-                          <span style={{ fontWeight: 600, color: C.text }}>
-                            {driver.driverName}  ({driver?.driverContact})
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* total */}
-                      <td style={{ padding: "10px 10px", fontWeight: 700, color: C.text }}>
-                        {driver.total}
-                      </td>
-
-                      {/* completed */}
-                      <td style={{ padding: "10px 10px" }}>
-                        <span style={{ fontWeight: 700, color: C.teal }}>{driver.completed}</span>
-                      </td>
-
-                      {/* cancelled */}
-                      <td style={{ padding: "10px 10px" }}>
-                        <span style={{ fontWeight: 700, color: driver.cancelled > 0 ? "#ef4444" : C.muted }}>
-                          {driver.cancelled}
-                        </span>
-                      </td>
-
-                      {/* active */}
-                      <td style={{ padding: "10px 10px" }}>
-                        <span style={{ fontWeight: 700, color: driver.active > 0 ? "#eab308" : C.muted }}>
-                          {driver.active}
-                        </span>
-                      </td>
-
-                      {/* completion rate badge */}
-                      <td style={{ padding: "10px 10px" }}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 800,
-                          color: rc,
-                          background: rateBg(driver.completionRate),
-                          borderRadius: 20, padding: "3px 9px",
-                          whiteSpace: "nowrap",
-                        }}>
-                          {driver.completionRate}%
-                        </span>
-                      </td>
-
-                      {/* expand toggle */}
-                      <td style={{ padding: "10px 10px", textAlign: "center",
-                        fontSize: 12, color: C.muted }}>
-                        {isExp ? "▲" : "▼"}
-                      </td>
-                    </tr>
-
-                    {/* ── Expanded row: mini bar chart ── */}
-                    {isExp && (
-                      <tr key={`${driver.driverId}-exp`}
-                        style={{ background: "#f8fafc", borderBottom: `1px solid ${C.border}` }}>
-                        <td colSpan={8} style={{ padding: "12px 16px" }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted,
-                            textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10 }}>
-                            Trip Breakdown — {driver.driverName}
-                          </div>
-
-                          {/* inline mini bars */}
-                          {[
-                            { label: "Completed", value: driver.completed, color: C.teal     },
-                            { label: "Cancelled", value: driver.cancelled, color: "#ef4444"  },
-                            { label: "Active",    value: driver.active,    color: "#eab308"  },
-                          ].map(b => {
-                            const pct = maxVal > 0 ? (b.value / maxVal) * 100 : 0;
-                            return (
-                              <div key={b.label} style={{ marginBottom: 8 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between",
-                                  fontSize: 11, marginBottom: 3 }}>
-                                  <span style={{ fontWeight: 600, color: C.muted }}>{b.label}</span>
-                                  <span style={{ fontWeight: 700, color: b.color }}>{b.value} trips</span>
-                                </div>
-                                <div style={{ height: 6, background: C.slateLight, borderRadius: 99, overflow: "hidden" }}>
-                                  <div style={{
-                                    width: `${pct}%`, height: "100%",
-                                    background: b.color, borderRadius: 99,
-                                    transition: "width 0.7s ease",
-                                  }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* completion rate visual */}
-                          <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: C.muted }}>Completion Rate</span>
-                            <div style={{ flex: 1, height: 6, background: C.slateLight, borderRadius: 99, overflow: "hidden" }}>
-                              <div style={{
-                                width: `${driver.completionRate}%`, height: "100%",
-                                background: rateColor(driver.completionRate), borderRadius: 99,
-                                transition: "width 0.7s ease",
-                              }} />
-                            </div>
-                            <span style={{ fontSize: 12, fontWeight: 800, color: rateColor(driver.completionRate),
-                              minWidth: 36, textAlign: "right" }}>
-                              {driver.completionRate}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ── Footer note ── */}
-      <div style={{ fontSize: 10, color: C.micro, paddingTop: 8,
-        borderTop: `1px solid ${C.border}` }}>
-        Based on TripSegment assignments · Each driver counted once per unique trip ·
-        Sorted by {sortKey} {sortDir === "desc" ? "↓" : "↑"}
-      </div>
-
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Horizontal bar (for idle analysis / driver behavior)
-// ─────────────────────────────────────────────────────────────────────────────
-function HBar({ label, value, max = 100, color = C.teal, suffix = "" }) {
-  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 4 }}>
-        <span style={{ fontWeight: 600 }}>{label}</span>
-        <span style={{ fontWeight: 700, color: C.text }}>{value}{suffix}</span>
-      </div>
-      <div style={{ height: 7, background: C.slateLight, borderRadius: 99, overflow: "hidden" }}>
-        <div style={{
-          width: `${pct}%`, height: "100%", borderRadius: 99,
-          background: color,
-          transition: "width 0.9s cubic-bezier(.4,0,.2,1)",
-        }} />
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Vertical bar (driver behavior — mimics screenshot bar chart)
-// ─────────────────────────────────────────────────────────────────────────────
-function VBarGroup({ bars }) {
-  const max = Math.max(...bars?.map(b => b.value), 1);
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90, marginTop: 8 }}>
-      {bars?.map((b, i) => {
-        const pct = (b.value / max) * 100;
-        return (
-          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: 5 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{b.value}%</div>
-            <div style={{ width: "100%", display: "flex", alignItems: "flex-end", height: 64 }}>
-              <div style={{
-                width: "100%",
-                height: `${pct}%`,
-                minHeight: 4,
-                background: b.color,
-                borderRadius: "4px 4px 0 0",
-                transition: "height 0.9s ease",
-              }} />
-            </div>
-            <div style={{ fontSize: 9.5, color: C.muted, textAlign: "center", lineHeight: 1.3 }}>{b.label}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-
-function TripExecutionDonut({ segments }) {
-  const data = {
-    labels: segments?.map((s) => s.label),
-    datasets: [
-      {
-        data: segments?.map((s) => s.value),
-        backgroundColor: segments?.map((s) => s.color),
-        hoverBackgroundColor: segments?.map((s) => s.colorLight),
-        borderColor: "#ffffff",
-        borderWidth: 3,
-        hoverOffset: 6,
-      },
-    ],
-  };
-
-  const options = {
-    cutout: "65%",
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: "right",
-        labels: {
-          usePointStyle: true,
-          pointStyle: "rectRounded",
-          font: { size: 10, weight: "600" },
-          color: "#6b7280",
-          padding: 14,
-          generateLabels: (chart) =>
-            chart.data.labels?.map((label, i) => ({
-              text: `${label}  ${chart.data.datasets[0].data[i]}%`,
-              fillStyle: chart.data.datasets[0].backgroundColor[i],
-              strokeStyle: "#fff",
-              lineWidth: 0,
-              hidden: false,
-              index: i,
-            })),
-        },
-      },
-      tooltip: {
-        callbacks: {
-          label: (ctx) => ` ${ctx.label}: ${ctx.parsed}%`,
-        },
-        backgroundColor: "#1f2937",
-        titleColor: "#f9fafb",
-        bodyColor: "#d1d5db",
-        padding: 10,
-        cornerRadius: 8,
-      },
-    },
-  };
-
-  // Center text plugin (inline, no registration needed as chartjs plugin)
-  const centerTextPlugin = {
-    id: "centerText",
-    afterDraw(chart) {
-      const { ctx, chartArea } = chart;
-      if (!chartArea) return;
-      const cx = (chartArea.left + chartArea.right) / 2;
-      const cy = (chartArea.top + chartArea.bottom) / 2;
-
-      const active = chart.getActiveElements();
-      const hasHover = active.length > 0;
-      const idx = hasHover ? active[0].index : null;
-      const seg = hasHover ? segments[idx] : null;
-
-      ctx.save();
-
-      // Big value
-      ctx.font = "800 18px DM Sans, sans-serif";
-      ctx.fillStyle = seg ? seg.color : "#111827";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(
-        seg ? `${seg.value}%` : `${segments?.reduce((a, s) => a + s.value, 0).toFixed(1)}%`,
-        cx,
-        cy - 8
-      );
-
-      // Sub label
-      ctx.font = "600 9px DM Sans, sans-serif";
-      ctx.fillStyle = "#9ca3af";
-      ctx.fillText(seg ? seg.label.split(" ").slice(-1)[0] : "Total", cx, cy + 10);
-
-      ctx.restore();
-    },
-  };
-
-  return (
-    <div style={{ position: "relative", height: 160, width: "100%" }}>
-      <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
-    </div>
-  );
-}
-
-const gradientPlugin = {
-  id: "gradientFill",
-  beforeDatasetsDraw(chart) {
-    const { ctx, chartArea } = chart;
-    if (!chartArea) return;
-    chart.data.datasets.forEach((dataset) => {
-      // read the base color stored on the dataset
-      const baseColor = dataset._baseColor;
-      if (!baseColor) return; // skip if no base color set
-
-      const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-      gradient.addColorStop(0, baseColor);
-      gradient.addColorStop(1, baseColor + "88"); // 53% opacity at bottom
-      dataset.backgroundColor = gradient;
-    });
-  },
-};
- 
-const topLabelsPlugin = {
-  id: "topLabels",
-  afterDatasetsDraw(chart) {
-    const { ctx, data } = chart;
-    data.datasets.forEach((dataset, i) => {
-      chart.getDatasetMeta(i).data.forEach((bar, index) => {
-        const value = dataset.data[index];
-        if (value == null) return;
-        ctx.save();
-        ctx.fillStyle = "#0f172a";
-        ctx.font = "600 11px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(value, bar.x, bar.y - 4);
-        ctx.restore();
-      });
-    });
-  },
-};
- 
-function BarChart({ labels, datasets, title, subtitle }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
- 
-  useEffect(() => {
-    if (chartRef.current) chartRef.current.destroy();
- 
-    chartRef.current = new Chart(canvasRef.current.getContext("2d"), {
-      type: "bar",
-      data: {
-        labels: labels?.slice() || [],
-        datasets: datasets?.map((ds) => ({
-          ...ds,
-          backgroundColor: ds.backgroundColor || "transparent", 
-          borderColor: "transparent",
-          borderWidth: 0,
-          borderRadius: 4,
-          borderSkipped: false,
-        })),
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: true },
-          tooltip: {
-            backgroundColor: "#fff",
-            borderColor: "#e2e8f0",
-            borderWidth: 1,
-            titleColor: "#0f172a",
-            bodyColor: "#64748b",
-            padding: 10,
-            cornerRadius: 6,
-          },
-        },
-        scales: {
-          x: {
-            ticks: {
-              color: "#94a3b8",
-              font: { size: 11, family: "Inter, sans-serif" },
-              maxRotation: 0,
-            },
-            grid: { display: false },
-            border: { display: false },
-          },
-          y: {
-            beginAtZero: true,
-            ticks: {
-              color: "#94a3b8",
-              font: { size: 11, family: "Inter, sans-serif" },
-              padding: 8,
-            },
-            grid: { color: "#f1f5f9" },
-            border: { display: false },
-          },
-        },
-        animation: { duration: 500, easing: "easeOutQuart" },
-        barPercentage: 0.5,
-        categoryPercentage: 0.6,
-      },
-      plugins: [gradientPlugin, topLabelsPlugin],
-    });
- 
-    return () => chartRef.current?.destroy();
-  }, [labels, datasets]);
- 
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #e2e8f0",
-        borderRadius: 12,
-        padding: "20px 24px 16px",
-        fontFamily: "Inter, sans-serif",
-      }}
-    >
-      {(title || subtitle) && (
-        <div style={{ marginBottom: 16 }}>
-          {title && <div style={{ color: "#0f172a", fontWeight: 700, fontSize: 13 }}>{title}</div>}
-          {subtitle && <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 3 }}>{subtitle}</div>}
-        </div>
-      )}
-      <div style={{ height: 200 }}>
-        <canvas ref={canvasRef} />
-      </div>
-    </div>
-  );
-}
-
-
-// ── Main card ─────────────────────────────────────────────────────────────────
-function WaitingAnalysisCard({ waitingAnalysis }) {
-  if (!waitingAnalysis) return null;
-
-  const { outsideWaiting, insideWaiting, congestion } = waitingAnalysis;
-
-  // Which stage is the bigger bottleneck?
-  const bottleneckStage = outsideWaiting.pct >= insideWaiting.pct
-    ? "Outside Gate"
-    : "Inside Plant";
-
-  return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
-      {/* ── Card header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <CardLabel>Waiting Analysis</CardLabel>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-            Vehicles stuck &gt; 4 hrs · Threshold: 4h
-          </div>
-        </div>
-        {/* bottleneck callout */}
-        <div style={{
-          background: "#fff7ed",
-          border: "1px solid #fed7aa",
-          borderRadius: 8,
-          padding: "5px 12px",
-          fontSize: 11,
-          fontWeight: 700,
-          color: "#c2410c",
-        }}>
-          ⚠ Bottleneck: {bottleneckStage}
-        </div>
-      </div>
-
-      {/* ── Two-column layout: bars left, gauge right ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 20,
-        alignItems: "start",
-      }}>
-
-        {/* Graph 1 — Bottleneck bars */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
-            letterSpacing: 0.5, marginBottom: 2 }}>
-            Graph 1 — Operational Bottleneck
-          </div>
-
-          <BottleneckBar
-            label={outsideWaiting.label}
-            description={outsideWaiting.description}
-            pct={outsideWaiting.pct}
-            count={outsideWaiting.count}
-            total={outsideWaiting.total}
-            color={C.teal}
-          />
-
-          <BottleneckBar
-            label={insideWaiting.label}
-            description={insideWaiting.description}
-            pct={insideWaiting.pct}
-            count={insideWaiting.count}
-            total={insideWaiting.total}
-            color={C.teal}
-          />
-
-          {/* formula note */}
-          <div style={{
-            background: "#f1f5f9",
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            padding: "8px 12px",
-            fontSize: 10,
-            color: C.muted,
-            lineHeight: 1.7,
-          }}>
-            <span style={{ fontWeight: 700, color: C.text }}>Outside % </span>
-            = waiting outside ÷ all arrived × 100
-            <br />
-            <span style={{ fontWeight: 700, color: C.text }}>Inside % </span>
-            = waiting inside ÷ all checked-in × 100
-          </div>
-        </div>
-
-        {/* Graph 2 — Congestion gauge */}
-        <div style={{ minWidth: 220 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, textTransform: "uppercase",
-            letterSpacing: 0.5, marginBottom: 10, textAlign: "center" }}>
-            Graph 2 — System Health
-          </div>
-          <CongestionGauge pct={congestion.pct} zone={congestion.zone} />
-          <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
-            {congestion.totalWaiting} waiting
-            <br />
-            of {congestion.totalActiveTrips} active trips
-          </div>
-        </div>
-
-      </div>
-    </Card>
-  );
-}
-
-function TripTypeDonut({ title, p2p, customerOrExternal, colorP2P = "#3b82f6", colorOther = "#f59e0b" }) {
-  const total = p2p.count + customerOrExternal.count;
-  const p2pPct   = total ? +((p2p.count / total) * 100).toFixed(1) : 0;
-  const otherPct = total ? +((customerOrExternal.count / total) * 100).toFixed(1) : 0;
-
-  const data = {
-    datasets: [{
-      data: [p2pPct, otherPct],
-      backgroundColor: [colorP2P, colorOther],
-      hoverBackgroundColor: [colorP2P + "cc", colorOther + "cc"],
-      borderColor: "#ffffff",
-      borderWidth: 3,
-      hoverOffset: 6,
-    }],
-  };
-
-  const options = {
-    cutout: "70%",
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { enabled: false } },
-    animation: { animateRotate: true, duration: 900 },
-  };
-
-  const centerTextPlugin = {
-    id: `centerText-${title}`,
-    afterDraw(chart) {
-      const { ctx, chartArea } = chart;
-      if (!chartArea) return;
-      const cx = (chartArea.left + chartArea.right) / 2;
-      const cy = (chartArea.top  + chartArea.bottom) / 2;
-      ctx.save();
-      ctx.font = "800 16px DM Sans, sans-serif";
-      ctx.fillStyle = "#111827";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(total.toLocaleString(), cx, cy - 8);
-      ctx.font = "600 8px DM Sans, sans-serif";
-      ctx.fillStyle = "#9ca3af";
-      ctx.fillText("Total", cx, cy + 8);
-      ctx.restore();
-    },
-  };
-
-  return (
-    <div style={{
-      background: "#fff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 14,
-      padding: "14px 16px 12px",
-      flex: 1,
-      boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
-      fontFamily: "'DM Sans', sans-serif",
-    }}>
-      {/* Title */}
-      <div style={{
-        fontSize: 10, fontWeight: 700, letterSpacing: "0.07em",
-        textTransform: "uppercase", color: "#9ca3af", marginBottom: 10,
-      }}>
-        {title}
-      </div>
-
-      {/* Donut */}
-      <div style={{ height: 140, width: "100%", position: "relative" }}>
-        <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
-      </div>
-
-      {/* Legend */}
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        marginTop: 12,
-        paddingTop: 10,
-        borderTop: "1px solid #f3f4f6",
-        gap: 8,
-      }}>
-        {/* P2P — count first, pct in bracket */}
-        <div style={{ display: "flex",  gap: 5 }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: 2,
-            background: colorP2P, flexShrink: 0, marginTop: 3,
-          }} />
-          <div>
-            <div style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>P2P</div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: colorP2P, lineHeight: 1.2 }}>
-              {p2p.count.toLocaleString()}
-            </div>
-            <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 600 }}>({p2pPct}%)</div>
-          </div>
-        </div>
-
-        {/* Other — pct first, count below */}
-        <div style={{ display: "flex",  gap: 5 }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: 2,
-            background: colorOther, flexShrink: 0, marginTop: 3,
-          }} />
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>
-              {customerOrExternal.label ?? "Cust. Delivery"}
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: colorOther, lineHeight: 1.2 }}>
-              ({otherPct}%)
-            </div>
-            <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 600 }}>
-              {customerOrExternal.count.toLocaleString()} trips
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-// ── Parent card holding both donuts side by side ──────────────────────────────
-function PGBreakdownCard({ delivery, pickup }) {
-  return (
-    <div style={{
-      background: "#fff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 16,
-      padding: "16px 18px",
-      boxShadow: "0 1px 8px rgba(0,0,0,0.06)",
-      fontFamily: "'DM Sans', sans-serif",
-    }}>
-      <div style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: "0.07em",
-        textTransform: "uppercase", color: "#9ca3af", marginBottom: 14,
-      }}>
-        PG to PG vs Customer (Delivery vs Pickup)
-      </div>
-
-      <div style={{ display: "flex", marginTop: 40, alignItems: "center", gap: 5 }}>
-        {/* Delivery donut — blue / amber */}
-        <TripTypeDonut
-          title="Delivery"
-          p2p={delivery.p2p}
-          customerOrExternal={{ ...delivery.customerDelivery, label: "Customer Delivery" }}
-          colorP2P="#3b82f6"
-          colorOther="#f59e0b"
-        />
-
-        {/* Pickup donut — violet / emerald */}
-        <TripTypeDonut
-          title="Pickup"
-          p2p={pickup.p2p}
-          customerOrExternal={{ ...pickup.external, label: "External" }}
-          colorP2P="#8b5cf6"
-          colorOther="#10b981"
-        />
-      </div>
-      
-      
-       
-    </div>
-  );
-}
-// ─────────────────────────────────────────────────────────────────────────────
-// Stat mini-cell (used in left panel grid)
-// ─────────────────────────────────────────────────────────────────────────────
-function StatCell({ label, value, accent = false }) {
-  return (
-    <div style={{
-      background: accent ? C.tealLight : "#f8fafc",
-      border: `1px solid ${accent ? C.tealMid : C.border}`,
-      borderRadius: 10, padding: "10px 12px",
-    }}>
-      <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: accent ? C.teal : C.text, fontFamily: "'DM Sans', sans-serif" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Delta badge (green up / red down)
-// ─────────────────────────────────────────────────────────────────────────────
-function Delta({ val }) {
-  const up = val >= 0;
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 700,
-      color: up ? "#059669" : C.redDark,
-      background: up ? "#d1fae5" : "#fee2e2",
-      borderRadius: 5, padding: "2px 6px", marginLeft: 6,
-    }}>
-      {up ? "▲" : "▼"} {Math.abs(val)}%
-    </span>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Skeleton loader
-// ─────────────────────────────────────────────────────────────────────────────
-function Skeleton({ w = "100%", h = 16, r = 6, style = {} }) {
-  return (
-    <div style={{
-      width: w, height: h, borderRadius: r,
-      background: "linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)",
-      backgroundSize: "200% 100%",
-      animation: "shimmer 1.4s infinite",
-      ...style,
-    }} />
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Card wrapper
-// ─────────────────────────────────────────────────────────────────────────────
-function Card({ children, style = {} }) {
-  return (
-    <div style={{
-      background: C.card,
-      border: `1px solid ${C.border}`,
-      borderRadius: 14,
-      padding: "18px 20px",
-      boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
-      ...style,
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function CardLabel({ children }) {
-  return (
-    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>
-      {children}
-    </div>
-  );
-}
-
-function BigNumber({ children, style = {} }) {
-  return (
-    <div style={{ fontSize: 32, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", lineHeight: 1.1, ...style }}>
-      {children}
-    </div>
-  );
-}
-
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Dashboard
-// ─────────────────────────────────────────────────────────────────────────────
-export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }) {
-  const [period,    setPeriod]    = useState("week");
-
+export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, activePage }) {
+  const user = JSON.parse(localStorage.getItem("user")) || {};
+  const [period,    setPeriod]    = useState("month");
   const [vehicleType, setVehicleType] = useState("all"); // "all" | "internal" | "external"
   const [selectTransporter, setSelectTransporter] = useState("");
   const [trendsByTransporter, setTrendsByTransporter] = useState(null);
+  const { setDateRange, setDates, setTableData, setIsFetching, setOnDateRangeChange, dateRange, setLocation, location, setFactory, factory, setOnFactoryChange, setDashboardRefetch } = useDashboard();
+
+  useEffect(() => {
+    if (!dateRange) {
+      setDateRange(DEFAULT_DATE_RANGE);
+    }
+  }, [dateRange, setDateRange]);
+
 
   const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
-  const fetchDashboard = ({ vehicleId, period }) => api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period } }).then(r => r.data);
+  const fetchDashboard = ({ vehicleId, period }) => api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period, startDate: dateRange?.[0]?.toISOString() ?? undefined, endDate: dateRange?.[1]?.toISOString() ?? undefined, location, factory } }).then(r => r.data);
 
   const { data: resolvedVehicleId, isError: isTopError } = useQuery({
     queryKey: ["topVehicle"],
     queryFn: fetchTopVehicle,
-    enabled: !propVehicleId,           
+    enabled: !propVehicleId && activePage === "overview",           
     staleTime: 5 * 60 * 1000,       
   });
 
@@ -1746,38 +127,39 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
     }, 500),
     []
   );
-
-
   
- useEffect(() => {
-  if (!selectTransporter || selectTransporter === "") return; 
-  const fetchTrends = async () => {
-    try {
-      const response = await api.get("/analytics/transporter-customer-trend", {
-        params: { transporterName: selectTransporter }
-      });
-      setTrendsByTransporter(response.data);
-    } catch (error) {
-      console.error("Error fetching trends:", error);
-    }
-  };
-  fetchTrends();
-}, [selectTransporter]);
+  useEffect(() => {
+    if (!selectTransporter || selectTransporter === "") return; 
+    const fetchTrends = async () => {
+      try {
+        if(activePage !==  "overview") return; 
+        const response = await api.get("/analytics/transporter-customer-trend", {
+          params: { transporterName: selectTransporter }
+        });
+        setTrendsByTransporter(response.data);
+      } catch (error) {
+        console.error("Error fetching trends:", error);
+      }
+    };
+    fetchTrends();
+  }, [selectTransporter]);
+
 
 
   const vehicleId = propVehicleId ?? resolvedVehicleId;
 
   const { data, isLoading: loading, isError: isDashError } = useQuery({
-    queryKey: ["vehicleDashboard", vehicleId, period],
-    queryFn: () => fetchDashboard({ vehicleId, period,}),
+    queryKey: ["vehicleDashboard", vehicleId, period, dateRange, factory, location], // ← add location
+    queryFn: () => fetchDashboard({ vehicleId, period, startDate: dateRange?.[0]?.toISOString() ?? undefined, endDate: dateRange?.[1]?.toISOString() ?? undefined, location, factory }),
     enabled: !!vehicleId,       
     staleTime: 2 * 60 * 1000,
   });
 
+  
   const visibleVehicles = data?.topVehicles?.[vehicleType] ?? { vehicles: [], maxTrips: 1 };
+  console.log("Dashboard data:", visibleVehicles); // Debug log to inspect the fetched data
+
   const error = isTopError ? "Could not resolve top vehicle." : isDashError ? "Failed to load dashboard data.": null;
-
-
   if (loading) return (
     <div style={s.page}>
       <style>{keyframes}</style>
@@ -1821,6 +203,9 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
   const top5Transporters  = topVehiclesAndTransporters?.top5Transporters  ?? [];
   const dailyTripsTrend   = topVehiclesAndTransporters?.dailyTripsTrend   ?? [];
   const top25Vehicles     = topVehiclesAndTransporters?.top25Vehicles     ?? [];
+  const monthlyTrends     = topVehiclesAndTransporters?.monthlyTrends     ?? [];
+  const busiestDays       = topVehiclesAndTransporters?.busiestDays       ?? [];
+  const top5AvgPerDay     = topVehiclesAndTransporters?.top5AvgPerDay     ?? [];
 
 
 
@@ -1832,31 +217,13 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
     <div style={s.page}>
       <style>{keyframes}</style>
 
-      {/* ── top breadcrumb bar ── */}
-      <div style={s.topBar}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
-          <button style={s.backBtn} onClick={() => window.history.back()}>←</button>
-          <span style={{ fontWeight: 600 }}>VEMS</span>
-          <span style={{ color: C.slate }}>»</span>
-          <span style={{ fontWeight: 700, color: C.text }}>{vehicle.vehicleNumber}</span>
-        </div>
+      <AdminNavbar
+        vehicleNumber={vehicle.vehicleNumber}
+        onShare={() => {/* your share logic */}}
+        onDownload={() => {/* your download logic */}}
+        // refetchDashboard={refetch}
+      />
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Period</span>
-          <div style={{ display: "flex", gap: 2, background: "#DFF1F1", borderRadius: 8, padding: 3 }}>
-            {PERIODS.map(p => (
-              <button key={p.key}
-                style={{ ...s.periodBtn, ...(period === p.key ? s.periodBtnActive : {}) }}
-                onClick={() => setPeriod(p.key)}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <button style={{...s.shareBtn, color: "#093C5D"}}>↑ Share</button>
-          <button style={s.downloadBtn}>⬇ Download</button>
-        </div>
-
-      </div>
 
       {/* ── page title ── */}
       <div style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: "18px 0 16px", fontFamily: "'DM Sans', sans-serif" }}>
@@ -1868,7 +235,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           
         <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr",  gap: 14 }}>
 
-          <Card style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14,  }}>
+          <Card  style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14,  }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
             <span className="block" > Weekly Stats  </span> 
               <span className="text-yellow-500 mt-2" > High Performed Vehicle </span> 
@@ -1924,7 +291,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
  
           <div style={{ gridColumn: "span 2" }}>   {/* ← wrapping div */}
             <FlowChart
-              title="Vehicle — Factory Flow"
+              title={<div>Vehicle — Factory Flow, <span className=" font-bold text-blue-700 " > From {dayjs(dateRange?.[0]).format("D MMM")} to {dayjs(dateRange?.[1]).format("D MMM")} </span></div>}
               dropDown={true}
               defaultMode="active"
               modes={[
@@ -1964,10 +331,8 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
 
           <Card>
             <CardLabel>Same Day Colosure Rate</CardLabel>
-            <BigNumber style={{ color: sameDayColouser?.totalIssues > 0 ? C.redDark : C.teal }}>
-              {sameDayColouser?.totalIssues > 0
-                ? `${sameDayColouser?.totalIssues} Trip${sameDayColouser?.totalIssues !== 1 ? "s" : ""} cancelled`
-                : "All Clear"}
+            <BigNumber style={{ color: sameDayColouser?.sohPct > 60 ? C.teal : C.redDark, fontSize: 24, margin: "6px 0" }}>
+              {sameDayColouser?.sohPct ?? 0}%
             </BigNumber>
             <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
               This period
@@ -2005,38 +370,104 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           
               <BarChart
                 title="Daily Trends"
-                labels={dailyTripsTrend?.map(d => d._id) ?? []}
+                subtitle=" Daily trips trends "
+                isLegendVisible={false}
+                labels={dailyTripsTrend?.map(d => d.label) ?? []}
                 datasets={[
                   { label: "Trips", data: dailyTripsTrend?.map(d => d.count), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
                 ]}
               />
         
-          <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: " 1fr 1fr 1fr", gap: 14 }}>
+              <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: " 1fr 1fr 1fr", gap: 14 }}>
 
-            <div style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
-              <BarChart
-                title="Top 5 Vehicles"
-                labels={top5Vehicles?.map(v => v.vehicleNumber)}
-                datasets={[
-                  { label: "Trips", data: top5Vehicles?.map(v => v.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
-                ]}
-              />
-            </div>
-            
-            <div style={{ gridColumn: "span 2", display: "flex", flexDirection: "column", gap: 14 }}>
-
-              <BarChart
-                title="Top 5 Transporters"
-                labels={top5Transporters?.map(t => t.transporterName)}
-                datasets={[
-                  { label: "Trips", data: top5Transporters?.map(t => t.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
-                  { label: "Vehicles", data: top5Transporters?.map(t => t.vehicleCount), backgroundColor: "#09637E", borderColor: "#09637E", borderWidth: 1.5, borderRadius: 5 },
-                ]}
-              />
-            </div>
-
-            
+                <div style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
+                  <BarChart
+                    title="Top 5 Vehicles"
+                    labels={top5Vehicles?.map(v => v.vehicleNumber)}
+                    isLegendVisible={false}
+                    datasets={[
+                      { label: "Trips", data: top5Vehicles?.map(v => v.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
+                    ]}
+                  />
+                </div>
+                
+                <div style={{ gridColumn: "span 2", display: "flex", flexDirection: "column", gap: 14 }}>
+                  <BarChart
+                    title="Top 5 Transporters"
+                    labels={top5Transporters?.map(t => t.transporterName)}
+                    datasets={[
+                      { label: "Trips", data: top5Transporters?.map(t => t.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
+                      { label: "Vehicles", data: top5Transporters?.map(t => t.vehicleCount), backgroundColor: "#09637E", borderColor: "#09637E", borderWidth: 1.5, borderRadius: 5 },
+                    ]}
+                  />
+                </div>
               </div>
+
+              <div style={{ gridColumn: "span 3", gridTemplateColumns: "1fr 1fr 1fr", display: "grid", gap: 14 }}>
+
+                <BarChart
+                  title="Monthly Trips Trend"
+                  subtitle="Trips by month across selected range"
+                  labels={monthlyTrends.map(m => m.label)}
+                  isLegendVisible={true}
+                  // Monthly Trips Trend
+                  datasets={[
+                    {
+                      label: "Completed",
+                      data: monthlyTrends.map(m => m.closed),
+                      backgroundColor: C.teal,
+                      _baseColor: C.teal,
+                    },
+                    {
+                      label: "Cancelled",
+                      data: monthlyTrends.map(m => m.cancelled),
+                      backgroundColor: C.red,
+                      _baseColor: C.red,
+                    },
+                    {
+                      label: "Active",
+                      data: monthlyTrends.map(m => m.active),
+                      backgroundColor: C.slate,
+                      _baseColor: C.slate,
+                    },
+                  ]}
+
+                  
+                />
+
+                <BarChart
+                    title="Busiest Days"
+                    subtitle="Top days by trip volume (descending)"
+                    labels={busiestDays?.map(d => dayjs(d.date).format("D MMM"))}
+                    isLegendVisible={false}
+                    datasets={[
+                    {
+                      label: "Trips",
+                      data: busiestDays?.map(d => d.count),
+                      backgroundColor: C.teal,
+                      _baseColor: C.teal,
+                    },
+                  ]}
+                  />
+
+                  <BarChart
+                    title="Avg Trips / Day — Top 5 Vehicles"
+                    subtitle="Based on active days only (days with ≥1 trip)"
+                    labels={top5AvgPerDay.map(v => v.vehicleNumber)}
+                    isLegendVisible={false}
+                    datasets={[
+                      {
+                        label: "Avg Trips/Day",
+                        data: top5AvgPerDay.map(v => v.avgTripsPerDay),
+                        backgroundColor: C.teal,
+                        _baseColor: C.teal,
+                      },
+                    ]}
+                  />
+
+              </div>
+                
+
           </div>
           
 
@@ -2120,111 +551,13 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           </Card>
 
           <Card>
-            <CardLabel>Daily Trip Completions</CardLabel>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 16, margin: "4px 0 16px" }}>
-              <BigNumber style={{ color: C.teal }}>
-                {idleAnalysis?.dailyTrend?.reduce((s, d) => s + d.count, 0)}
-              </BigNumber>
-              <span style={{ fontSize: 11, color: C.muted }}>
-                total trips · {idleAnalysis?.activeDays} active days · {idleAnalysis?.idleDays} idle
-              </span>
-            </div>
-
-            {/* Fixed height div wraps ONLY the Line, as its direct parent */}
-            <div style={{ height: 160, position: "relative", width: "100%" }}>
-              <Line
-                key={period}
-                data={{
-                  labels: idleAnalysis?.dailyTrend?.map(d => {
-                    const dt = new Date(d.date);
-                    return `${dt.getDate()}/${dt.getMonth() + 1}`;
-                  }),
-                  datasets: [
-                    {
-                      label: "Trips",
-                      data: idleAnalysis?.dailyTrend?.map(d => d.count),
-                      borderColor: "#0d9488",
-                      borderWidth: 2,
-                      backgroundColor: (ctx) => {
-                        const chart = ctx.chart;
-                        const { ctx: canvas, chartArea } = chart;
-                        if (!chartArea) return "transparent";
-                        const grad = canvas.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-                        grad.addColorStop(0, "rgba(13,148,136,0.18)");
-                        grad.addColorStop(1, "rgba(13,148,136,0)");
-                        return grad;
-                      },
-                      fill: true,
-                      tension: 0.4,
-                      pointBackgroundColor: idleAnalysis?.dailyTrend?.map(d =>
-                        d.count === 0 ? "#ef4444" : "#0d9488"
-                      ),
-                      pointBorderColor: idleAnalysis?.dailyTrend?.map(d =>
-                        d.count === 0 ? "#fca5a5" : "#fff"
-                      ),
-                      pointRadius: idleAnalysis?.dailyTrend?.map(d => d.count === 0 ? 4 : 3),
-                      pointHoverRadius: 6,
-                      pointBorderWidth: 1.5,
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false, // ✅ false so it respects parent height
-                  animation: false,           // ✅ prevents resize flicker on re-render
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                      backgroundColor: "#1e293b",
-                      titleColor: "#94a3b8",
-                      bodyColor: "#f1f5f9",
-                      borderColor: "#334155",
-                      borderWidth: 1,
-                      padding: 10,
-                      cornerRadius: 8,
-                      callbacks: {
-                        title: (items) => {
-                          const idx = items[0].dataIndex;
-                          const dt = new Date(idleAnalysis?.dailyTrend?.[idx]?.date);
-                          return dt?.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-                        },
-                        label: (item) => `  ${item.raw} trip${item.raw !== 1 ? "s" : ""}`,
-                      },
-                    },
-                  },
-                  scales: {
-                    x: {
-                      grid: { display: false },
-                      border: { display: false },
-                      ticks: { color: "#94a3b8", font: { size: 10 } },
-                    },
-                    y: {
-                      beginAtZero: true,
-                      grid: { color: "#f1f5f9", lineWidth: 1 },
-                      border: { display: false, dash: [3, 3] },
-                      ticks: {
-                        color: "#94a3b8",
-                        font: { size: 10 },
-                        stepSize: 1,
-                        precision: 0,
-                      },
-                    },
-                  },
-                }}
-              />
-            </div>
-            {/*  No style={{ height }} on the Line itself — parent div controls it */}
-
-            <div style={{ display: "flex", gap: 16, marginTop: 10, justifyContent: "flex-end" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: C.muted }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#0d9488", display: "inline-block" }} />
-                Trips completed
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: C.muted }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block" }} />
-                Idle day
-              </span>
-            </div>
+            <DailyTripLine
+              dailyTrend={idleAnalysis?.dailyTrend}
+              labels={idleAnalysis?.dailyTrend.map(d => d.label)}
+              activeDays={idleAnalysis?.activeDays}
+              idleDays={idleAnalysis?.idleDays}
+              period={period}
+            />
           </Card>
 
          <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr ", gridTemplateRows: "auto", gap: 14 }}>
@@ -2290,7 +623,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
           <div style={{ flex: "1 1 600px", minWidth: 0 }}>
             <TripHeatmap
               vehicles={top25Vehicles}
-              dates={top25Vehicles[0]?.dailyTrips?.map(d => ({ date: d.date }))}
+              dates={top25Vehicles[0]?.dailyTrips?.map(d => ({ date: d.date, label: d.label }))}
               matrix={top25Vehicles.map(v =>
                 top25Vehicles[0]?.dailyTrips?.map(dateRef =>
                   v.dailyTrips.find(d => d.date === dateRef.date)?.tripCount ?? 0
@@ -2301,9 +634,6 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId }
             />
           </div>
         )}
-
-      
-
 
       <Card style={{ marginTop: 14 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>

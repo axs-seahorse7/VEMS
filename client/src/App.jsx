@@ -7,7 +7,7 @@ import AdminApp from './Pages/Admin/Home/AdminApp'
 import {AdminRoute, UserRoute} from './components/Protectedroute/ProtectedRoute'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AdminMonitorDashboard from './Pages/Admin/Pages/Monitoring-Dashboard/AdminMonitorDashboard'
-import VehicleAnalyticsDashboard from './Pages/Admin/Pages/Analytics/VehicleAnalyticsDashboard'
+// import VehicleAnalyticsDashboard from './Pages/Admin/Pages/Analytics/VehicleAnalyticsDashboard'
 
 
 const queryClient = new QueryClient()
@@ -20,7 +20,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={ <UserRoute><VehicleDashboard /></UserRoute> } />
         <Route path="/admin/monitoring" element={<AdminMonitorDashboard />} />
-        <Route path="/admin/analytics/van-tracking" element={<VehicleAnalyticsDashboard />} />
+        {/* <Route path="/admin/analytics/van-tracking" element={<VehicleAnalyticsDashboard />} /> */}
 
         {/* Admin Routes */}
         <Route path="/admin" element={<AdminRoute><AdminApp /></AdminRoute>} />

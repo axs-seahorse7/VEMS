@@ -20,14 +20,12 @@ const fail = (res, message, code = 400) => res.status(code).json({ success: fals
 //  ALERT EMAIL USERS
 //  Base route: /api/settings/alert-users
 // ════════════════════════════════════════════════════════════════════════════
+const ALERT_TYPES = ["tripCancelled", "delayTrips", "vehicleEntry", "vehicleExit"];
 
-/**
- * GET /api/settings/alert-users
- * Optional query: ?factoryId=<id>  — filter by factory
- */
 router.get("/alert-users", wrap(async (req, res) => {
   const filter = {};
   if (req.query.factoryId) filter.factoryId = req.query.factoryId;
+  if (req.query.excludePaused === "true") filter.isPaused = { $ne: true };
 
   const users = await AlertEmailUsers
     .find(filter)
@@ -38,42 +36,76 @@ router.get("/alert-users", wrap(async (req, res) => {
   ok(res, users, { total: users.length });
 }));
 
-/**
- * POST /api/settings/alert-users
- * Body: { name, email, factoryId }
- */
 router.post("/alert-users", wrap(async (req, res) => {
-try {
-  const { name, email, factoryId } = req.body;
+  try {
+    const { name, email, factoryId, alertTypes, alertInterval } = req.body;
 
-  if (!name || !email || !factoryId)
-    return fail(res, "name, email, and factoryId are required");
+    if (!name || !email || !factoryId)
+      return fail(res, "name, email, and factoryId are required");
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email))
-    return fail(res, "Invalid email format");
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email))
+      return fail(res, "Invalid email format");
 
-  const factoryExists = await factoryModel.exists({ _id: factoryId });
-  if (!factoryExists)
-    return fail(res, "Factory not found", 404);
+    if (alertTypes !== undefined) {
+      if (!Array.isArray(alertTypes) || alertTypes.length === 0)
+        return fail(res, "alertTypes must be a non-empty array");
+      const invalidType = alertTypes.find(t => !ALERT_TYPES.includes(t));
+      if (invalidType)
+        return fail(res, `Invalid alert type: ${invalidType}`);
+    }
 
-  const existing = await AlertEmailUsers.findOne({ email });
-  if (existing)
-    return fail(res, "An alert recipient with this email already exists", 409);
+    if (alertInterval !== undefined) {
+      if (typeof alertInterval !== "number" || alertInterval < 1)
+        return fail(res, "alertInterval must be a number >= 1");
+    }
 
-  const user = await AlertEmailUsers.create({ name, email: email.toLowerCase().trim(), factoryId });
+    const factoryExists = await factoryModel.exists({ _id: factoryId });
+    if (!factoryExists)
+      return fail(res, "Factory not found", 404);
+
+  const confilictByFactory = await AlertEmailUsers.findOne({ factoryId, email: email.toLowerCase().trim() });
+  if (confilictByFactory) return fail(res, "User already assigned to this factory", 409);
+
+  const user = await AlertEmailUsers.create({
+    name,
+    email: email.toLowerCase().trim(),
+    factoryId,
+    ...(alertTypes !== undefined && { alertTypes }),
+    ...(alertInterval !== undefined && { alertInterval }),
+  });
   const populated = await user.populate("factoryId", "name location");
 
   return res.status(201).json({ success: true, data: populated });
-} catch (error) {
+  } catch (error) {
   console.error("Error creating alert recipient:", error);
   return res.status(500).json({ success: false, message: "Server error" });
-}
+  }
 }));
 
-/**
- * GET /api/settings/alert-users/:id
- */
+router.patch("/alert-users/:id/pause", wrap(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPaused } = req.body;
+
+    if (typeof isPaused !== "boolean")
+      return fail(res, "isPaused (boolean) is required");
+
+    const user = await AlertEmailUsers.findByIdAndUpdate(
+      id,
+      { isPaused },
+      { new: true }
+    ).populate("factoryId", "name location");
+
+    if (!user) return fail(res, "Alert recipient not found", 404);
+
+    return res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    console.error("Error updating pause status:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+}));
+
 router.get("/alert-users/:id", wrap(async (req, res) => {
   const user = await AlertEmailUsers
     .findById(req.params.id)
@@ -83,59 +115,78 @@ router.get("/alert-users/:id", wrap(async (req, res) => {
   ok(res, user);
 }));
 
-/**
- * PATCH /api/settings/alert-users/:id
- * Body: any of { name, email, factoryId, isActive }
- */
 router.patch("/alert-users/:id", wrap(async (req, res) => {
-try {
-  const allowed = ["name", "email", "factoryId", "isActive"];
-  const updates = Object.fromEntries(
-    Object.entries(req.body).filter(([k]) => allowed.includes(k))
-  );
+  try {
+    const allowed = ["name", "email", "factoryId", "isPaused", "alertTypes", "alertInterval"];
+    const updates = Object.fromEntries(
+      Object.entries(req.body).filter(([k]) => allowed.includes(k))
+    );
 
-  if (updates.email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(updates.email))
-      return res.status(400).json({ success: false, message: "Invalid email format" });
+    if (updates.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(updates.email))
+        return res.status(400).json({ success: false, message: "Invalid email format" });
+      updates.email = updates.email.toLowerCase().trim();
+    }
 
-    const conflict = await AlertEmailUsers.findOne({
-      email: updates.email.toLowerCase().trim(),
-      _id: { $ne: req.params.id },
-    });
-    if (conflict) return res.status(409).json({ success: false, message: "Email already in use by another recipient" });
-    updates.email = updates.email.toLowerCase().trim();
+    if (updates.factoryId) {
+      const factoryExists = await factoryModel.exists({ _id: updates.factoryId });
+      if (!factoryExists) return res.status(404).json({ success: false, message: "Factory not found" });
+    }
+
+    if (updates.alertTypes !== undefined) {
+      if (!Array.isArray(updates.alertTypes) || updates.alertTypes.length === 0)
+        return res.status(400).json({ success: false, message: "alertTypes must be a non-empty array" });
+      const invalidType = updates.alertTypes.find(t => !ALERT_TYPES.includes(t));
+      if (invalidType)
+        return res.status(400).json({ success: false, message: `Invalid alert type: ${invalidType}` });
+    }
+
+    if (updates.alertInterval !== undefined) {
+      if (typeof updates.alertInterval !== "number" || updates.alertInterval < 1)
+        return res.status(400).json({ success: false, message: "alertInterval must be a number >= 1" });
+    }
+
+    if (updates.isPaused !== undefined && typeof updates.isPaused !== "boolean")
+      return res.status(400).json({ success: false, message: "isPaused must be a boolean" });
+
+    // Prevent duplicate (factoryId, email) pair when either changes
+    if (updates.factoryId || updates.email) {
+      const existing = await AlertEmailUsers.findById(req.params.id);
+      if (!existing) return res.status(404).json({ success: false, message: "Recipient not found" });
+
+      const checkFactoryId = updates.factoryId ?? existing.factoryId;
+      const checkEmail = updates.email ?? existing.email;
+
+      const conflict = await AlertEmailUsers.findOne({
+        _id: { $ne: req.params.id },
+        factoryId: checkFactoryId,
+        email: checkEmail,
+      });
+      if (conflict) return res.status(409).json({ success: false, message: "User already assigned to this factory" });
+    }
+
+    const user = await AlertEmailUsers
+      .findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
+      .populate("factoryId", "name location");
+
+    if (!user) return res.status(404).json({ success: false, message: "Recipient not found" });
+    return res.json({ success: true, data: user, message: "Recipient updated successfully" });
+  } catch (error) {
+    console.error("Error updating alert recipient:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
-
-  if (updates.factoryId) {
-    const factoryExists = await factoryModel.exists({ _id: updates.factoryId });
-    if (!factoryExists) return res.status(404).json({ success: false, message: "Factory not found" });
-  }
-
-  const user = await AlertEmailUsers
-    .findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
-    .populate("factoryId", "name location");
-
-  if (!user) return res.status(404).json({ success: false, message: "Recipient not found" });
-  return res.json({ success: true, data: user, message: "Recipient updated successfully" });
-} catch (error) {
-  console.error("Error updating alert recipient:", error);
-  return res.status(500).json({ success: false, message: "Server error" });
-}
 }));
 
-/**
- * DELETE /api/settings/alert-users/:id
- */
 router.delete("/alert-users/:id", wrap(async (req, res) => {
-try {
-    const user = await AlertEmailUsers.findByIdAndDelete(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: "Recipient not found" }   );
-    return res.json({ success: true, message: "Recipient deleted" });
-} catch (error) {
-    console.error("Error deleting alert recipient:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
-}
+  try {
+      const user = await AlertEmailUsers.findByIdAndDelete(req.params.id);
+      if (!user) return res.status(404).json({ success: false, message: "Recipient not found" }   );
+      return res.json({ success: true, message: "Recipient deleted" });
+  } catch (error) {
+      console.error("Error deleting alert recipient:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+  }
 }));
 
 

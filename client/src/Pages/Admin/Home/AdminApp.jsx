@@ -6,6 +6,8 @@ import AdminLayout from "../../../components/Layouts/Layouts";
 import ManageVehicles from "../Pages/Manage-Vehicles/ManageVehicles";
 import Settings from "../Pages/Settings/Settings";
 import DriverSearchPage from "../components/Cards/DriverSearchPage";
+import VehiclePerformanceTable from "../components/Cards/VehiclePerformanceTable";
+import { useDashboard, DashboardProvider } from "../../../Global/Dashboard-Context/DashboardProvider";
 
 
 function ComingSoon({ label }) {
@@ -23,9 +25,11 @@ function ComingSoon({ label }) {
   );
 }
 
-function PageContent({ page }) {
-  if (page === "overview")        return <AdminDashboard />;
-  if (page === "searchDrivers")   return <DriverSearchPage />;
+function PageContent({ page, ...props }) {
+  const { dates, setDates, tableData, setTableData, isFetching, setIsFetching } = props;
+  if (page === "overview")        return <AdminDashboard activePage={page} setDates={setDates} setTableData={setTableData} setIsFetching={setIsFetching} />;
+  if (page === "searchDrivers")   return <DriverSearchPage  />;
+  if (page === "vehiclePerformance") return <VehiclePerformanceTable activePage={page} dates={dates} tableData={tableData} loading={isFetching} />;
   if (page === "users")           return <ManageUsers activePage="users" />;
   if (page === "factory")         return <ManageFactory activePage="factory" />;
   if (page === "vehicles")        return <ManageVehicles />;
@@ -37,9 +41,27 @@ export default function AdminApp() {
   const [page, setPage] = useState("overview");
   const [user, setUser] = useState(null);
 
+  const [dates, setDates] = useState([]);
+  const [tableData, setTableData] = useState([]);
+  const [isFetching, setIsFetching] = useState(false);
+
+  useEffect(() => {
+    const storedPage = localStorage.getItem("activePage");
+    if (storedPage) {
+      setPage(storedPage);
+    }
+  }, []);
+
+
+  useEffect(() => {
+    localStorage.setItem("activePage", page);
+  }, [page]);
+
   return (
-    <AdminLayout activePage={page} onNavigate={setPage}>
-      <PageContent page={page} />
-    </AdminLayout>
+    <DashboardProvider>
+      <AdminLayout activePage={page} onNavigate={setPage}>
+        <PageContent page={page} dates={dates} setDates={setDates} tableData={tableData} setTableData={setTableData} isFetching={isFetching} setIsFetching={setIsFetching} />
+      </AdminLayout>
+    </DashboardProvider>
   );
 }

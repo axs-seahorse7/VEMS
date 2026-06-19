@@ -14,6 +14,15 @@ const userSchema = new mongoose.Schema({
         type:String,
         required:true
     },
+    role:{
+        type:String,
+        enum:["admin","user"],
+        default:"user"
+    },
+    phone:{
+        type:String,
+        unique:true
+    },
     otp:{
         type:String,
     },
@@ -53,10 +62,20 @@ const userSchema = new mongoose.Schema({
         default:"active"
     },
 
-    workLocation:{
-        type:String,
-        required:true,
-        enum:["atGate","storeSite","dispatchSite","pickupSite"]
+    workLocation: {
+        type: String,
+        enum: ["atGate", "storeSite", "dispatchSite", "pickupSite"],
+        default: function () {
+            return this.role !== "admin" ? "atGate" : undefined;
+        },
+        required: function () {
+            return this.role !== "admin";
+        }
+    },
+
+    location: {
+        type: String,
+        default: "supa"
     },
 
     factory:{

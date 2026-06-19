@@ -19,6 +19,7 @@ import {
     updateFactory,
     toggleFactoryStatus,
     deleteFactory,
+    getFactoriesByLocation,
 } from "../controllers/factory.contoller.js";
 import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
 
@@ -47,14 +48,15 @@ router.delete("/entry/:id",                   isAuthenticated, deleteEntry);
 router.get("/entry/:id/history",              isAuthenticated, getVanHistory);
 
 // ── Factory ───────────────────────────────────────────────────────────────────
-router.post  ("/factory",                isAuthenticated, createFactory);
-router.put   ("/factory/:id",            isAuthenticated, updateFactory);
-router.patch ("/factory/:id/status",     isAuthenticated, toggleFactoryStatus);
-router.delete("/factory/:id",            isAuthenticated, deleteFactory);
+router.post  ("/factory",                     isAuthenticated, createFactory);
+router.put   ("/factory/:id",                 isAuthenticated, updateFactory);
+router.patch ("/factory/:id/status",          isAuthenticated, toggleFactoryStatus);
+router.delete("/factory/:id",                 isAuthenticated, deleteFactory);
 
 
-router.get   ("/factory/:id",            isAuthenticated, getFactoryById);
-router.get   ("/factories",              isAuthenticated, getFactories);
+router.get   ("/factory/:id",                 isAuthenticated, getFactoryById);
+router.get   ("/factories",                   isAuthenticated, getFactories);
+router.get   ("/factories-by-location",       isAuthenticated, getFactoriesByLocation);
 
 
 export default router;

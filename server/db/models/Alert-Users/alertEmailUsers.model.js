@@ -4,7 +4,6 @@ const alertEmailUsersSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        unique: true,
         index: true
     },
     name: {
@@ -17,10 +16,19 @@ const alertEmailUsersSchema = new mongoose.Schema({
         required: true,
         index: true
     },
-    isActive: {
+    isPaused: {
         type: Boolean,
-        default: true
+        default: false
     },
+    alertTypes: {
+        type: [String],
+        enum: ["tripCancelled", "delayTrips", "vehicleEntry", "vehicleExit"],
+        default: ["tripCancelled",]
+    },
+    alertInterval: {
+        type: Number,
+        default: 15, // in minutes
+    }
 }, { timestamps: true });
 
 export const AlertEmailUsers = mongoose.model("AlertEmailUsers", alertEmailUsersSchema);

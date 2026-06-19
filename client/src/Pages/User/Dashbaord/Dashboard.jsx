@@ -7,7 +7,8 @@ import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-quer
 import api from "../../../../services/API/Api/api";
 
 // third party components
-import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented, Modal, Spin  } from "antd";
+import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented, Modal, Spin, Tooltip, Dropdown } from "antd";
+import { CloseCircleOutlined, CloseOutlined} from "@ant-design/icons";
 import { TruckElectric } from "lucide-react";
 
 // local components
@@ -91,25 +92,116 @@ const Icon = {
   wifi: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none" /></svg>),
 };
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
+// ─── KPI Card ───────────────────────────────────────────────────────────────v──
+const kpiStyles = `
+  .kpi-grid {
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 5px;
+    border-bottom: 1px solid #e5e7eb;
+    width: 100%;
+    box-sizing: border-box;
+    position: sticky;
+    background: #f9fafb;
+    top: 56px;        /* exactly the navbar height */
+    z-index: 99;      /* just below navbar's z-index: 100 */
+  }
+
+  .kpi-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 10px 8px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+    cursor: pointer;
+    transition: all .15s;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .kpi-card.active {
+    box-shadow: 0 0 0 2px var(--kpi-color);
+    background: var(--kpi-bg);
+  }
+
+  .kpi-icon {
+    width: clamp(20px, 2.5vw, 32px);
+    height: clamp(20px, 2.5vw, 32px);
+    border-radius: 6px;
+    background: var(--kpi-icon-bg);
+    color: var(--kpi-color);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all .15s;
+  }
+  .kpi-icon span {
+    width: clamp(10px, 1.2vw, 16px) !important;
+    height: clamp(10px, 1.2vw, 16px) !important;
+  }
+  .kpi-icon span svg {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .kpi-value {
+    font-size: clamp(12px, 1.6vw, 20px);
+    font-weight: 800;
+    color: #111;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kpi-label {
+    font-size: clamp(8px, 0.85vw, 11px);
+    color: #6b7280;
+    font-weight: 500;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── wrap to 2 rows at 750px ── */
+  @media (max-width: 750px) {
+    .kpi-grid {
+      grid-template-columns: repeat(5, 1fr);
+    }
+    .kpi-icon {
+      width: 22px; height: 22px;
+    }
+    .kpi-value { font-size: 13px; }
+    .kpi-label { font-size: 9px; }
+  }
+
+  @media (max-width: 480px) {
+    .kpi-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+`;
+
 function KpiCard({ label, value, color, icon, active, onClick }) {
   return (
     <div
+      className={`kpi-card${active ? " active" : ""}`}
       onClick={onClick}
       style={{
-        background: active ? color + "12" : "#fff",
-        borderRadius: 10, padding: "10px 14px",
-        display: "flex", alignItems: "center", gap: 10,
-        boxShadow: active ? `0 0 0 2px ${color}` : "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
-        minWidth: 100, cursor: onClick ? "pointer" : "default", transition: "all .15s",
+        "--kpi-color":   color,
+        "--kpi-bg":      color + "12",
+        "--kpi-icon-bg": color + "15",
+        cursor: onClick ? "pointer" : "default",
       }}
     >
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0 }}>
+      <div className="kpi-icon">
         <span style={{ width: 16, height: 16, display: "flex" }}>{icon}</span>
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "#111", lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 500, marginTop: 1, whiteSpace: "nowrap" }}>{label}</div>
+        <div className="kpi-value">{value}</div>
+        <div className="kpi-label">{label}</div>
       </div>
     </div>
   );
@@ -153,6 +245,258 @@ function SegmentFilter({ filter, setFilter, counts }) {
         </button>
       ))}
     </div>
+  );
+}
+
+// ── NavbarSegmentDropdown (used only when collapsed) ──────────────────────
+function NavbarSegmentDropdown({ filter, setFilter, counts }) {
+  const segments = [
+    { key: "all",        label: "All",        color: "#6b7280" },
+    { key: "waiting",    label: "Waiting",     color: "#f59e0b" },
+    { key: "inside",     label: "Inside",      color: "#10b981" },
+    { key: "enroute",    label: "Upcoming",    color: "#3b82f6" },
+    { key: "dispatched", label: "Dispatched",  color: "#059669" },
+  ];
+
+  const active = segments.find(s => s.key === filter) || segments[0];
+  const totalCount = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
+
+  const menuItems = segments.map(s => ({
+    key: s.key,
+    label: (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, minWidth: 140 }}>
+        <span style={{ fontWeight: filter === s.key ? 700 : 500, color: filter === s.key ? s.color : "#374151" }}>
+          {s.label}
+        </span>
+        <span style={{
+          fontSize: 11, fontWeight: 700, minWidth: 20, textAlign: "center",
+          background: filter === s.key ? s.color + "18" : "#f3f4f6",
+          color: filter === s.key ? s.color : "#6b7280",
+          borderRadius: 10, padding: "1px 7px"
+        }}>
+          {counts?.[s.key] ?? 0}
+        </span>
+      </div>
+    ),
+  }));
+
+  return (
+    <Dropdown
+      menu={{ items: menuItems, onClick: ({ key }) => setFilter(key), selectedKeys: [filter] }}
+      trigger={["click"]}
+      placement="bottomLeft"
+    >
+      <button style={{
+        display: "flex", alignItems: "center", gap: 6,
+        border: `1.5px solid ${active.color}`,
+        borderRadius: 20, padding: "4px 10px 4px 8px",
+        background: active.color + "10",
+        cursor: "pointer", fontSize: 12, fontWeight: 700,
+        color: active.color, whiteSpace: "nowrap",
+      }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%",
+          background: active.color, flexShrink: 0,
+        }} />
+        {active.label}
+        <span style={{
+          fontSize: 11, fontWeight: 800,
+          background: active.color + "20",
+          borderRadius: 10, padding: "0 6px",
+          color: active.color,
+        }}>
+          {counts?.[filter] ?? totalCount}
+        </span>
+        <span style={{ fontSize: 10, opacity: 0.6, marginLeft: -2 }}>▾</span>
+      </button>
+    </Dropdown>
+  );
+}
+
+// ── Navbar ─────────────────────────────────────────────────────────────────
+function Navbar({
+  // user
+  user,
+  userVersion,
+  getLocationLabel,
+  handleSignOut,
+
+  // filter
+  filter,
+  setFilter,
+  segCounts,          // e.g. { all: 8, waiting: 0, inside: 5, enroute: 0, dispatched: 0 }
+
+  // search
+  searchOpen,
+  setSearchOpen,
+  searchQuery,
+  setSearchQuery,
+
+  // actions
+  refreshing,
+  manualRefetch,
+  setEntryOpen,
+}) {
+  const [collapsed, setCollapsed] = useState(window.innerWidth <= 1040);
+
+  useEffect(() => {
+    const handler = () => setCollapsed(window.innerWidth <= 1040);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
+  function clearSearch() {
+    if(searchQuery.length> 0) {
+      setSearchQuery("");
+    }else {
+      setSearchOpen(false);
+    }
+  }
+
+  return (
+    <>
+      <style>{`
+        .nav-root {
+          background: #fff;
+          border-bottom: 1px solid #e5e7eb;
+          padding: 0 16px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          position: sticky;
+          top: 0;
+          z-index: 100;
+          // overflow: hidden;
+        }
+        .nav-logo { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .nav-logo img { width: 40px; height: 40px; object-fit: contain; }
+        .nav-logo-divider { border-left: 2px solid #ef4444; padding-left: 8px; }
+        .nav-logo-brand { font-weight: 800; font-size: 13px; color: #111; }
+        .nav-logo-sub { font-size: 9px; color: #059669; font-weight: 600; letter-spacing: 0.4px; }
+        .nav-logo-role { font-size: 9px; color: #6366f1; letter-spacing: 0.4px; }
+
+        .nav-center { flex: 1; display: flex; justify-content: center; overflow: hidden; min-width: 0; }
+
+        .nav-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+        .nav-search {
+          display: flex; align-items: center;
+          background: #f3f4f6; border: 1.5px solid transparent;
+          border: 1.5px solid #e5e7eb;
+          border-radius: 8px; padding: 4px 8px;
+          transition: all .2s; overflow: hidden;
+          width: 30px;
+        }
+        .nav-search.open { background: #f5f3ff; border-color: #34908B; width: 150px; }
+        .nav-search input { border: none; background: transparent; font-size: 12px; color: #111; font-family: inherit; margin-left: 6px; width: 100%; font-weight: 500; outline: none; }
+
+        .nav-refresh-label, .nav-entry-label { display: inline; }
+
+        @media (max-width: 1200px) {
+          .nav-refresh-label { display: none; }
+          .nav-entry-label   { display: none; }
+        }
+        @media (max-width: 900px) {
+          .nav-logo-sub, .nav-logo-role { display: none; }
+        }
+        @media (max-width: 640px) {
+          .nav-logo-divider { display: none; }
+        }
+      `}</style>
+
+      <nav className="nav-root">
+        {/* Logo */}
+        <div className="nav-logo">
+          <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="PG" />
+          <div className="nav-logo-divider">
+            <div className="nav-logo-brand">VEMS</div>
+            <div className="nav-logo-sub">{user?.factory?.name} ({user?.factory?.location})</div>
+            <div className="nav-logo-role">
+              {user.workLocation === "atGate" ? "Security Gate"
+                : user.workLocation === "storeSite" ? "Store" : "Dispatch"}
+            </div>
+          </div>
+        </div>
+
+        {/* Center: full SegmentFilter OR compact dropdown */}
+        <div className="nav-center">
+          {collapsed
+            ? <NavbarSegmentDropdown filter={filter} setFilter={setFilter} counts={segCounts} />
+            : <SegmentFilter filter={filter} setFilter={setFilter} counts={segCounts} />
+          }
+        </div>
+
+        {/* Right actions */}
+        <div className="nav-actions">
+          <LiveButton />
+
+          {/* Search */}
+          <div className={`nav-search${searchOpen ? " open" : ""}`}>
+            {searchOpen && (
+              <input autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Vehicle no..." />
+            )}
+            <button
+              onClick={() => { if(!searchOpen && searchQuery.length === 0) setSearchOpen(o => !o); if(searchOpen && searchQuery.length === 0) setSearchOpen(o => !o); if (searchOpen && searchQuery.length > 0) clearSearch(); }}
+              style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0,
+                display: "flex", alignItems: "center",
+                color: searchOpen ? "#6366f1" : "#6b7280", flexShrink: 0, width: 30, height: 24,  }}
+            >
+
+              { searchOpen && searchQuery.length === 0 ? <CloseOutlined style={{width: 12, height: 12, color: "gray"}} /> : 
+              searchOpen && searchQuery.length > 0 ? <CloseCircleOutlined style={{ width: 14, height: 14, color: "orange" }} />
+              : <span style={{ width: 14, height: 14, display: "flex" }}>{Icon.search}</span> 
+              }
+            </button>
+          </div>
+
+          {/* Refresh */}
+          <Tooltip title="Refresh">
+            <Button
+              onClick={manualRefetch} type="primary" shape=""
+              icon={<span style={{ width: 14, height: 14, display: "flex", ...(refreshing ? { animation: "spin .7s linear infinite" } : {}) }}>{Icon.refresh}</span>}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}
+            >
+              <span className="nav-refresh-label">Refresh</span>
+            </Button>
+          </Tooltip>
+
+          {/* New Entry */}
+          <Tooltip title="New Entry">
+            <Button
+              onClick={() => setEntryOpen(true)}
+              style={{ display: "flex", alignItems: "center", gap: 5, border: "none",
+                background: "#6366f1", padding: "6px 14px",
+                fontWeight: 700, fontSize: 12.5, cursor: "pointer", color: "#fff", whiteSpace: "nowrap" }}
+            >
+              <span style={{ width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{Icon.plus}</span>
+              <span className="nav-entry-label">New Entry</span>
+            </Button>
+          </Tooltip>
+
+          <NotificationBell />
+
+          <Popover trigger="click" placement="bottomRight" content={
+            <div style={{ fontSize: 11, minWidth: 160 }}>
+              <div style={{ fontWeight: 600 }}>{user?.name}</div>
+              <div style={{ fontWeight: 600, color: "#374151" }}>{user.email}</div>
+              <div style={{ color: "#9ca3af" }}>{getLocationLabel(user.workLocation)}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, padding: "2px 0", color: "#541A1A", fontWeight: 600 }}>
+                <span>Version</span><span>v{userVersion}</span>
+              </div>
+              <div onClick={handleSignOut} style={{ marginTop: 8, padding: "4px 0", color: "#dc2626", cursor: "pointer", fontWeight: 600, borderTop: "1px solid #e5e7eb", background: "#fee2e2", borderRadius: 4, textAlign: "center" }}>
+                Sign Out
+              </div>
+            </div>
+          }>
+            <Avatar size="small" style={{ backgroundColor: "#6366F1", cursor: "pointer", flexShrink: 0 }}>
+              {user.email?.[0]?.toUpperCase()}
+            </Avatar>
+          </Popover>
+        </div>
+      </nav>
+    </>
   );
 }
 
@@ -404,6 +748,8 @@ const vehicleColumns = [
   },
 ];
 
+
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function VehicleDashboard() {
   const [selectedVehicle, setSelectedVehicle]   = useState(null);
@@ -495,8 +841,6 @@ export default function VehicleDashboard() {
     refetchIntervalInBackground: false,
   });
 
-
-
   const firstPage = data?.pages?.[0];
 
   const {
@@ -512,8 +856,6 @@ export default function VehicleDashboard() {
       totalRM,              
      } = tripsCount || {};
  
-
-
   const trips = data?.pages.flatMap((page) => page.trips ) || [];
   const selectedVehicleId = selectedVehicle?._id;
   const allVehicles = [...trips ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -601,79 +943,41 @@ export default function VehicleDashboard() {
         .vehicle-table-row:hover td { background: #f5f3ff !important; }
       `}</style>
 
-      {/* ── Navbar ── */}
-      <nav style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <div style={{ width: 72, height: 72, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="" />
-          </div>
-          <div className="border-l-2 border-red-500 px-2">
-            <div style={{ fontWeight: 800, fontSize: 14, color: "#111" }}>VEMS</div>
-            <div style={{ display: "flex", flexDirection: "column", fontSize: 9.5, color: "blue", letterSpacing: 0.8, marginTop: -2 }}>
-              <span className="font-semibold text-emerald-700 text-[10px]">{user?.factory?.name} ({user?.factory?.location})</span>
-              <span>{user.workLocation === "atGate" ? "Security Gate" : user.workLocation === "storeSite" ? "Store" : "Dispatch"}</span>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", overflow: "auto" }}>
-          <SegmentFilter filter={filter} setFilter={setFilter} counts={segCounts} />
-        </div>
-
-        <LiveButton />
-
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 0, background: searchOpen ? "#f5f3ff" : "#f3f4f6", border: searchOpen ? "1.5px solid #6366f1" : "1.5px solid transparent", borderRadius: 8, padding: "4px 8px", transition: "all .2s", width: searchOpen ? 180 : 34, overflow: "hidden" }}>
-            <button onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearchQuery(""); }} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: searchOpen ? "#6366f1" : "#6b7280", flexShrink: 0, width: 18, height: 18 }}>
-              {Icon.search}
-            </button>
-            {searchOpen && (
-              <input autoFocus className="search-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Vehicle number..." style={{ border: "none", background: "transparent", fontSize: 12, color: "#111", fontFamily: "inherit", marginLeft: 6, width: "100%", fontWeight: 500 }} />
-            )}
-          </div>
-
-          <Button onClick={manualRefetch} shape="round" type="primary" style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-            <span style={{ height: 15, width: 15, display: "flex", ...(refreshing ? { animation: "spin .7s linear infinite" } : {}) }}>{Icon.refresh}</span>
-            <span>Refresh</span>          
-          </Button>
-
-
-          <button onClick={() => setEntryOpen(true)} style={{ display: "flex", alignItems: "center", gap: 5, border: "none", background: "#6366f1", borderRadius: 50, padding: "6px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", color: "#fff" }}>
-            <span style={{ width: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>{Icon.plus}</span>
-            <span className="max-md:hidden">New Entry</span>
-          </button>
-
-          <NotificationBell />
-          <Popover trigger="click" placement="bottomRight" content={
-            <div style={{ fontSize: 11 }}>
-              <div style={{ fontWeight: 600 }}>{user.email}</div>
-              <div style={{ color: "#9ca3af" }}>{getLocationLabel(user.workLocation)}</div>
-              <div style={{ display:"flex", justifyContent:"space-between", marginTop: 1, padding: "1px 0", color: "#541A1A", cursor: "pointer", fontWeight: 600,  }}> <span>Version</span> <span> v{userVersion} </span> </div>
-              <div onClick={handleSignOut} style={{ marginTop: 8, padding: "4px 0", color: "#dc2626", cursor: "pointer", fontWeight: 600, borderTop: "1px solid gray" }}>Sign Out</div>
-            </div>
-          }>
-            <Avatar size="medium" style={{ backgroundColor: "#6366F1", cursor: "pointer" }}>{user.email?.[0]?.toUpperCase()}</Avatar>
-          </Popover>
-        </div>
-      </nav>
+      <Navbar
+        user={user}
+        userVersion={userVersion}
+        getLocationLabel={getLocationLabel}
+        handleSignOut={handleSignOut}
+        filter={filter}
+        setFilter={setFilter}
+        segCounts={segCounts}
+        searchOpen={searchOpen}
+        setSearchOpen={setSearchOpen}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        refreshing={refreshing}
+        manualRefetch={manualRefetch}
+        setEntryOpen={setEntryOpen}
+      />
 
       {/* ── KPIs ── */}
-      <div style={{ padding: "12px 20px 20px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, borderBottom: "1px solid #e5e7eb" }}>
-        <KpiCard label="Waiting"      value={totalOutsideVehicles}      color="#f59e0b" icon={Icon.clock}    active={filter === "waiting"}    onClick={() => setFilter("waiting")} />
-        <KpiCard label="Inside"       value={totalInsideVehicles}       color="#10b981" icon={Icon.truck}    active={filter === "inside"}     onClick={() => setFilter("inside")} />
-        <KpiCard label="Upcoming"     value={totalUpcomingVehicles}     color="#3b82f6" icon={Icon.map}      active={filter === "enroute"}    onClick={() => setFilter("enroute")} />
-        <KpiCard label="FG Vehicles"  value={totalFG}         color="#79AE6F" icon={Icon.alert}    active={filter === "FG"}         onClick={() => setFilter("FG")} />
-        <KpiCard label="RM Vehicles"  value={totalRM}         color="#66D0BC" icon={Icon.alert}    active={filter === "RM"}         onClick={() => setFilter("RM")} />
-        <KpiCard label="Pickups"      value={totalPickup}     color="purple"  icon={Icon.package}  active={filter === "pickup"}     onClick={() => setFilter("pickup")} />
-        <KpiCard label="Deliveries"   value={totalDelivery}   color="#ec4899" icon={Icon.location} active={filter === "delivery"}   onClick={() => setFilter("delivery")} />
-        <KpiCard label="Dispatched"   value={totalDispatchedVehicles}   color="#059669" icon={Icon.dispatch} active={filter === "dispatched"} onClick={() => setFilter((f) => f === "dispatched" ? "all" : "dispatched")} />
-        <KpiCard label="Closed Trips" value={totalClosedVehicles}       color="#2C687B" icon={Icon.close}    active={filter === "closed"}     onClick={() => setFilter((f) => f === "closed" ? "all" : "closed")} />
+      <style>{kpiStyles}</style>
+      <div className="kpi-grid">
+        <KpiCard label="Waiting"      value={totalOutsideVehicles}    color="#f59e0b" icon={Icon.clock}    active={filter === "waiting"}    onClick={() => setFilter("waiting")} />
+        <KpiCard label="Inside"       value={totalInsideVehicles}     color="#10b981" icon={Icon.truck}    active={filter === "inside"}     onClick={() => setFilter("inside")} />
+        <KpiCard label="Upcoming"     value={totalUpcomingVehicles}   color="#3b82f6" icon={Icon.map}      active={filter === "enroute"}    onClick={() => setFilter("enroute")} />
+        <KpiCard label="FG Vehicles"  value={totalFG}                 color="#79AE6F" icon={Icon.alert}    active={filter === "FG"}         onClick={() => setFilter("FG")} />
+        <KpiCard label="RM Vehicles"  value={totalRM}                 color="#66D0BC" icon={Icon.alert}    active={filter === "RM"}         onClick={() => setFilter("RM")} />
+        <KpiCard label="Pickups"      value={totalPickup}             color="purple"  icon={Icon.package}  active={filter === "pickup"}     onClick={() => setFilter("pickup")} />
+        <KpiCard label="Deliveries"   value={totalDelivery}           color="#ec4899" icon={Icon.location} active={filter === "delivery"}   onClick={() => setFilter("delivery")} />
+        <KpiCard label="Dispatched"   value={totalDispatchedVehicles} color="#059669" icon={Icon.dispatch} active={filter === "dispatched"} onClick={() => setFilter(f => f === "dispatched" ? "all" : "dispatched")} />
+        <KpiCard label="Closed Trips" value={totalClosedVehicles}     color="#2C687B" icon={Icon.close}    active={filter === "closed"}     onClick={() => setFilter(f => f === "closed" ? "all" : "closed")} />
       </div>
 
       {/* ── Offline Banner ── */}
       {!isOnline && (
-        <div style={{ justifyContent:"center", width: "100%", animation: "slideDown 0.2s ease both", background: "#fafafa", borderBottom: "1px solid #e5e7eb", padding: "7px 20px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 500, color: "#374151" }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#9ca3af", flexShrink: 0, animation: "blink 1.5s ease-in-out infinite" }} />
+        <div style={{ justifyContent:"center", width: "100%", animation: "slideDown 0.2s ease both", background: "rgb(250, 250, 250)", borderBottom: "1px solid #e5e7eb", padding: "7px 20px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 500, color: "red" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#9ca3af",  flexShrink: 0, animation: "blink 1.5s ease-in-out infinite" }} />
           No internet connection
           <span style={{ color: "#9ca3af", fontWeight: 400 }}>·</span>
         </div>

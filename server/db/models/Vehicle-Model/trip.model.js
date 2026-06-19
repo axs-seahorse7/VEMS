@@ -58,8 +58,6 @@
       index: true,
     },
 
-    
-
     externalSource: String,  
     externalDestination: String, 
 
@@ -125,6 +123,16 @@
         type: String,
         enum: ["begin", "arrived", "checkin", "checkout", "load", "unload", "cancelled", "complete", "closed", "route_change"]
       },
+      
+      deviceDetails: {
+        deviceId: String,
+        deviceType: String,
+        deviceOS: String,
+        deviceOSVersion: String,
+        appVersion: String,
+        ipAddress: String,
+      },
+
       timestamp: Date,
       segment: {
         movementType: String,

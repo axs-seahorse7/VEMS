@@ -22,28 +22,48 @@ const SAMPLE_VEHICLES = [
   { vehicleNumber: "MH16CD1898", type: "internal",  tripCount: 11 },
 ];
 
+// ── Static color palette (6 tiers, Idle → Peak) ───────────────────────────────
+// Thresholds are computed dynamically from actual data max so the full
+// spectrum always shows regardless of whether max is 7 or 70.
+const TIER_PALETTE = [
+  { label: "Peak ≥83%",  bg: "#064E3B", text: "#ffffff" }, // tier 5  (≥ 83% of max)
+  { label: "High ≥60%",  bg: "#0A7C6E", text: "#ffffff" }, // tier 4  (≥ 60%)
+  { label: "Good ≥40%",  bg: "#59B292", text: "#065f46" }, // tier 3  (≥ 40%)
+  { label: "Med ≥20%",   bg: "#FFB2B2", text: "#365314" }, // tier 2  (≥ 20%)
+  { label: "Low - 1",   bg: "#FFB2B2", text: "#713f12" }, // tier 1  (≥  1 trip)
+  { label: "Idle - 0",  bg: "#F5F2F2", text: "#9f1239" }, // tier 0  (= 0 trips)
+];
+
+
+function buildThresholds(max) {
+  if (max <= 0) return [Infinity, Infinity, Infinity, Infinity, 1, 0];
+  return [
+    Math.max(1, Math.ceil(max * 0.83)),  // Peak
+    Math.max(1, Math.ceil(max * 0.60)),  // High
+    Math.max(1, Math.ceil(max * 0.40)),  // Good
+    Math.max(1, Math.ceil(max * 0.20)),  // Med
+    1,                                    // Low  (any ≥ 1 trip)
+    0,                                    // Idle (= 0)
+  ];
+}
+
+function getTier(value, thresholds) {
+  if (value === null || value === undefined) return 5; // Idle
+  for (let i = 0; i < thresholds.length; i++) {
+    if (value >= thresholds[i]) return i;
+  }
+  return 5; // Idle fallback
+}
+
 function buildMatrix(vehicles, dates) {
   return vehicles.map((v) => {
-    const total = v.tripCount;
+    const total     = v.tripCount;
     const dateTotal = dates.reduce((s, d) => s + d.trips, 0);
     return dates.map((d) => {
       const raw = (total * d.trips) / dateTotal;
-      return Math.round(raw + (Math.random() - 0.5) * 1.5);
+      return Math.max(0, Math.round(raw + (Math.random() - 0.5) * 1.5));
     });
   });
-}
-
-function tripColor(value, max) {
-  if (value <= 0) return "#f8fafc";
-  const t = Math.min(value / max, 1);
-  const r = Math.round(240 - t * (240 - 13));
-  const g = Math.round(253 - t * (253 - 148));
-  const b = Math.round(250 - t * (250 - 136));
-  return `rgb(${r},${g},${b})`;
-}
-
-function textColor(value, max) {
-  return value / max > 0.55 ? "#fff" : "#0f172a";
 }
 
 function formatDate(dateStr) {
@@ -51,22 +71,40 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
 function TripHeatmap({
-  vehicles = SAMPLE_VEHICLES,
-  dates = SAMPLE_DATES,
+  vehicles   = SAMPLE_VEHICLES,
+  dates      = SAMPLE_DATES,
   matrix: matrixProp = null,
-  title = "Vehicle Trip Heatmap",
-  subtitle = "Trips per vehicle per day",
+  title      = "Vehicle Trip Heatmap",
+  subtitle   = "Trips per vehicle per day",
 }) {
   const matrix = useMemo(
     () => matrixProp ?? buildMatrix(vehicles, dates),
     [vehicles, dates, matrixProp]
   );
 
+  // Actual max across all cells (ignore 0)
   const globalMax = useMemo(
-    () => Math.max(...matrix.flat().filter(Boolean), 1),
+    () => Math.max(...matrix.flat().filter((v) => v > 0), 1),
     [matrix]
   );
+
+  // Dynamic thresholds derived from real max
+  const thresholds = useMemo(() => buildThresholds(globalMax), [globalMax]);
+
+  // Legend labels show actual trip-count ranges derived from thresholds
+  const legendItems = useMemo(() => {
+    const [t5, t4, t3, t2] = thresholds; // Peak, High, Good, Med
+    return [
+      { label: `0 — Idle`,            ...TIER_PALETTE[5] },
+      { label: `1–${t2 - 1} — Low`,   ...TIER_PALETTE[4] },
+      { label: `${t2}–${t3 - 1}`,     ...TIER_PALETTE[3] },
+      { label: `${t3}–${t4 - 1}`,     ...TIER_PALETTE[2] },
+      { label: `${t4}–${t5 - 1}`,     ...TIER_PALETTE[1] },
+      { label: `${t5}+ — Peak`,        ...TIER_PALETTE[0] },
+    ];
+  }, [thresholds]);
 
   const colTotals = useMemo(
     () => dates.map((_, di) => matrix.reduce((s, row) => s + (row[di] || 0), 0)),
@@ -78,24 +116,10 @@ function TripHeatmap({
     [matrix]
   );
 
-  // fixed widths for label and total columns; date cols share the rest equally
   const ROW_LABEL_W = 140;
   const TOTAL_COL_W = 52;
-  const CELL_H = 40;
+  const CELL_H      = 40;
   const COL_LABEL_H = 36;
-
-  const cellStyle = (val) => ({
-    height: CELL_H,
-    background: tripColor(val, globalMax),
-    borderRadius: 5,
-    textAlign: "center",
-    verticalAlign: "middle",
-    fontSize: 11,
-    fontWeight: 600,
-    color: textColor(val, globalMax),
-    cursor: "default",
-    transition: "filter 0.15s",
-  });
 
   return (
     <div
@@ -105,10 +129,8 @@ function TripHeatmap({
         border: "1px solid #e2e8f0",
         borderRadius: 14,
         padding: "20px 24px",
-        display: "block",
         width: "100%",
         boxSizing: "border-box",
-        minWidth: 0,
         overflow: "hidden",
       }}
     >
@@ -125,16 +147,13 @@ function TripHeatmap({
           style={{
             borderCollapse: "separate",
             borderSpacing: 3,
-            width: "100%",       // ← stretch to container
-            tableLayout: "fixed", // ← columns share space equally
+            width: "100%",
+            tableLayout: "fixed",
           }}
         >
           <colgroup>
-            {/* fixed label col */}
             <col style={{ width: ROW_LABEL_W }} />
-            {/* date cols: auto = share remaining width equally */}
             {dates.map((_, i) => <col key={i} />)}
-            {/* fixed total col */}
             <col style={{ width: TOTAL_COL_W }} />
           </colgroup>
 
@@ -158,16 +177,10 @@ function TripHeatmap({
                   {formatDate(d.date)}
                 </th>
               ))}
-              <th
-                style={{
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: "#94a3b8",
-                  textAlign: "center",
-                  paddingBottom: 6,
-                  paddingLeft: 6,
-                }}
-              >
+              <th style={{
+                fontWeight: 600, fontSize: 10, color: "#94a3b8",
+                textAlign: "center", paddingBottom: 6, paddingLeft: 6,
+              }}>
                 Total
               </th>
             </tr>
@@ -176,40 +189,58 @@ function TripHeatmap({
           <tbody>
             {vehicles.map((v, ri) => (
               <tr key={v.vehicleNumber}>
+                {/* Row label */}
                 <td style={{ paddingRight: 10, textAlign: "right", whiteSpace: "nowrap" }}>
-                  <span style={{ fontSize: 11, fontWeight: 500, color: "#334155", fontFamily: "monospace", letterSpacing: 0.2 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 500, color: "#334155",
+                    fontFamily: "monospace", letterSpacing: 0.2,
+                  }}>
                     {v.vehicleNumber}
                   </span>
-                  <span
-                    style={{
-                      marginLeft: 5,
-                      fontSize: 9,
-                      fontWeight: 600,
-                      color: v.type === "internal" ? "#0891b2" : "#7c3aed",
-                      background: v.type === "internal" ? "#e0f2fe" : "#ede9fe",
-                      borderRadius: 3,
-                      padding: "1px 4px",
-                      letterSpacing: 0.4,
-                      textTransform: "uppercase",
-                    }}
-                  >
+                  <span style={{
+                    marginLeft: 5, fontSize: 9, fontWeight: 600,
+                    color: v.type === "internal" ? "#0891b2" : "#7c3aed",
+                    background: v.type === "internal" ? "#e0f2fe" : "#ede9fe",
+                    borderRadius: 3, padding: "1px 4px",
+                    letterSpacing: 0.4, textTransform: "uppercase",
+                  }}>
                     {v.type === "internal" ? "INT" : "EXT"}
                   </span>
                 </td>
 
-                {matrix[ri].map((val, di) => (
-                  <td
-                    key={di}
-                    title={`${v.vehicleNumber} · ${dates[di].date} · ${val} trips`}
-                    style={cellStyle(val)}
-                    onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(0.88)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
-                  >
-                    {val > 0 ? val : ""}
-                  </td>
-                ))}
+                {/* Data cells */}
+                {matrix[ri].map((val, di) => {
+                  const tierIdx = getTier(val, thresholds);
+                  const { bg, text } = TIER_PALETTE[tierIdx];
+                  return (
+                    <td
+                      key={di}
+                      title={`${v.vehicleNumber} · ${dates[di].date} · ${val} trips`}
+                      style={{
+                        height: CELL_H,
+                        background: bg,
+                        borderRadius: 5,
+                        textAlign: "center",
+                        verticalAlign: "middle",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: text,
+                        cursor: "default",
+                        transition: "filter 0.15s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(0.88)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
+                    >
+                      {val > 0 ? val : ""}
+                    </td>
+                  );
+                })}
 
-                <td style={{ textAlign: "center", paddingLeft: 8, fontSize: 11, fontWeight: 700, color: "#0f172a" }}>
+                {/* Row total */}
+                <td style={{
+                  textAlign: "center", paddingLeft: 8,
+                  fontSize: 11, fontWeight: 700, color: "#0f172a",
+                }}>
                   {rowTotals[ri]}
                 </td>
               </tr>
@@ -217,11 +248,18 @@ function TripHeatmap({
 
             {/* Column totals row */}
             <tr>
-              <td style={{ paddingRight: 10, textAlign: "right", fontSize: 10, fontWeight: 700, color: "#94a3b8", paddingTop: 6, letterSpacing: 0.5, textTransform: "uppercase" }}>
+              <td style={{
+                paddingRight: 10, textAlign: "right",
+                fontSize: 10, fontWeight: 700, color: "#94a3b8",
+                paddingTop: 6, letterSpacing: 0.5, textTransform: "uppercase",
+              }}>
                 Daily Total
               </td>
               {colTotals.map((t, di) => (
-                <td key={di} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#0f172a", paddingTop: 6 }}>
+                <td key={di} style={{
+                  textAlign: "center", fontSize: 11,
+                  fontWeight: 700, color: "#0f172a", paddingTop: 6,
+                }}>
                   {t}
                 </td>
               ))}
@@ -231,14 +269,38 @@ function TripHeatmap({
         </table>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 16 }}>
-        <span style={{ fontSize: 10, color: "#94a3b8" }}>Low</span>
-        {[0, 0.15, 0.3, 0.5, 0.7, 0.85, 1].map((t) => (
-          <div key={t} style={{ width: 18, height: 18, borderRadius: 3, background: tripColor(t * globalMax, globalMax), border: "1px solid #e2e8f0" }} />
+      {/* ── Legend (dynamic labels from actual thresholds) ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 5,
+        marginTop: 16, flexWrap: "wrap",
+      }}>
+        <span style={{
+          fontSize: 10, color: "#94a3b8", fontWeight: 600,
+          marginRight: 2, whiteSpace: "nowrap",
+        }}>
+          Trips/Day:
+        </span>
+        {legendItems.map((item) => (
+          <div
+            key={item.label}
+            style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: item.bg,
+              color: item.text,
+              borderRadius: 5,
+              padding: "3px 8px",
+              fontSize: 10,
+              fontWeight: 600,
+              border: "1px solid rgba(0,0,0,0.06)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}
+          </div>
         ))}
-        <span style={{ fontSize: 10, color: "#94a3b8" }}>High</span>
-        <span style={{ fontSize: 10, color: "#cbd5e1", marginLeft: 8 }}>max {globalMax} trips/cell</span>
+        <span style={{ fontSize: 10, color: "#cbd5e1", marginLeft: 4 }}>
+          max {globalMax} trips/cell
+        </span>
       </div>
     </div>
   );
