@@ -688,7 +688,7 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     if (!internalForm.driverName)           e.driverName = "Required";
     if (!internalForm.driverIdNumber)       e.driverIdNumber = "Required";
     if (!internalForm.vehicleNumber)        e.vehicleNumber = "Required";
-    if (!externalForm.transporterName) e.transporterName = "Required";
+    if (!internalForm.transporterName)      e.transporterName = "Required";
     if (!internalForm.destinationFactoryId) e.destinationFactoryId = "Required";
     if (!internalForm.purpose)              e.purpose = "Required";
     if (!internalForm.materialType)         e.materialType = "Required";
@@ -730,11 +730,13 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmitInternal = async () => {
+    console.log("Submitting internal form:", internalForm);
   if (!validateInternal()) {
     messageApi.error("Please fill all required fields.");
     return;
   }
   setSubmitting(true);
+
   try {
     if (isEditMode) {
       await api.patch(`/trip/update/${tripToEdit._id}`, {
@@ -754,8 +756,8 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
       });
       messageApi.success("Internal vehicle entry created");
     }
-    onRefresh();
-    handleClose();
+
+    setTimeout(() => { onRefresh(); handleClose(); }, 500);
   } catch (e) {
     messageApi.error(e.response?.data?.message || "Failed");
   } finally {
