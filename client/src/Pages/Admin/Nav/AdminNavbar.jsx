@@ -244,9 +244,6 @@ function NavControls({ dateRange, onDateRangeChange, location, onLocationChange,
 
       <div style={s.divider} />
 
-      <button style={s.shareBtn} onClick={onShare}>
-        <ShareAltOutlined style={{ fontSize: 12 }} /> Share
-      </button>
       <button style={s.downloadBtn} onClick={onDownload}>
         <DownloadOutlined style={{ fontSize: 12 }} /> Download
       </button>

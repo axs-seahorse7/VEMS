@@ -10,6 +10,10 @@ const alertEmailUsersSchema = new mongoose.Schema({
         type: String,
          required: true
     },
+    designation: {
+        type: String,
+        enum: ["Department", "HOD", "PlantHead"]
+    },
     factoryId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Factory",
@@ -25,10 +29,19 @@ const alertEmailUsersSchema = new mongoose.Schema({
         enum: ["tripCancelled", "delayTrips", "vehicleEntry", "vehicleExit"],
         default: ["tripCancelled",]
     },
-    alertInterval: {
-        type: Number,
-        default: 15, // in minutes
-    }
+    alertSubscriptions: [{
+        type: String,
+        enum: [
+            "tripCancelled",
+            "delay4h",
+            "delay12h",
+            "delay24h",
+            "vehicleEntry",
+            "vehicleExit"
+        ]
+    }]
+
+
 }, { timestamps: true });
 
 export const AlertEmailUsers = mongoose.model("AlertEmailUsers", alertEmailUsersSchema);

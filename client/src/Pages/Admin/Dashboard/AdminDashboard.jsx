@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import api from "../../../../services/API/Api/api"; // adjust path
-import {Divider, Select, Card   } from "antd";
+import api from "../../../../services/API/Api/api"; 
+import {Divider, Select, Card , message, Modal , Spin } from "antd";
 import { debounce } from "lodash";
 import { Line, Doughnut  } from "react-chartjs-2";
 import { useQuery } from "@tanstack/react-query";
@@ -103,12 +103,38 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
   const [selectTransporter, setSelectTransporter] = useState("");
   const [trendsByTransporter, setTrendsByTransporter] = useState(null);
   const { setDateRange, setDates, setTableData, setIsFetching, setOnDateRangeChange, dateRange, setLocation, location, setFactory, factory, setOnFactoryChange, setDashboardRefetch } = useDashboard();
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadModalVisible, setDownloadModalVisible] = useState(false);
 
   useEffect(() => {
     if (!dateRange) {
       setDateRange(DEFAULT_DATE_RANGE);
     }
   }, [dateRange, setDateRange]);
+
+  const handleDownload = async () => {
+    if(isDownloading) {
+      message.warning("A download is already in progress. Please wait.", 1.5)
+      return;
+    };
+    
+  try {
+    setIsDownloading(true);
+    setDownloadModalVisible(true);
+    message.success("Preparing your download...", 1.5);
+    const res = await api.get("/trip/download", { params: { factory: factory , from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
+    const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `closed-trips-${new Date().toISOString().slice(0,10)}.xlsx` });
+    a.click(); URL.revokeObjectURL(a.href);
+    message.success("Download Completed!", 2);
+  } catch (err) {
+    console.error("Error downloading report:", err?.res?.data?.message || err.message || err);
+    Modal.error({ title: "Download Failed", content: "An error occurred while downloading the report. Please try again." });
+  } finally {
+    setIsDownloading(false);
+    setDownloadModalVisible(false);
+    }
+  }
 
 
   const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
@@ -220,9 +246,33 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
       <AdminNavbar
         vehicleNumber={vehicle.vehicleNumber}
         onShare={() => {/* your share logic */}}
-        onDownload={() => {/* your download logic */}}
+        onDownload={() => {handleDownload()}}
         // refetchDashboard={refetch}
       />
+
+      <Modal
+        open={downloadModalVisible}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        centered
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            padding: 20
+          }}
+        >
+          <Spin size="large" />
+          <h3 style={{ margin: 0 }}>Preparing Download...</h3>
+          <p style={{ margin: 0, color: "#666" }}>
+            Generating Excel report. Please wait.
+          </p>
+        </div>
+      </Modal>
 
 
       {/* ── page title ── */}

@@ -12,9 +12,11 @@ import { createAdmin } from "../seed/createAdmin.js";
 import { globalLimiter } from "../services/expressRateLimiter.js";
 import errorMiddleware from "../middleware/Asynct-handler/errorMiddleware.js";
 import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
+import { startDelayCron } from "../services/crone/delayAlertCron.js";
 
 import connectDB from "../db/config/db.config.js";
-await connectDB(); // Initialize DB connection
+await connectDB(); 
+startDelayCron();
 
 // createAdmin(); 
 
@@ -48,15 +50,6 @@ app.set("trust proxy", 1);
 app.use(cookieParser());
 app.use(cors(corsOptions));
 app.use(e.json());
-
-app.use(helmet());
-app.use(globalLimiter);
-
-
-app.use((req, res, next) => {
-  console.log("HIT:", req.method, req.url);
-  next();
-});
 
 app.use(helmet());
 app.use(globalLimiter);

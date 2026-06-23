@@ -28,9 +28,11 @@ const SETTINGS_SECTIONS = [
   { key: "versions", label: "Versions", icon: <SettingOutlined />, component: "VersionManager" },
 ];
 
-const ALERT_TYPE_OPTIONS = [
+const ALERT_SUBSCRIPTION_OPTIONS = [
   { label: "Trip Cancelled", value: "tripCancelled" },
-  { label: "Delay Trips",    value: "delayTrips" },
+  { label: "Delay 4h+",      value: "delay4h" },
+  { label: "Delay 12h+",     value: "delay12h" },
+  { label: "Delay 24h+",     value: "delay24h" },
   { label: "Vehicle Entry",  value: "vehicleEntry" },
   { label: "Vehicle Exit",   value: "vehicleExit" },
 ];
@@ -48,8 +50,7 @@ function AlertUserModal({ open, mode, factories, initialValues, onSave, onClose 
         name: initialValues.name,
         email: initialValues.email,
         factoryId: typeof initialValues.factoryId === "object" ? initialValues.factoryId?._id : initialValues.factoryId,
-        alertTypes: initialValues.alertTypes ?? ["tripCancelled"],
-        alertInterval: initialValues.alertInterval ?? 15,
+        alertSubscriptions: initialValues.alertSubscriptions ?? ["tripCancelled"],
       });
     } else {
       form.resetFields();
@@ -144,19 +145,16 @@ function AlertUserModal({ open, mode, factories, initialValues, onSave, onClose 
         </Form.Item>
 
         <Form.Item
-          name="alertTypes"
-          label="Alert Types"
-          rules={[{ required: true, message: "Select at least one alert type" }]}
+          name="alertSubscriptions"
+          label="Alert Subscriptions"
+          rules={[{ required: true, message: "Select at least one subscription" }]}
         >
-          <Select mode="multiple" placeholder="Select alert types…" size="large" options={ALERT_TYPE_OPTIONS} />
-        </Form.Item>
-
-        <Form.Item
-          name="alertInterval"
-          label="Alert Interval (minutes)"
-          rules={[{ required: true, message: "Interval is required" }]}
-        >
-          <InputNumber min={1} size="large" style={{ width: "100%" }} placeholder="e.g. 15" />
+          <Select
+            mode="multiple"
+            placeholder="Select alert subscriptions…"
+            size="large"
+            options={ALERT_SUBSCRIPTION_OPTIONS}
+          />
         </Form.Item>
 
         <Divider style={{ margin: "16px 0" }} />
@@ -289,25 +287,20 @@ function AlertsSection() {
       },
     },
     {
-      title: "Alert Types",
-      dataIndex: "alertTypes",
-      key: "alertTypes",
-      render: (types) => (
+      title: "Subscriptions",
+      dataIndex: "alertSubscriptions",
+      key: "alertSubscriptions",
+      render: (subs) => (
         <Space size={4} wrap>
-          {(types ?? []).map(t => (
-            <Tag key={t} color="blue" style={{ fontSize: 11 }}>
-              {ALERT_TYPE_OPTIONS.find(o => o.value === t)?.label ?? t}
+          {(subs ?? []).map(s => (
+            <Tag key={s} color="blue" style={{ fontSize: 11 }}>
+              {ALERT_SUBSCRIPTION_OPTIONS.find(o => o.value === s)?.label ?? s}
             </Tag>
           ))}
         </Space>
       ),
     },
-    {
-      title: "Interval",
-      dataIndex: "alertInterval",
-      key: "alertInterval",
-      render: (mins) => <Text type="secondary" style={{ fontSize: 13 }}>{mins ?? "—"} min</Text>,
-    },
+    // "Interval" column removed
     {
       title: "Status",
       dataIndex: "isPaused",

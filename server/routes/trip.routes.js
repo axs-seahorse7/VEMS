@@ -47,4 +47,10 @@ router.get("/vehicle/live-status/:vehicleNumber", getVehicleLiveStatus);
 
 router.get("/trip/download", getDownloadTrips);
 
+
+router.get("/get/trip/downloads", (req, res) => {
+   console.log("DOWNLOAD ROUTE REACHED");
+   res.json({ ok: true });
+});
+
 export default router;

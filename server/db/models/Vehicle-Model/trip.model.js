@@ -100,17 +100,36 @@
       default: "pending"
     },
 
-
     materials: [materialSchema],
 
     startedAt: Date,
     arrivedAt: Date, 
+
     checkedInAt: {
       type: Date,
       default: null,
     }, 
+
     completedAt: Date,
     createdBy: String ,
+
+    delayAlertLevel:{
+      type: Number,
+      enum: [0, 1, 2, 3], // 0 - No Alert, 1 - Warning, 2 - Critical
+      default: 0,
+      index: true
+    },
+
+    delayAlertMeta: {
+      level1SentAt: Date,
+      level2SentAt: Date,
+      level3SentAt: Date
+    },
+
+    waitingSince: {
+      type: Date,
+      default: null,
+    },
 
     tripHistory: [{
       status: String,

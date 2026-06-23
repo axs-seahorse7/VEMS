@@ -300,6 +300,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         status: isInternalShifting? "ORIGIN" : "ARRIVED",
         loadStatus: "pending",
         startedAt: new Date(),
+        waitingSince:new Date(),
         materials: [{
           name: req.body.materialType?? "",
           material: req.body.material?? "",
@@ -491,6 +492,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         loadStatus: "pending",
         startedAt: new Date(),
         completedAt: null,
+        waitingSince:new Date(),
         materials: [
           {
             name: req.body.materialType,
@@ -801,7 +803,6 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
 
       if (!trip) {
         throw new AppError("Trip not found", 404);
-       
       }
 
       if (trip.status !== "ARRIVED") {
@@ -816,6 +817,8 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
       // ========================
       // UPDATE TRIP
       // ========================
+
+
       updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
           {
@@ -832,6 +835,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
                 factoryId: trip.destinationFactoryId || null,
                 action: "checkin",
                 timestamp: new Date(),
+                waitingSince: new Date(),
                 segment: {
                   movementType: trip.type === "internal_transfer" ? "internal" : "external",
                   externalSource: trip.externalSource,
@@ -942,6 +946,7 @@ export const unloadTrip = async (req, res) => {
                 factoryId: trip.destinationFactoryId || user.factory._id || null,
                 action: "unload",
                 timestamp: new Date(),
+                waitingSince: new Date(),
                 segment: {
                   movementType: trip.type === "internal_transfer" ? "internal" : "external",
                   externalSource: trip.externalSource,
@@ -1033,6 +1038,7 @@ export const completeTrip = asyncHandler( async (req, res) => {
                 factoryId:trip.destinationFactoryId || null,
                 action: "complete",
                 timestamp: new Date(),
+                waitingSince: new Date(),
                 segment: {
                   movementType:trip.type ==="internal_transfer"? "internal": "external",
                   externalSource:trip.externalSource,
@@ -1111,6 +1117,7 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
               factoryId:trip.sourceFactoryId || null,
               action: "checkout",
               timestamp: new Date(),
+              waitingSince: null,
               segment: {
                 movementType:
                   trip.type === "internal_transfer" ? "internal" : "external",
@@ -1186,6 +1193,7 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
             status: "DESTINATION",
             tripState: "CLOSED",
             completedAt: now,
+            waitingSince: null,
             $push: {
               tripHistory: {
                 status: "DESTINATION",
@@ -1338,6 +1346,7 @@ export const markArrived = asyncHandler( async (req, res) => {
           status: "ARRIVED",
           phase: "DESTINATION",
           arrivedAt: new Date(), 
+          waitingSince: new Date(),
           $push: {
             tripHistory: {
               status: "ARRIVED",
@@ -1439,6 +1448,7 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
             tripState: "CLOSED",
             status: "DESTINATION",
             completedAt: now,
+            waitingSince: null,
             $push: {
               tripHistory: {
                 status: "DESTINATION",
@@ -1615,6 +1625,7 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
                 factoryId: existingTrip.destinationFactoryId || null,
                 action: "load",
                 timestamp: new Date(),
+                waitingSince: new Date(),
                 details: {
                   material: tripDetails.material,
                   quantity: tripDetails.quantity,
@@ -1715,6 +1726,7 @@ export const cancelTrip = asyncHandler( async (req, res) => {
             tripState: "CANCELLED",
             reason,
             completedAt: now,
+            waitingSince: null,
             $push: {
               tripHistory: {
                 status: "CANCELLED",
@@ -1782,7 +1794,8 @@ export const cancelTrip = asyncHandler( async (req, res) => {
     // 1. Fetch all active alert users for this destination factory
     const alertUsers = await AlertEmailUsers.find({
       factoryId: updatedTrip.destinationFactoryId,
-      isActive: true,
+      isPaused: false,
+      alertSubscriptions: "tripCancelled"
     }).lean();
 
     // 2. Send to each user (or pass all emails at once if your mailer supports it)
@@ -1914,7 +1927,8 @@ export const changeRoute = asyncHandler( async (req, res) => {
         destinationFactoryId:type === "internal"? newDestinationFactoryId: null,
         phase: "ORIGIN",
         status: "ROUTE_CHANGED",
-        startedAt: now
+        startedAt: now,
+        waitingSince: now,
       };
 
       // ========================
@@ -1926,7 +1940,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         sourceFactoryId: trip.destinationFactoryId,
         destinationFactoryId: type === "internal" ? newDestinationFactoryId : null,
         startedAt: trip.startedAt,
-        completedAt: now
+        completedAt: now,
       };
 
       
@@ -2065,6 +2079,7 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
           $set: {
             tripState: "CLOSED",
             completedAt: new Date(),
+            waitingSince: null
           },
           $push: {
             tripHistory: {
@@ -2116,6 +2131,7 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
             status: "ORIGIN",
             tripState: "ACTIVE",
             loadStatus: "pending",
+            waitingSince: new Date(),
 
             sourceFactoryId: user.factory._id,
             vehicleId: currentTrip.vehicleId,
@@ -2240,7 +2256,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
   }
   return res.status(200).json(responseData);
 });
-
 
 
 
@@ -2802,7 +2817,7 @@ export const getVehiclesLength = async (req, res) => {
 
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Pickup",   $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
       Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Delivery", $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "FG" }, { "materials.0.name": "FG" }], $and: [{ $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }] }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "FG" }, { "materials.0.name": "FG" }], $and: [{ $or: [{ phase: "ORIGIN", location: "inside_factory", sourceFactoryId: factoryId }, { phase: "DESTINATION", location: "inside_factory", destinationFactoryId: factoryId }] }] }),
       Trip.countDocuments({tripState:  { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "RM" }, { "materials.0.name": "RM" }], $and: [{$or:  [{ location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },{ location: "inside_factory", $or: [{ phase: "ORIGIN", sourceFactoryId: factoryId }, { phase: "DESTINATION", destinationFactoryId: factoryId },]},
         { location: "enroute", destinationFactoryId: factoryId },
             ],
@@ -3539,14 +3554,21 @@ function pickEventTime(events, ...targets) {
  
 export const getDownloadTrips = async (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, factory } = req.query;
+
+    console.log("Download trips request received with query:", req.query);
  
     const user = await User.findById(req.userId).select("factory").lean();
-    if (!user?.factory) {
+    if (!user?.factory && !user?.isSystemAdmin) {
       return res.status(404).json({ message: "User or factory not found" });
     }
-    const factoryId = user.factory;
- 
+
+    let factoryId = user.factory;
+
+    if (factory && mongoose.Types.ObjectId.isValid(factory)) {
+      factoryId = new mongoose.Types.ObjectId(factory);
+    } 
+
     /* ── 2. Build date range ─────────────────────────────────── */
     let fromDate, toDate;
     if (from || to) {

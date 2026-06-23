@@ -20,7 +20,14 @@ const fail = (res, message, code = 400) => res.status(code).json({ success: fals
 //  ALERT EMAIL USERS
 //  Base route: /api/settings/alert-users
 // ════════════════════════════════════════════════════════════════════════════
-const ALERT_TYPES = ["tripCancelled", "delayTrips", "vehicleEntry", "vehicleExit"];
+const ALERT_TYPES = [
+            "tripCancelled",
+            "delay4h",
+            "delay12h",
+            "delay24h",
+            "vehicleEntry",
+            "vehicleExit"
+          ];
 
 router.get("/alert-users", wrap(async (req, res) => {
   const filter = {};
@@ -38,7 +45,7 @@ router.get("/alert-users", wrap(async (req, res) => {
 
 router.post("/alert-users", wrap(async (req, res) => {
   try {
-    const { name, email, factoryId, alertTypes, alertInterval } = req.body;
+    const { name, email, factoryId, alertSubscriptions, alertInterval } = req.body;
 
     if (!name || !email || !factoryId)
       return fail(res, "name, email, and factoryId are required");
@@ -47,39 +54,35 @@ router.post("/alert-users", wrap(async (req, res) => {
     if (!emailRegex.test(email))
       return fail(res, "Invalid email format");
 
-    if (alertTypes !== undefined) {
-      if (!Array.isArray(alertTypes) || alertTypes.length === 0)
-        return fail(res, "alertTypes must be a non-empty array");
-      const invalidType = alertTypes.find(t => !ALERT_TYPES.includes(t));
+    if (alertSubscriptions !== undefined) {
+      if (!Array.isArray(alertSubscriptions) || alertSubscriptions.length === 0)
+        return fail(res, "alertSubscriptions must be a non-empty array");
+      const invalidType = alertSubscriptions.find(t => !ALERT_TYPES.includes(t));
       if (invalidType)
         return fail(res, `Invalid alert type: ${invalidType}`);
     }
 
-    if (alertInterval !== undefined) {
-      if (typeof alertInterval !== "number" || alertInterval < 1)
-        return fail(res, "alertInterval must be a number >= 1");
-    }
 
     const factoryExists = await factoryModel.exists({ _id: factoryId });
     if (!factoryExists)
       return fail(res, "Factory not found", 404);
 
-  const confilictByFactory = await AlertEmailUsers.findOne({ factoryId, email: email.toLowerCase().trim() });
-  if (confilictByFactory) return fail(res, "User already assigned to this factory", 409);
+    const confilictByFactory = await AlertEmailUsers.findOne({ factoryId, email: email.toLowerCase().trim() });
+      if (confilictByFactory) return fail(res, "User already assigned to this factory", 409);
 
-  const user = await AlertEmailUsers.create({
-    name,
-    email: email.toLowerCase().trim(),
-    factoryId,
-    ...(alertTypes !== undefined && { alertTypes }),
-    ...(alertInterval !== undefined && { alertInterval }),
-  });
-  const populated = await user.populate("factoryId", "name location");
+    const user = await AlertEmailUsers.create({
+      name,
+      email: email.toLowerCase().trim(),
+      factoryId,
+      ...(alertSubscriptions !== undefined && { alertSubscriptions }),
+    });
 
-  return res.status(201).json({ success: true, data: populated });
+    const populated = await user.populate("factoryId", "name location");
+
+    return res.status(201).json({ success: true, data: populated });
   } catch (error) {
-  console.error("Error creating alert recipient:", error);
-  return res.status(500).json({ success: false, message: "Server error" });
+    console.error("Error creating alert recipient:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 }));
 
@@ -117,7 +120,7 @@ router.get("/alert-users/:id", wrap(async (req, res) => {
 
 router.patch("/alert-users/:id", wrap(async (req, res) => {
   try {
-    const allowed = ["name", "email", "factoryId", "isPaused", "alertTypes", "alertInterval"];
+    const allowed = ["name", "email", "factoryId", "isPaused", "alertSubscriptions", "alertInterval"];
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([k]) => allowed.includes(k))
     );
@@ -134,17 +137,12 @@ router.patch("/alert-users/:id", wrap(async (req, res) => {
       if (!factoryExists) return res.status(404).json({ success: false, message: "Factory not found" });
     }
 
-    if (updates.alertTypes !== undefined) {
-      if (!Array.isArray(updates.alertTypes) || updates.alertTypes.length === 0)
-        return res.status(400).json({ success: false, message: "alertTypes must be a non-empty array" });
-      const invalidType = updates.alertTypes.find(t => !ALERT_TYPES.includes(t));
+    if (updates.alertSubscriptions !== undefined) {
+      if (!Array.isArray(updates.alertSubscriptions) || updates.alertSubscriptions.length === 0)
+        return res.status(400).json({ success: false, message: "alertSubscriptions must be a non-empty array" });
+      const invalidType = updates.alertSubscriptions.find(t => !ALERT_TYPES.includes(t));
       if (invalidType)
         return res.status(400).json({ success: false, message: `Invalid alert type: ${invalidType}` });
-    }
-
-    if (updates.alertInterval !== undefined) {
-      if (typeof updates.alertInterval !== "number" || updates.alertInterval < 1)
-        return res.status(400).json({ success: false, message: "alertInterval must be a number >= 1" });
     }
 
     if (updates.isPaused !== undefined && typeof updates.isPaused !== "boolean")

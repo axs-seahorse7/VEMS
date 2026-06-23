@@ -1,6 +1,7 @@
 // services/mail/alertMailSender.js
 import { transporter } from "./transporter.js";
 import {cancelledTripsTemplate} from "../Templates/Emails/Alert-Emails/cancelledTripsTemplate.js";
+import {delayedTripsTemplate} from "../Templates/Emails/Delay-Emails/delayedTripsTemplate.js";
 
 const ALERT_TYPES = {
   TRIP_CANCELLED: "trip_cancelled",
@@ -8,13 +9,20 @@ const ALERT_TYPES = {
   VEHICLE_ISSUE:  "vehicle_issue",
 };
 
+const TEMPLATE_MAP = {
+  [ALERT_TYPES.TRIP_CANCELLED]: cancelledTripsTemplate,
+  [ALERT_TYPES.TRIP_DELAYED]: delayedTripsTemplate,
+};
+
 export const alertMailSender = async ({ to, alertType, payload, cc, priority = "medium" }) => {
   try {
-    const template = cancelledTripsTemplate(payload);
-
-    if (!template) {
+    const templateFn = TEMPLATE_MAP[alertType];
+    
+    if (!templateFn) {
       throw new Error(`Unknown alert type: "${alertType}". Valid types: ${Object.values(ALERT_TYPES).join(", ")}`);
     }
+
+    const template = templateFn ? templateFn(payload) : null;
 
     const { subject, html } = template;
 

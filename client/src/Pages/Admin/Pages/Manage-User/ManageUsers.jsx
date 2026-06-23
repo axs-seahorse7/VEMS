@@ -10,6 +10,8 @@ import {
   CrownOutlined, TeamOutlined, StopOutlined, CheckCircleOutlined,
 } from "@ant-design/icons";
 
+const loggedInUser = JSON.parse(localStorage.getItem("user")) || {};
+
 const fmtDate = (d) =>
   new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -24,7 +26,6 @@ const workLocationOptions = [
   { value: "atGate",       label: "Security Gate"  },
   { value: "storeSite",    label: "Store Site"     },
   { value: "dispatchSite", label: "Dispatch Site"  },
-  { value: "pickupSite",   label: "Pickup Site"    },
 ];
 
 const locationOptions = [
@@ -86,7 +87,7 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
       destroyOnClose
     >
       {/* Admin Toggle */}
-      <div style={{
+      { loggedInUser.isSystemAdmin && ( <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         background: isAdmin ? "#ede9fe" : "#f8fafc",
         border: `1.5px solid ${isAdmin ? "#6366f1" : "#e5e7eb"}`,
@@ -109,7 +110,7 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
           onChange={setIsAdmin}
           style={{ background: isAdmin ? "#6366f1" : undefined }}
         />
-      </div>
+      </div>)}
 
       <Form form={form} layout="vertical" requiredMark={false}>
         <Row gutter={14}>
@@ -147,8 +148,8 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
             </Col>
           ) }
             <Col span={12}>
-              <Form.Item label="Status" name="status" initialValue="active">
-                <Select options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />
+              <Form.Item label="Status" name="status" initialValue="active" >
+                <Select disabled={true} options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />
               </Form.Item>
             </Col>
         </Row>
@@ -171,7 +172,7 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
 }
 
 // ── Edit User Modal ───────────────────────────────────────────────────────────
-function EditUserModal({ user, onClose, onSave, factories }) {
+function EditUserModal({ user,  onClose, onSave, factories }) {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
@@ -215,12 +216,12 @@ function EditUserModal({ user, onClose, onSave, factories }) {
         <Row gutter={14}>
           <Col span={12}>
             <Form.Item label="Full Name" name="name" rules={[{ required: true }]}>
-              <Input />
+              <Input  />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item label="Email" name="email" rules={[{ required: true, type: "email" }]}>
-              <Input />
+            <Form.Item label="Email" name="email" rules={[{ required: true, type: "email", message: "Valid email required" }]}>
+              <Input disabled={!loggedInUser.isSystemAdmin} />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -437,7 +438,7 @@ export default function ManageUsers() {
             <Button size="small" icon={<EditOutlined />} onClick={e => { e.stopPropagation(); setEditUser(u); }}
               style={{ color: "#6366f1", borderColor: "#e0e7ff", background: "#ede9fe" }} />
           </Tooltip>
-          <Tooltip title={u.isBlocked ? "Unblock" : "Block"}>
+          <Tooltip title={u.isBlocked ? "Unblock User" : "Block User"}>
             <Button size="small"
               icon={u.isBlocked ? <UnlockOutlined /> : <LockOutlined />}
               onClick={e => { e.stopPropagation(); handleToggleBlock(u); }}
@@ -448,11 +449,8 @@ export default function ManageUsers() {
               }}
             />
           </Tooltip>
-          <Tooltip title="Reset Password">
-            <Button size="small" icon={<KeyOutlined />} onClick={e => e.stopPropagation()}
-              style={{ color: "#0369a1", borderColor: "#bae6fd", background: "#e0f2fe" }} />
-          </Tooltip>
-          {!u.isSystemAdmin && (
+          
+          {loggedInUser.isSystemAdmin && (
             <Tooltip title="Delete">
               <Popconfirm
                 title="Delete user?"
@@ -462,8 +460,14 @@ export default function ManageUsers() {
                 okText="Delete"
                 okButtonProps={{ danger: true }}
               >
-                <Button size="small" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()}
-                  style={{ background: "#fef2f2" }} />
+                <Button 
+                size="small" 
+                danger 
+                disabled={!loggedInUser.isSystemAdmin}
+                icon={<DeleteOutlined />} 
+                onClick={e => e.stopPropagation()}
+                style={{ background: "#fef2f2" }} 
+                />
               </Popconfirm>
             </Tooltip>
           )}
@@ -473,7 +477,7 @@ export default function ManageUsers() {
   ];
 
   return (
-    <div style={{ padding: 24, fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
+    <div style={{ padding: 10, fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
         <div>
@@ -491,7 +495,7 @@ export default function ManageUsers() {
       </div>
 
       {/* Stats */}
-      <Row gutter={14} style={{ marginBottom: 20 }}>
+      <Row gutter={14} style={{ marginBottom: 20 , position: "sticky", top: 60, zIndex: 10, background: "#f8fafc", padding: "12px 0", borderBottom: "1px solid #e5e7eb" }}>
         {stats.map(s => (
           <Col key={s.label} xs={12} sm={6}>
             <Card size="small" style={{ borderRadius: 12, border: "1px solid #e5e7eb" }} bodyStyle={{ padding: "14px 18px" }}>
@@ -548,6 +552,7 @@ export default function ManageUsers() {
           rowKey="_id"
           loading={loading}
           size="middle"
+          sticky={{ offsetHeader: 165 }}
           pagination={{ pageSize: 10, showTotal: (t, r) => `Showing ${r[0]}–${r[1]} of ${t} users`, showSizeChanger: false }}
           onRow={u => ({ onClick: () => setSelectedUser(u), style: { cursor: "pointer" } })}
         />

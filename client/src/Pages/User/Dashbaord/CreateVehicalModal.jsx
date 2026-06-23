@@ -731,39 +731,39 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmitInternal = async () => {
     console.log("Submitting internal form:", internalForm);
-  if (!validateInternal()) {
-    messageApi.error("Please fill all required fields.");
-    return;
-  }
-  setSubmitting(true);
-
-  try {
-    if (isEditMode) {
-      await api.patch(`/trip/update/${tripToEdit._id}`, {
-        ...internalForm,
-        deviceDetails: deviceInfo,
-        vehicleNumber: cleanVehicleNumber(internalForm.vehicleNumber),
-        sourceFactoryId: user.factory?._id,
-      });
-      messageApi.success("Trip updated successfully");
-    } else {
-      await api.post("/new/internal-trip", {
-        ...internalForm,
-        vehicleNumber:   cleanVehicleNumber(internalForm.vehicleNumber),
-        sourceFactoryId: user.factory?._id,
-        source:          user.factory?.name || user.factory?._id || "",
-        status:          "inside_factory",
-      });
-      messageApi.success("Internal vehicle entry created");
+    if (!validateInternal()) {
+      messageApi.error("Please fill all required fields.");
+      return;
     }
+    setSubmitting(true);
 
-    setTimeout(() => { onRefresh(); handleClose(); }, 500);
-  } catch (e) {
-    messageApi.error(e.response?.data?.message || "Failed");
-  } finally {
-    setSubmitting(false);
-  }
-};
+    try {
+      if (isEditMode) {
+        await api.patch(`/trip/update/${tripToEdit._id}`, {
+          ...internalForm,
+          deviceDetails: deviceInfo,
+          vehicleNumber: cleanVehicleNumber(internalForm.vehicleNumber),
+          sourceFactoryId: user.factory?._id,
+        });
+        messageApi.success("Trip updated successfully");
+      } else {
+        await api.post("/new/internal-trip", {
+          ...internalForm,
+          vehicleNumber:   cleanVehicleNumber(internalForm.vehicleNumber),
+          sourceFactoryId: user.factory?._id,
+          source:          user.factory?.name || user.factory?._id || "",
+          status:          "inside_factory",
+        });
+        messageApi.success("Internal vehicle entry created");
+      }
+
+      setTimeout(() => { onRefresh(); handleClose(); }, 500);
+    } catch (e) {
+      messageApi.error(e.response?.data?.message || "Failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
 const handleSubmitExternal = async () => {
   if (!validateExternal()) return messageApi.error("Please fill all required fields.");

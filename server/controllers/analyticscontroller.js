@@ -2170,12 +2170,9 @@ export const getTransporterCustomerTrend = async (req, res) => {
 
     // ── Step 2: aggregate trips for those vehicles ───────────────────────────
     const trend = await Trip.aggregate([
-
-      // Only internal_transfer trips in date range for these vehicles
       {
         $match: {
           vehicleId:  { $in: vehicleIds },
-          type:       "internal_transfer",       // exclude external_delivery
           createdAt:  { $gte: since, $lte: until },
 
         },

@@ -275,22 +275,39 @@ export const searchUsers = async (req, res) => {
     if (!email || !email.trim())
       return res.status(400).json({ success: false, message: "email query param is required" });
 
-    const adminFactoryId = req.userId ? (await User.findById(req.userId)).factory : null;
-    console.log("Admin factory ID for search:", adminFactoryId);
-    if (!adminFactoryId)
-      return res.status(403).json({ success: false, message: "No factory associated with this account" });
+    const admin = await User.findById(req.userId);
+
+    if(!admin) return res.status(404).json({ success: false, message: "Not Authenticated, please login." });
+
+    const adminFactoryId = !admin?.isSystemAdmin ? admin.factory : null;    
+    if (!adminFactoryId && !admin?.isSystemAdmin) return res.status(403).json({ success: false, message: "No factory associated with this account" });
 
     const safeEmail = escapeRegex(email.trim());
 
-    const users = await User.find({
-        factory: adminFactoryId,
+    let users = null;
+
+    if (admin.isSystemAdmin) {
+      users = await User.find({
         email: { $regex: safeEmail, $options: "i" },
-        role: { $ne: "superadmin" }
+        role: { $ne: "admin" },
+        isBlocked: false,
       })
       .select("name email role factory")
       .populate("factory", "name location")
       .limit(20)
       .lean();
+    }else {
+     users = await User.find({
+        factory: adminFactoryId,
+        email: { $regex: safeEmail, $options: "i" },
+        isBlocked: false,
+        role: { $ne: "admin" }
+      })
+      .select("name email role factory")
+      .populate("factory", "name location")
+      .limit(20)
+      .lean();
+    }
 
     const normalized = users.map(u => ({
       _id: u._id,
@@ -312,16 +329,55 @@ export const resetUserPassword = async (req, res) => {
     const { newPassword } = req.body;
     const { id } = req.params;
 
-    if (!newPassword || newPassword.length < 6)
-      return res.status(400).json({ success: false, message: "newPassword must be at least 6     characters" });
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "newPassword must be at least 6 characters",
+      });
+    }
 
-    const adminFactoryId = req.userId ? (await User.findById(req.userId)).factory : null;
-    if (!adminFactoryId) return res.status(403).json({ success: false, message: "No factory associated with this account" });
+    const admin = await User.findById(req.userId);
 
-   
-    const targetUser = await User.findOne({ _id: id, factory: adminFactoryId });
-    if (!targetUser)
-      return res.status(404).json({ success: false, message: "User not found in your factory" });
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    let targetUser;
+
+    if (admin.isSystemAdmin) {
+      // system admin can target anyone EXCEPT admins
+      targetUser = await User.findById(id);
+    } else {
+      if (!admin.factory) {
+        return res.status(403).json({
+          success: false,
+          message: "No factory associated with this account",
+        });
+      }
+
+      targetUser = await User.findOne({
+        _id: id,
+        factory: admin.factory,
+      });
+    }
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Target user not found",
+      });
+    }
+
+    // Nobody can reset admin passwords (except if later you change business rule)
+    if (targetUser.role === "admin" && !admin.isSystemAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin password cannot be reset",
+      });
+    }
 
     targetUser.password = await bcrypt.hash(newPassword, 10);
     await targetUser.save();
@@ -330,8 +386,12 @@ export const resetUserPassword = async (req, res) => {
       success: true,
       message: `Password updated for ${targetUser.name}`,
     });
+
   } catch (error) {
     console.error("Error resetting user password:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
