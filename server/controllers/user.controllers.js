@@ -6,7 +6,9 @@ export const getUsers = async (req, res) => {
         const data = await userModel
             .find({ isDeleted: false, isSystemAdmin: false })
             .select("-password")
-            .populate("factory");
+            .populate("factory")
+            .populate("siteId")
+            .populate("blockId");
         return res.status(200).json({ users: data });
     } catch (err) {
         console.error("Error fetching users:", err);
@@ -33,16 +35,18 @@ export const deleteUser = async (req, res) => {
 export const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, factoryLocation, workLocation, factory, status } = req.body;
+        const { name, email, factoryLocation, workLocation, factory, siteId, blockId, status } = req.body;
 
         const updated = await userModel
             .findByIdAndUpdate(
                 id,
-                { name, email, factoryLocation, workLocation, factory, status },
+                { name, email, factoryLocation, workLocation, factory, siteId, blockId, status },
                 { new: true }
             )
             .select("-password")
-            .populate("factory");
+            .populate("factory")
+            .populate("siteId")
+            .populate("blockId");
 
         if (!updated) {
             return res.status(404).json({ message: "User not found" });
@@ -76,7 +80,9 @@ export const toggleBlockUser = async (req, res) => {
                 { new: true }
             )
             .select("-password")
-            .populate("factory");
+            .populate("factory")
+            .populate("siteId")
+            .populate("blockId");
 
         return res.status(200).json({
             message: nowBlocked ? "User blocked successfully" : "User unblocked successfully",

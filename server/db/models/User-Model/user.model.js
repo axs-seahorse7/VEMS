@@ -81,6 +81,16 @@ const userSchema = new mongoose.Schema({
     factory:{
         type:mongoose.Schema.Types.ObjectId,
         ref:"Factory"
+    },
+
+    siteId:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"Site"
+    },
+
+    blockId:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"Block"
     }
 
 }, {timestamps:true});

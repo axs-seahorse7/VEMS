@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Layout, Menu, Avatar, Dropdown, Badge, Button, Typography } from "antd";
 import {
   AppstoreOutlined,
@@ -13,6 +13,7 @@ import {
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import api from "../../../services/API/Api/api";
+import { useDashboard } from "../../Global/Dashboard-Context/DashboardProvider";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -30,8 +31,21 @@ const getNavItems = (user) => [
       { id: "vehiclePerformance", label: "Vehicle Performance" },
     ],
   },
-  { id: "users", label: "Manage Users", icon: <TeamOutlined /> },
-  { id: "factory", label: "Manage Factory", icon: <ShopOutlined /> },
+  { 
+    id: "users", 
+    label: "Manage Users", 
+    icon: <TeamOutlined /> 
+  },
+  { 
+    id: "factory", 
+    label: "Manage Factory", 
+    icon: <ShopOutlined /> ,
+    children: [
+      { id: "factory", label: "Factory" },
+      { id: "site", label: "Site" },
+      { id: "block", label: "Block" },
+    ],
+  },
   { id: "vehicles", label: "Vehicles", icon: <CarOutlined /> },
   {
     id: "settings",
@@ -75,6 +89,8 @@ const findLabel = (nav, id) => {
 
 export default function AdminLayout({ activePage, onNavigate, children }) {
   const [collapsed, setCollapsed] = useState(true);
+  // const [activeSettingsSection, setActiveSettingsSection] = useState(null);
+  const { settingsActiveSection, setSettingsActiveSection } = useDashboard();
 
   const user = JSON.parse(localStorage.getItem("user"));
   const NAV = useMemo(() => getNavItems(user), [user]);
@@ -111,6 +127,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
       onClick: handleSignOut,
     },
   ];
+
 
   return (
     <Layout style={{ minHeight: "100vh", scrollbarGutter: "stable", scrollbarWidth: "thin" }}>
@@ -189,7 +206,7 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
             boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
           }}
         >
-          <Text strong style={{ fontSize: 15 }}>{findLabel(NAV, activePage)}</Text>
+          <Text strong style={{ fontSize: 15 }}>{`admin/${findLabel(NAV, activePage).toLowerCase()}`}{`${findLabel(NAV, activePage).toLowerCase() === "settings" ? `/${settingsActiveSection || "Settings"}` : ""}`}</Text>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <Badge dot offset={[-4, 4]}>

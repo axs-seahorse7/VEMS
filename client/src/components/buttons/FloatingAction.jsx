@@ -191,22 +191,22 @@ export default function FloatingActions({ viewMode, setViewMode, setIsFilterDraw
       <style>{`
         .fab-toggle {
           position: fixed;
-          bottom: 32px;
-          right: 32px;
+          bottom: 50px;
+          right: 60px;
           z-index: 800;
           width: 48px;
           height: 48px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #6366f1, #3b82f6);
+          background: linear-gradient(90deg, #44a08d 0%, #093637 100%);
           border: none;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 20px rgba(99,102,241,0.45);
+          box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
           transition: transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .3s;
         }
-        .fab-toggle:hover { box-shadow: 0 6px 28px rgba(99,102,241,0.55); }
+        .fab-toggle:hover { box-shadow: 0 6px 28px rgba(68, 160, 141, 0.55); }
         .fab-toggle.is-open { transform: rotate(45deg); }
 
         .fab-popup {
@@ -285,14 +285,10 @@ export default function FloatingActions({ viewMode, setViewMode, setIsFilterDraw
 
       {/* FAB toggle button */}
       <button
-        className={`fab-toggle${open ? " is-open" : ""}`}
+        className={`fab-toggle ${open ? " is-open" : ""}`}
         onClick={() => setOpen(o => !o)}
         title="Actions"
       >
-         {/* <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
-         <line x1="12" y1="5" x2="12" y2="19" />
-         <line x1="5" y1="12" x2="19" y2="12" />
-         </svg> */}
 
         <Settings color="white" />
       </button>

@@ -21,4 +21,8 @@ export default defineConfig({
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(version),
   },
+  server:{
+    port: 5173,
+    host: true,
+  },
 })

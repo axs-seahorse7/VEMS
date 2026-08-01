@@ -133,7 +133,11 @@ export const verifyOtp = async (req, res) => {
     otpStore.delete(emailInLower);
 
     // Fetch full user
-    const user = await User.findById(record.userId).populate("factory", "name location");
+    const user = await User.findById(record.userId)
+      .populate("factory", "name location")
+      .populate("siteId", "name")
+      .populate("blockId", "name")
+      .select("-password");
 
     // Issue JWT
     const token = jwt.sign(
@@ -143,12 +147,28 @@ export const verifyOtp = async (req, res) => {
     );
 
     // Set cookie
+    res.clearCookie("token", {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: false,
+    });
+
+    res.clearCookie("token", {
+        httpOnly: true,
+        sameSite: "none",
+        secure: true,
+    });
+
+    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+    console.log("IS HTTPS:", req.secure, req.headers["x-forwarded-proto"], isHttps);
+
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.SERVER_ENV === "production",
-      sameSite: process.env.SERVER_ENV === "production" ? "none" : "strict",
+      secure: isHttps,
+      sameSite: isHttps ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
     });
+
 
     return res.status(200).json({
       success: true,
@@ -169,6 +189,7 @@ export const verifyOtp = async (req, res) => {
 export const resendOtp = async (req, res) => {
   try {
     const { email } = req.body;
+
     if (!email) {
       return res.status(400).json({ success: false, message: "Email is required" });
     }
@@ -177,7 +198,6 @@ export const resendOtp = async (req, res) => {
     const emailInLower = email.toLowerCase();
     const existing = otpStore.get(emailInLower);
     if (!existing) {
-      console.warn(`Resend OTP requested for email with no existing OTP: ${email}`);
       return res.status(400).json({ success: false, message: "Session expired. Please login again." });
     }
 
@@ -217,13 +237,34 @@ export const getMe = async (req, res) => {
   try {
     const userId = req.userId; // from auth middleware
 
-    if (!userId) {
-      console.warn("getMe: No userId in request");
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+    console.log("AUTH ME HIT");
+    console.log("Host:", req.headers.host);
+    console.log("Origin:", req.headers.origin);
+    console.log("Referer:", req.headers.referer);
 
-    const user = await User.findById(userId).select("-password").populate("factory", "name location");
+
+    console.log("req.userId:", req.userId);
+
+    
+
+    const user = await User.findById(userId).select("-password")
+    .populate({
+      path: "factory",
+      select: "name allowedSites location isIntraMovementAllowed",
+      populate: { path: "allowedSites", select: "name location" },
+    })
+    .populate({
+      path: "siteId",
+      select: "name status supportsBlocks allowedBlocks",
+      populate: { path: "allowedBlocks", select: "name isActive" },
+    })
+    .populate({ path: "blockId", select: "name" })
+    .select("-password");
+
+    console.log("User found:", user);
+
     if (!user) {
+      console.log("User NOT found");
       return res.status(404).json({ message: "User not found" });
     }
 
@@ -233,7 +274,6 @@ export const getMe = async (req, res) => {
    return res.status(500).json({ message: "Server error" });
   }
 };
-
 
 export const changePassword = async (req, res) => {
   try {

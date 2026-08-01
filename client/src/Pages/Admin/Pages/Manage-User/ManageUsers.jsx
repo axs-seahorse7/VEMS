@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import api from "../../../../../services/API/Api/api";
 import {
   Table, Input, Select, Button, Modal, Form, Switch, Tag, Space,
-  Avatar, Tooltip, Popconfirm, message, Card, Statistic, Row, Col, Badge
+  Avatar, Tooltip, Popconfirm, message, Card, Statistic, Row, Col, Badge, Typography
 } from "antd";
 import {
   UserOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   LockOutlined, UnlockOutlined, KeyOutlined, SearchOutlined,
   CrownOutlined, TeamOutlined, StopOutlined, CheckCircleOutlined,
 } from "@ant-design/icons";
+
+const { Text } = Typography;
 
 const loggedInUser = JSON.parse(localStorage.getItem("user")) || {};
 
@@ -47,6 +49,26 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Watch the actual form values instead of mirroring them into separate state
+  const selectedFactoryId = Form.useWatch("factory", form);
+  const selectedSiteId = Form.useWatch("siteId", form);
+
+  const selectedFactory = factories.find((f) => f._id === selectedFactoryId);
+  const availableSites = selectedFactory?.allowedSites || [];
+
+  const selectedSite = availableSites.find((s) => s._id === selectedSiteId);
+  const siteSupportsBlocks = !!selectedSite?.supportsBlocks;
+  const availableBlocks = siteSupportsBlocks ? (selectedSite?.allowedBlocks || []) : [];
+
+  const handleFactoryChange = () => {
+    // Just clear downstream fields — availableSites recomputes automatically
+    form.setFieldsValue({ siteId: undefined, blockId: undefined });
+  };
+
+  const handleSiteChange = () => {
+    form.setFieldsValue({ blockId: undefined });
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -59,7 +81,7 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
       setIsAdmin(false);
       onClose();
     } catch (err) {
-      if (err?.errorFields) return; // validation error, don't show message
+      if (err?.errorFields) return;
       message.error("Failed to create user");
     } finally {
       setLoading(false);
@@ -86,31 +108,32 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
       width={580}
       destroyOnClose
     >
-      {/* Admin Toggle */}
-      { loggedInUser.isSystemAdmin && ( <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        background: isAdmin ? "#ede9fe" : "#f8fafc",
-        border: `1.5px solid ${isAdmin ? "#6366f1" : "#e5e7eb"}`,
-        borderRadius: 10, padding: "12px 16px", marginBottom: 20,
-        transition: "all 0.2s",
-      }}>
-        <Space>
-          <CrownOutlined style={{ color: isAdmin ? "#6366f1" : "#9ca3af", fontSize: 16 }} />
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 13, color: isAdmin ? "#6366f1" : "#374151" }}>
-              System Administrator
+      {loggedInUser.isSystemAdmin && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: isAdmin ? "#ede9fe" : "#f8fafc",
+          border: `1.5px solid ${isAdmin ? "#6366f1" : "#e5e7eb"}`,
+          borderRadius: 10, padding: "12px 16px", marginBottom: 20,
+          transition: "all 0.2s",
+        }}>
+          <Space>
+            <CrownOutlined style={{ color: isAdmin ? "#6366f1" : "#9ca3af", fontSize: 16 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: isAdmin ? "#6366f1" : "#374151" }}>
+                System Administrator
+              </div>
+              <div style={{ fontSize: 11.5, color: "#9ca3af" }}>
+                Admin users have full access to all modules
+              </div>
             </div>
-            <div style={{ fontSize: 11.5, color: "#9ca3af" }}>
-              Admin users have full access to all modules
-            </div>
-          </div>
-        </Space>
-        <Switch
-          checked={isAdmin}
-          onChange={setIsAdmin}
-          style={{ background: isAdmin ? "#6366f1" : undefined }}
-        />
-      </div>)}
+          </Space>
+          <Switch
+            checked={isAdmin}
+            onChange={setIsAdmin}
+            style={{ background: isAdmin ? "#6366f1" : undefined }}
+          />
+        </div>
+      )}
 
       <Form form={form} layout="vertical" requiredMark={false}>
         <Row gutter={14}>
@@ -131,10 +154,48 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
           </Col>
           <Col span={12}>
             <Form.Item label="Factory" name="factory" rules={[{ required: true, message: "Required" }]}>
-              <Select placeholder="Select factory" options={factories.map(f => ({ value: f._id, label: f.name }))} />
+              <Select
+                placeholder="Select factory"
+                onChange={handleFactoryChange}
+                options={factories.map(f => ({ value: f._id, label: f.name }))}
+              />
             </Form.Item>
           </Col>
-          {isAdmin || form?.role === "admin" ? (
+          <Col span={12}>
+            <Form.Item label="Site" name="siteId">
+              <Select
+                placeholder={availableSites.length ? "Select site" : "Select factory first"}
+                disabled={!selectedFactoryId || !availableSites.length}
+                onChange={handleSiteChange}
+                showSearch
+                optionFilterProp="children"
+                options={availableSites.map(s => ({
+                  value: s._id,
+                  label: s.supportsBlocks
+                    ? `${s.name} (${(s.allowedBlocks || []).length} block${(s.allowedBlocks || []).length !== 1 ? "s" : ""})`
+                    : s.name,
+                }))}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="Block" name="blockId">
+              <Select
+                placeholder={
+                  !selectedSiteId
+                    ? "Select site first"
+                    : siteSupportsBlocks
+                    ? "Select block"
+                    : "This site has no blocks"
+                }
+                disabled={!siteSupportsBlocks || !availableBlocks.length}
+                showSearch
+                optionFilterProp="children"
+                options={availableBlocks.map(b => ({ value: b._id, label: b.name }))}
+              />
+            </Form.Item>
+          </Col>
+          {isAdmin ? (
             <Col span={12}>
               <Form.Item label="Location" name="location" initialValue="supa">
                 <Select options={locationOptions} />
@@ -146,12 +207,12 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
                 <Select options={workLocationOptions} disabled={isAdmin} />
               </Form.Item>
             </Col>
-          ) }
-            <Col span={12}>
-              <Form.Item label="Status" name="status" initialValue="active" >
-                <Select disabled={true} options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />
-              </Form.Item>
-            </Col>
+          )}
+          <Col span={12}>
+            <Form.Item label="Status" name="status" initialValue="active">
+              <Select disabled={true} options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />
+            </Form.Item>
+          </Col>
         </Row>
       </Form>
 
@@ -172,17 +233,44 @@ function CreateUserModal({ open, onClose, onSave, factories }) {
 }
 
 // ── Edit User Modal ───────────────────────────────────────────────────────────
-function EditUserModal({ user,  onClose, onSave, factories }) {
+function EditUserModal({ user, onClose, onSave, factories }) {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
+  const selectedFactoryId = Form.useWatch("factory", form);
+  const selectedSiteId = Form.useWatch("siteId", form);
+
+  const selectedFactory = factories.find((f) => f._id === selectedFactoryId);
+  const availableSites = selectedFactory?.allowedSites || [];
+
+  const selectedSite = availableSites.find((s) => s._id === selectedSiteId);
+  const siteSupportsBlocks = !!selectedSite?.supportsBlocks;
+  const availableBlocks = siteSupportsBlocks ? (selectedSite?.allowedBlocks || []) : [];
+
+  const handleFactoryChange = () => {
+    form.setFieldsValue({ siteId: undefined, blockId: undefined });
+  };
+
+  const handleSiteChange = () => {
+    form.setFieldsValue({ blockId: undefined });
+  };
+
   useEffect(() => {
     if (user) {
+      const factoryId = user.factory?._id || user.factory || "";
+      const siteId = user.siteId?._id || user.siteId || undefined;
+      const blockId = user.blockId?._id || user.blockId || undefined;
+
+      // Just set values — availableSites/availableBlocks recompute from watch,
+      // no manual state syncing, no stale-closure race.
       form.setFieldsValue({
         ...user,
-        factory: user.factory?._id || user.factory || "",
+        factory: factoryId,
+        siteId,
+        blockId,
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, form]);
 
   const handleSave = async () => {
@@ -216,7 +304,7 @@ function EditUserModal({ user,  onClose, onSave, factories }) {
         <Row gutter={14}>
           <Col span={12}>
             <Form.Item label="Full Name" name="name" rules={[{ required: true }]}>
-              <Input  />
+              <Input />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -226,7 +314,45 @@ function EditUserModal({ user,  onClose, onSave, factories }) {
           </Col>
           <Col span={12}>
             <Form.Item label="Factory" name="factory">
-              <Select options={factories.map(f => ({ value: f._id, label: f.name }))} placeholder="Select factory" />
+              <Select
+                options={factories.map(f => ({ value: f._id, label: f.name }))}
+                placeholder="Select factory"
+                onChange={handleFactoryChange}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="Site" name="siteId">
+              <Select
+                placeholder={availableSites.length ? "Select site" : "Select factory first"}
+                disabled={!selectedFactoryId || !availableSites.length}
+                onChange={handleSiteChange}
+                showSearch
+                optionFilterProp="children"
+                options={availableSites.map(s => ({
+                  value: s._id,
+                  label: s.supportsBlocks
+                    ? `${s.name} (${(s.allowedBlocks || []).length} block${(s.allowedBlocks || []).length !== 1 ? "s" : ""})`
+                    : s.name,
+                }))}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="Block" name="blockId">
+              <Select
+                placeholder={
+                  !selectedSiteId
+                    ? "Select site first"
+                    : siteSupportsBlocks
+                    ? "Select block"
+                    : "This site has no blocks"
+                }
+                disabled={!siteSupportsBlocks || !availableBlocks.length}
+                showSearch
+                optionFilterProp="children"
+                options={availableBlocks.map(b => ({ value: b._id, label: b.name }))}
+              />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -318,6 +444,7 @@ export default function ManageUsers() {
     setLoading(true);
     try {
       const res = await api.get("/users");
+      console.log("Fetched users:", res.data.users);
       setUsers(res.data.users);
     } catch {
       message.error("Failed to fetch users");
@@ -375,10 +502,10 @@ export default function ManageUsers() {
   };
 
   const stats = [
-    { label: "Total Users",    value: users.length,                                                  color: "#6366f1", icon: <TeamOutlined /> },
-    { label: "Active",         value: users.filter(u => u.status === "active" && !u.isBlocked).length, color: "#15803d", icon: <CheckCircleOutlined /> },
-    { label: "Blocked",        value: users.filter(u => u.isBlocked).length,                         color: "#dc2626", icon: <StopOutlined /> },
-    { label: "Inactive",       value: users.filter(u => u.status === "inactive").length,              color: "#6b7280", icon: <UserOutlined /> },
+    { label: "Total Users",    value: users.length,                                                     color: "#6366f1", icon: <TeamOutlined /> },
+    { label: "Active",         value: users.filter(u => u.status === "active" && !u.isBlocked).length,  color: "#15803d", icon: <CheckCircleOutlined /> },
+    { label: "Blocked",        value: users.filter(u => u.isBlocked).length,                            color: "#dc2626", icon: <StopOutlined /> },
+    { label: "Inactive",       value: users.filter(u => u.status === "inactive").length,                color: "#6b7280", icon: <UserOutlined /> },
   ];
 
   const columns = [
@@ -386,6 +513,9 @@ export default function ManageUsers() {
       title: "User",
       dataIndex: "name",
       key: "name",
+      width: 220,
+      sorter: (a, b) => a.name.localeCompare(b.name),
+      sortDirections: ["ascend", "descend"],
       render: (_, u) => (
         <Space>
           <Avatar style={{ background: "linear-gradient(135deg,#e0e7ff,#c7d2fe)", color: "#6366f1", fontWeight: 800 }}>
@@ -400,15 +530,28 @@ export default function ManageUsers() {
     },
     {
       title: "Factory",
-      dataIndex: ["factory", "name"],
+      dataIndex: ["factory", "name", ],
       key: "factory",
-      render: (v) => v || <span style={{ color: "#9ca3af" }}>Not assigned</span>,
+      render: (v) => v ,
     },
+    {
+      title: "Work Site",
+      dataIndex: ["siteId", "name", ],
+      key: "siteId",
+      render: (v) => v  || "-",
+    },
+    {
+      title: "Blocks",
+      dataIndex: "blockId",
+      key: "blockId",
+      width: 120,
+      render: (v) => v?.name || "-",},
+    
     {
       title: "Work Location",
       dataIndex: "workLocation",
       key: "workLocation",
-      render: (v) => workLabelMap[v] || v,
+      render: (v) => <span>{workLabelMap[v] || v}</span>,
     },
     {
       title: "Status",

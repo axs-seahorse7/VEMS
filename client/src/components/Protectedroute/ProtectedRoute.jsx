@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { getMe } from "../../../services/API/AuthService/authService";
 import VEMSDashboardSkeleton from "../VEMSDashboardSkeleton/VEMSDashboardSkeleton";
+import { useUser } from "../../Global/User-Context/UserContext.jsx";
 
 export function AdminRoute({ children }) {
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const {user, setUser} = useUser();
 
   useEffect(() => {
     getMe()
@@ -28,7 +29,7 @@ export function AdminRoute({ children }) {
 
 export function UserRoute({ children }) {
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const {user, setUser} = useUser();
 
   useEffect(() => {
     getMe()

@@ -478,6 +478,7 @@ router.patch("/versions/:id/set-active", wrap(async (req, res) => {
 }));
  
 router.get("/versions/check", wrap(async (req, res) => {
+  console.log("Checking version for client...");
   // read from header (preferred) OR fallback to query param
   const clientVersion = req.headers["x-app-version"] || req.query.v;
   const platform      = req.headers["x-app-platform"] || req.query.platform || "web";
@@ -485,7 +486,7 @@ router.get("/versions/check", wrap(async (req, res) => {
   try {
     if (!clientVersion) return res.status(400).json({ success: false, message: "version header missing" });
 
-    const latest = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean();
+    const latest = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean().sort({ createdAt: -1 });
     if (!latest) return res.status(200).json({ success: true, data: { upToDate: true } });
 
     const upToDate = latest.versionNumber === clientVersion;

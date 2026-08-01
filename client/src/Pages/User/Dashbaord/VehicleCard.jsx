@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Card, Tag, Badge, Divider, Tooltip, Typography, Space, Row, Col } from "antd";
+import { Card, Tag, Badge, Divider, Tooltip, Typography, Space, Row, Col, Button } from "antd";
 import {
   CarOutlined,
   WarningFilled,
@@ -13,6 +13,8 @@ import {
   ArrowRightOutlined,
   EnvironmentOutlined,
 } from "@ant-design/icons";
+import { Truck } from "lucide-react";
+
 
 const { Text } = Typography;
 
@@ -70,6 +72,45 @@ const STAGE_META = {
   unknown: { label: "Unknown",  color: "default" },
 };
 
+const  STAGES_REGISTRY = {
+  //INTER-FACTORY MOVEMENT
+  IN_TRANSIT:   "IN_TRANSIT",
+  ARRIVED:      "ARRIVED",
+  CHECKIN:      "CHECKIN",
+  CANCEL:       "CANCEL",
+  CLOSED:       "CLOSED",
+  CANCELLED:    "CANCELLED",
+
+  WAITING_CHECKIN:              "WAITING_CHECKIN",
+  WAITING_UNLOAD:               "WAITING_UNLOAD",
+  WAITING_LOAD:                 "WAITING_LOAD",
+
+  VEHICLE_LOADED:               "VEHICLE_LOADED",
+  VEHICLE_UNLOADED:             "VEHICLE_UNLOADED",
+
+  ROUTE_CHANGED:                "ROUTE_CHANGED",
+  SELECT_NEXT_LOCATION:         "SELECT_NEXT_LOCATION",
+
+  READY_FOR_SITE_CONFIRMATION: "READY_FOR_SITE_CONFIRMATION",
+  READY_FOR_DISPATCH_CHECKOUT: "READY_FOR_DISPATCH_CHECKOUT",
+  READY_FOR_EXIT_CHECKOUT:     "READY_FOR_EXIT_CHECKOUT",
+
+  COMPLETED:                    "COMPLETED",
+
+
+  //INTRA FACTORY MOVEMENT
+  READY_FOR_ARRIVAL:      "READY_FOR_ARRIVAL",
+  READY_FOR_COMPLETE:      "READY_FOR_COMPLETE",
+  READY_FOR_LOAD:         "READY_FOR_LOAD",
+  READY_FOR_UNLOAD:       "READY_FOR_UNLOAD",
+  READY_FOR_ROUTE_CHANGE: "READY_FOR_ROUTE_CHANGE",
+  READY_FOR_DISPATCH:     "READY_FOR_DISPATCH",
+  READY_FOR_CLOSE:        "READY_FOR_CLOSE",
+
+
+};
+
+
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 function InfoRow({ icon, label, value, T }) {
   return (
@@ -106,6 +147,7 @@ function OriginTracker({ vehicle, isOverdue }) {
   const isAtOrigin = phase === "ORIGIN";
   const isAtDestination = phase === "DESTINATION";
   const isAtInTransit = vehicle.status === "IN_TRANSIT";
+  const isClosed = vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED";
 
   // Derive a numeric step: 0 = at origin, 1 = in transit, 2 = at destination
   // "completed" means we've passed that stage, "current" means we're there now
@@ -134,43 +176,64 @@ function OriginTracker({ vehicle, isOverdue }) {
     const isActive = state !== "pending";
     const isCurrent = state === "current";
 
+    const truncate = (str, max = 18) => str.length > max ? str.slice(0, max - 1) + "…" : str;
+
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
-        <div style={{ position: "relative", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ position: "relative", width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {/* Pulse ring — only on current active stop */}
-          {isCurrent && (
+          {isCurrent && !isClosed  &&  (
             <span style={{
               position: "absolute",
-              width: 16, height: 16,
+              width: 20, height: 20,
               borderRadius: "50%",
               background: color,
               opacity: 0,
               animation: "trackerPing 1.5s ease-out infinite",
             }} />
           )}
-          <span style={{
-            width: isActive ? 9 : 7,
-            height: isActive ? 9 : 7,
-            borderRadius: "50%",
-            background: isActive ? color : pendingDotColor,
-            boxShadow: isActive ? `0 0 0 2.5px ${color}44` : "none",
-            display: "block",
-            flexShrink: 0,
-          }} />
+
+          {isCurrent ? (
+            // Current stop: bigger filled circle with vehicle icon centered inside
+            <span style={{
+              position: "relative",
+              width: 18, height: 18,
+              borderRadius: "50%",
+              background: isCurrent? "transparent" : color,
+              boxShadow: `0 0 0 2.5px ${color}44`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}>
+              <CarOutlined style={{color: isCurrent ? color: "#fff", fontSize: 12}} />
+            </span>
+          ) : (
+            <span style={{
+              width: isActive ? 9 : 7,
+              height: isActive ? 9 : 7,
+              borderRadius: "50%",
+              background: isActive ? color : pendingDotColor,
+              boxShadow: isActive ? `0 0 0 2.5px ${color}44` : "none",
+              display: "block",
+              flexShrink: 0,
+            }} />
+          )}
         </div>
         <span style={{
           fontSize: 10,
-          fontWeight: isActive ? 600 : 400,
+          fontWeight: isActive ? 700 : 400,
           color: isActive ? color : pendingLabelColor,
           textAlign: "center",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          maxWidth: 72, display: "block", marginTop: 4,
+          whiteSpace: "nowrap",
+          maxWidth: 120, display: "block", marginTop: 4,
+          overflow: "visible", textOverflow: "clip"
         }}>
-          {label}
+          {truncate(label, 18)}
         </span>
       </div>
     );
-  };
+  };  
 
   // Connector line — green if both endpoints are done/current, gray if not yet reached
   const lineColor = (fromStep, toStep) => {
@@ -205,7 +268,7 @@ function OriginTracker({ vehicle, isOverdue }) {
         <Stop
           stepIndex={0}
           color={COLORS.origin}
-          label={vehicle?.sourceFactory?.name || vehicle.externalSource || "Source"}
+          label={vehicle.isIntraPlant? `${vehicle?.sourceSite?.name}/${vehicle?.sourceBlock?.name} - ${vehicle?.sourceFactory?.name}` : vehicle?.sourceFactory?.name || vehicle.externalSource || "Source"}
         />
 
         <div style={{
@@ -229,7 +292,7 @@ function OriginTracker({ vehicle, isOverdue }) {
         <Stop
           stepIndex={2}
           color={COLORS.dest}
-          label={vehicle?.destinationFactory?.name || vehicle.externalDestination || "Dest."}
+          label={ vehicle.isIntraPlant? `${vehicle?.destinationSite?.name}/${vehicle?.destinationBlock?.name} - ${vehicle?.destinationFactory?.name}` : vehicle?.destinationFactory?.name || vehicle.externalDestination || "Dest."}
         />
       </div>
     </>
@@ -244,6 +307,43 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   const pucAlert = isPUCExpired(vehicleData?.PUCExpiry);
   const loadStatus = vehicle?.loadStatus || "pending";
   const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
+  const workflow = vehicle?.workflow || {};
+  const isClosed = vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED";
+  const isIntraPlant = vehicle?.isIntraPlant || false;
+
+  const STAGES = {
+    [STAGES_REGISTRY.WAITING_CHECKIN]: "Waiting Check-in",
+    [STAGES_REGISTRY.IN_TRANSIT]: "Waiting for Arrival",
+    [STAGES_REGISTRY.ARRIVED]: "Waiting for Check-in",
+    [STAGES_REGISTRY.WAITING_UNLOAD]: "Waiting Unload",
+    [STAGES_REGISTRY.WAITING_LOAD]: "Waiting Load",
+    [STAGES_REGISTRY.VEHICLE_UNLOADED]: "Vehicle Unloaded",
+    [STAGES_REGISTRY.SELECT_NEXT_LOCATION]: "Select Next Location",
+    [STAGES_REGISTRY.READY_FOR_SITE_CONFIRMATION]: "Ready for Site Confirmation",
+    [STAGES_REGISTRY.READY_FOR_EXIT_CHECKOUT]: "Waiting for Exit",
+    [STAGES_REGISTRY.READY_FOR_DISPATCH_CHECKOUT]: "Waiting for Dispatch",
+    [STAGES_REGISTRY.READY_FOR_ARRIVAL]: "Waiting for Arrival",
+    [STAGES_REGISTRY.READY_FOR_LOAD]: "Waiting for Load",
+    [STAGES_REGISTRY.READY_FOR_UNLOAD]: "Waiting for Unload",
+    [STAGES_REGISTRY.READY_FOR_ROUTE_CHANGE]: "Waiting for Route Change",
+    [STAGES_REGISTRY.READY_FOR_DISPATCH]: "Waiting for Dispatch",
+    [STAGES_REGISTRY.READY_FOR_CLOSE]: "Waiting for Close",
+  };
+
+  
+  const getStages = (stage) => {
+    return STAGES[stage] || null;
+  };
+
+  const ACTIONS = {
+    atGate: "Action Required by Security",
+    storeSite: "Action Required by Store",
+    dispatchSite: "Action Required by Dispatch",
+  };
+
+  const getActionLabel = (actor) => {
+    return ACTIONS[actor] || "Action Required Security";
+  };
 
   // ── Overdue logic ────────────────────────────────────────────────────────
   const isWaitingOutside =
@@ -285,6 +385,7 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   // ── Stage key ────────────────────────────────────────────────────────────
   const stageKey = (() => {
     if (location === "inside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "inside";
+    if (vehicle?.type === "internal_transfer" && location === "inside_factory" ) return "inside";
     if (location === "enroute") return "enroute";
     if (location === "outside_factory" && vehicle.tripState !== "CLOSED" && vehicle.tripState !== "CANCELLED") return "waiting";
     if (location === "outside_factory" && (vehicle.tripState === "CLOSED" || vehicle.tripState === "CANCELLED")) return "exited";
@@ -298,18 +399,18 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
 
   const route = vehicle.type === "internal_transfer" ? (
     <Space size={3}>
-      <span>{vehicle.sourceFactory?.name || "Source"}</span>
+      <span>{isIntraPlant ? `${vehicle.sourceSite?.name}/${vehicle.sourceBlock?.name}` || "Source" : vehicle.sourceFactory?.name || "Source"}</span>
       <ArrowRightOutlined style={{ fontSize: 9 }} />
-      <span>{vehicle.destinationFactory?.name || "Unknown"}</span>
+      <span>{isIntraPlant ? `${vehicle.destinationSite?.name}/${vehicle.destinationBlock?.name}` || "Destination" : vehicle.destinationFactory?.name || "Unknown"}</span>
     </Space>
   ) : (
     <Space size={3} style={{ overflow: "hidden" }}>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 60, display: "inline-block", whiteSpace: "nowrap" }}>
-        {vehicle.sourceFactory?.name || vehicle?.externalSource || "External"}
+        {  vehicle.sourceFactory?.name || vehicle?.externalSource || "External" }
       </span>
       <ArrowRightOutlined style={{ fontSize: 9 }} />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 60, display: "inline-block", whiteSpace: "nowrap" }}>
-        {vehicle.destinationFactory?.name || vehicle?.externalDestination || "Unknown"}
+        { vehicle.destinationFactory?.name || vehicle?.externalDestination || "Unknown" }
       </span>
     </Space>
   );
@@ -371,6 +472,10 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
           0%, 100% { opacity: 1; }
           50% { opacity: 0.3; }
         }
+
+        
+        
+      
       `}</style>
 
       <div
@@ -423,17 +528,17 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
           </div>
         )}
 
-        <div style={{ padding: "10px 12px 10px", paddingTop: isOverdue ? 26 : 10 }}>
+        <div style={{ padding: "10px 12px 10px", paddingTop: 10 }}>
 
           {/* ── Row 1: Vehicle info + Tracker ── */}
           {/* ── OriginTracker (absolute) ── */}
           <OriginTracker vehicle={vehicle} T={T} />
 
           {/* ── Row 1: icon + vehicle name ── */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 7, alignItems: "flex-start", paddingRight: 10 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 7, alignItems: "flex-start", paddingRight: 10, borderBottom: `1px solid ${T.divider}`, marginBottom: 7, paddingBottom: 7 }}>
 
             {/* Left: icon + name */}
-            <div style={{ display: "flex", gap: 7,  minWidth: 0, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", gap: 7,  minWidth: 0, alignItems: "flex-start", width: "100%",}}>
               <div style={{
                 width: 30, height: 30, borderRadius: 7, flexShrink: 0,
                 background: T.iconBox,
@@ -443,47 +548,38 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
                 <CarOutlined style={{ fontSize: 15 }} />
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 2,  flex: 1 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, width: "100%",  }}>
                 <Space size={4} align="center">
                   <Text strong style={{ fontSize: 13, color: T.textPrimary, letterSpacing: 0.2, fontWeight: 700 }}>
                     {vehicleData?.vehicleNumber}
                   </Text>
+
+                   {vehicleData?.typeOfVehicle && (
+                    <Tag style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.3, margin: 0, padding: "1px 10px", background: T.iconBox, borderRadius: 30, color: T.textPrimary }}>
+                      {vehicleTypeLabel[vehicleData.typeOfVehicle] || vehicleData.typeOfVehicle}
+                    </Tag>
+                  )}
+
                   {pucAlert && (
                     <Tooltip title="PUC Expired">
                       <WarningFilled style={{ fontSize: 13, color: urgency === 'critical' ? '#fca5a5' : '#dc2626' }} />
                     </Tooltip>
                   )}
                 </Space>
-                <div>
-                  <Text style={{ fontSize: 10, color: T.textSub }}>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, width: "100%", flexWrap: "wrap" }}>
+                  <Text style={{ fontSize: 10, color: "#6b7280" }}>
                     {vehicleData?.transporterName}
                   </Text>
+                  {vehicle?.isIntraPlant === true && <span style={{ fontSize: 10, color: "blue", marginLeft: 4, fontWeight: 600, border: `1px solid blue`, padding: "0 4px", borderRadius: 3 }}>
+                    Intra-Plant
+                  </span>}
                 </div>
+
               </div>
 
-              {vehicleData?.typeOfVehicle && (
-                <Tag style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.3, margin: 0, padding: "1px 10px", background: T.iconBox, border: `1px solid ${T.border}`, borderRadius: 30, color: T.textPrimary }}>
-                  {vehicleTypeLabel[vehicleData.typeOfVehicle] || vehicleData.typeOfVehicle}
-                </Tag>
-              )}
+             
 
-              {/* {phase && (
-                <Tag
-                  color={phase === "ORIGIN" ? "purple" : "green"}
-                  style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px",  }}
-                >
-                  <span style={{
-                    display: "inline-block", width: 4, height: 4, borderRadius: "50%", marginRight: 3, verticalAlign: "middle",
-                    background: phase === "ORIGIN" ? "#7c3aed" : "#059669",
-                    animation: "livePulse 1.8s ease-in-out infinite",
-                  }} />
-                  {phase === "ORIGIN"
-                  ? vehicle.sourceFactory?.name
-                  : phase === "DESTINATION"
-                  ? vehicle.destinationFactory?.name
-                  : phase}
-                </Tag>
-            )} */}
 
             </div>
           </div>
@@ -524,6 +620,72 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
             >
               {isIncoming ? "Incoming" : "Outgoing"}
             </Tag>
+
+
+            <style>{`
+              @keyframes stagePulseAmber {
+                0%   { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.55); }
+                70%  { box-shadow: 0 0 0 8px rgba(217, 119, 6, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+              }
+              .stage-tag-pulse {
+                animation: stagePulseAmber 1.5s infinite;
+              }
+
+              @keyframes actionPulseBlue {
+                0%   { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55); }
+                70%  { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+              }
+              .action-tag-pulse {
+                animation: actionPulseBlue 1.5s infinite;
+              }
+            `}</style>
+
+
+
+          {workflow.stage !== null && !isClosed  && (
+            <span
+              className="stage-tag-pulse"
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                margin: 0,
+                padding: "1px 6px",
+                border: "1px solid #d97706",
+                background: "#fffbeb",
+                color: "#d97706",
+                letterSpacing: 0.3,
+                borderRadius: 4,
+              }}
+            >
+              {getStages(workflow.stage) || workflow.stage}
+            </span>
+          )}
+          
+          {workflow?.actionRequiredBy?.actor?.length > 0 && !isClosed && (
+            <span
+              className="action-tag-pulse"
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                margin: 0,
+                marginLeft: 4,
+                padding: "1px 6px",
+                border: "1px solid #2563eb",
+                background: "#eff6ff",
+                color: "#2563eb",
+                letterSpacing: 0.3,
+                borderRadius: 4,
+              }}
+            >
+              {vehicle?.material?.name === "RM" && workflow.actionRequiredBy.actor.includes("storeSite")
+                ? getActionLabel("storeSite")
+                : vehicle?.material?.name === "FG" && workflow.actionRequiredBy.actor.includes("dispatchSite")
+                ? getActionLabel("dispatchSite")
+                : getActionLabel(workflow.actionRequiredBy.actor)}
+            </span>
+          )}
 
             
           </Space>

@@ -3,7 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
 
-
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -25,13 +24,12 @@ import authRoutes from "../routes/auth.routes.js";
 import userRoutes from "../routes/user.routes.js";
 import indexRoutes from "../routes/index.routes.js";
 import vehicleRoutes from "../routes/vehicle.routes.js";
-import gateRoutes from "../routes/gate.routes.js";
 import tripRoutes from "../routes/trip.routes.js";
 import analyticsRoutes from "../routes/analytics.route.js";
 import settingsRoutes from "../controllers/settings.controller.js";
 import {versionCheckMiddleware} from "../middleware/Version-Checker/version.js";
 
-const allowedOrigins = ['http://localhost:5173', 'https://vems-client.vercel.app'];
+const allowedOrigins = ['http://localhost:5173', 'https://vems-client.vercel.app', "http://192.168.19.100:5173",];
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -68,20 +66,18 @@ app.get("/api/health", (req, res) => {
   return res.json({ status: "ok" });
 });
 
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    console.log(
+      req.method,
+      req.originalUrl,
+      "=>",
+      res.statusCode
+    );
+  });
 
-
-// app.use((req, res, next) => {
-  
-  //   console.log({
-    //     ip: req.ip,
-    //     method: req.method,
-//     url: req.url,
-//     userAgent: req.headers["user-agent"],
-//     xForwardedFor: req.headers["x-forwarded-for"]
-//   });
-
-//   next();
-// });
+  next();
+});
 
 app.use("/api/auth", authRoutes)
 
@@ -90,7 +86,6 @@ app.use("/api", versionCheckMiddleware);
 app.use("/api", userRoutes)
 app.use("/api", indexRoutes)
 app.use("/api", vehicleRoutes)
-app.use("/api", gateRoutes)
 app.use("/api", tripRoutes)
 app.use("/api/analytics", analyticsRoutes)
 app.use("/api/settings", settingsRoutes)

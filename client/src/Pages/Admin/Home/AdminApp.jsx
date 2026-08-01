@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import AdminDashboard from "../Dashboard/AdminDashboard";
 import ManageUsers from "../Pages/Manage-User/ManageUsers";
 import ManageFactory from "../Pages/Manage-Factories/ManageFactories";
+import ManageSite from "../Pages/Manage-Factories/ManageSite";
+import ManageBlock from "../Pages/Manage-Factories/ManageBlock";
+
 import AdminLayout from "../../../components/Layouts/Layouts";
 import ManageVehicles from "../Pages/Manage-Vehicles/ManageVehicles";
 import Settings from "../Pages/Settings/Settings";
@@ -32,6 +35,8 @@ function PageContent({ page, ...props }) {
   if (page === "vehiclePerformance") return <VehiclePerformanceTable activePage={page} dates={dates} tableData={tableData} loading={isFetching} />;
   if (page === "users")           return <ManageUsers activePage="users" />;
   if (page === "factory")         return <ManageFactory activePage="factory" />;
+  if (page === "site")            return <ManageSite activePage="site" />;
+  if (page === "block")            return <ManageBlock activePage="block" />;
   if (page === "vehicles")        return <ManageVehicles />;
   if (page === "settings")        return <Settings activePage="settings" />;
   return <AdminDashboard />;

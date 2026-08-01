@@ -5,6 +5,9 @@ import {internalVehicleRegister, checkinVehicle, checkoutVehicle, checkoutAndExi
     completeTrip, markInternalTransferComplete, markLoadCompleteAtDestination , cancelTrip, getClosedTrips,
     changeRoute, getVehicleLiveStatus, getLiveVehicleTrips, closedAndCancelledTrips, loadMaterialAndNewtrip,
     updateVehicleTrip, getVehiclesLength, getDownloadTrips,
+
+    // INTRA PLANT MOVEMENT CONTROLLERS
+    dispatchVehicle,
 } from "../controllers/trip.contollers.js";
 const router = express.Router();
 
@@ -33,6 +36,10 @@ router.post("/trip/unload/:tripId", unloadTrip);
 router.post("/trip/cancel/:tripId", cancelTrip);
 router.post("/trip/change-route/:tripId", changeRoute);
 router.post("/trip/load-material-and-newtrip/:tripId", loadMaterialAndNewtrip);
+
+
+// INTRA PLANT MOVEMENT ROUTES
+router.post("/trip/intra-plant-dispatch/:tripId", dispatchVehicle);
 
 
 

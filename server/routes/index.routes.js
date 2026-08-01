@@ -1,18 +1,5 @@
 import express from "express";
 import {
-  upsertEntry,
-  updateEntry,
-  deleteEntry,
-  getEntries,
-  getVanByVehicleNumber,
-  getVanHistory,
-  checkIn,
-  loadingStart,
-  loadingEnd,
-  checkOut,
-  markArrived,
-} from "../controllers/index.controllers.js";
-import {
     createFactory,
     getFactories,
     getFactoryById,
@@ -20,32 +7,23 @@ import {
     toggleFactoryStatus,
     deleteFactory,
     getFactoriesByLocation,
+
+    createSite,
+    getSites,
+    getSiteById,
+    updateSite,
+    deleteSite,
+
+    createBlock,
+    getBlocks,
+    getBlockById,
+    updateBlock,
+    deleteBlock
 } from "../controllers/factory.contoller.js";
 import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
 
 const router = express.Router();
 
-// ── Vehicle / Entry ────────────────────────────────────────────────────────────
-router.get("/entries",                        isAuthenticated, getEntries);
-router.get("/entry/:vehicleNumber",           isAuthenticated, getVanByVehicleNumber);  // lookup by plate
-router.post("/entry/upsert",                  isAuthenticated, upsertEntry);             // create / re-register
-
-// ── Workflow State Transitions ─────────────────────────────────────────────────
-// waiting  → inside
-router.post("/entry/:id/checkin",             isAuthenticated, checkIn);
-// inside   → loading (dock)
-router.post("/entry/:id/loading-start",       isAuthenticated, loadingStart);
-// loading  → ready-to-checkout
-router.post("/entry/:id/loading-end",         isAuthenticated, loadingEnd);
-// inside   → enroute  (guard dispatches)
-router.post("/entry/:id/checkout",            isAuthenticated, checkOut);
-// enroute  → waiting  (van arrives at destination gate)
-router.post("/entry/:id/arrived",             isAuthenticated, markArrived);
-
-// ── Admin ─────────────────────────────────────────────────────────────────────
-router.put("/entry/:id",                      isAuthenticated, updateEntry);
-router.delete("/entry/:id",                   isAuthenticated, deleteEntry);
-router.get("/entry/:id/history",              isAuthenticated, getVanHistory);
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 router.post  ("/factory",                     isAuthenticated, createFactory);
@@ -53,10 +31,25 @@ router.put   ("/factory/:id",                 isAuthenticated, updateFactory);
 router.patch ("/factory/:id/status",          isAuthenticated, toggleFactoryStatus);
 router.delete("/factory/:id",                 isAuthenticated, deleteFactory);
 
-
 router.get   ("/factory/:id",                 isAuthenticated, getFactoryById);
 router.get   ("/factories",                   isAuthenticated, getFactories);
 router.get   ("/factories-by-location",       isAuthenticated, getFactoriesByLocation);
 
+
+// ── Site ───────────────────────────────────────────────────────────────────
+router.post  ("/site",                        isAuthenticated, createSite);
+router.put   ("/site/:id",                    isAuthenticated, updateSite);
+router.delete("/site/:id",                    isAuthenticated, deleteSite);
+
+router.get   ("/site/:id",                    isAuthenticated, getSiteById);
+router.get   ("/sites",                       isAuthenticated, getSites);
+
+// ── Block ───────────────────────────────────────────────────────────────────
+router.post  ("/block",                       isAuthenticated, createBlock);
+router.put   ("/block/:id",                   isAuthenticated, updateBlock);
+router.delete("/block/:id",                   isAuthenticated, deleteBlock);
+
+router.get   ("/block/:id",                   isAuthenticated, getBlockById);
+router.get   ("/blocks",                      isAuthenticated, getBlocks);
 
 export default router;

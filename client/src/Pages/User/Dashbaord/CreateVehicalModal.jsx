@@ -1,66 +1,68 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../../../../services/API/Api/api";
-import { message, Select, AutoComplete  } from "antd";
-import { Factory, Truck, User, Car, ClipboardList, ChevronDown, ChevronUp } from "lucide-react";
-const { Option } = Select;
+import {
+  Modal, Form, Input, Select, AutoComplete, Switch,
+  Button, Tag, Alert, DatePicker, Row, Col, Space,
+  Typography, message,
+} from "antd";
+import {
+  BankOutlined, CarOutlined, UserOutlined, FileTextOutlined,
+  SearchOutlined, LoadingOutlined, SaveOutlined, SwapOutlined,
+  EnvironmentOutlined, CheckCircleFilled, TruckOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
 import getDeviceInfo from "../../../utils/Get-DeviceInfo/getDeviceInfo.js";
+import { useUser } from "../../../Global/User-Context/UserContext.jsx";
+import PucExpiredModal from "../components/PUC-Expiry-Alert/PucExpiredModal.jsx";
+
+const { Text, Title } = Typography;
 
 // ─── Document & Vehicle Format Rules ─────────────────────────────────────────
 const ID_FORMAT = {
   Aadhar: {
-    hint:        "12-digit number — e.g. 2345 6789 0123",
+    hint: "Aadhaar 12-digit number e.g. 2345 6789 0123",
     placeholder: "2345 6789 0123",
-    maxRaw:      12,
-    clean:  (v) => v.replace(/\D/g, "").slice(0, 12),
-    display:(v) => v.replace(/\D/g,"").replace(/(\d{4})(\d{1,4})?(\d{1,4})?/, (_, a, b, c) =>
-      [a, b, c].filter(Boolean).join(" ")
-    ),
-    validate:(v) => /^\d{12}$/.test(v) ? null : "Aadhaar must be exactly 12 digits",
+    maxRaw: 12,
+    clean: (v) => v.replace(/\D/g, "").slice(0, 12),
+    validate: (v) => (/^\d{12}$/.test(v) ? null : "Aadhaar must be exactly 12 digits"),
   },
   PAN: {
-    hint:        "5 letters + 4 digits + 1 letter — e.g. ABCDE1234F",
+    hint: "PAN format 5 letters + 4 digits + 1 letter e.g. ABCDE1234F",
     placeholder: "ABCDE1234F",
-    maxRaw:      10,
-    clean:  (v) => v.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 10),
-    display:(v) => v,
-    validate:(v) => /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(v)
-      ? null : "PAN format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)",
+    maxRaw: 10,
+    clean: (v) => v.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 10),
+    validate: (v) =>
+      /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(v) ? null : "PAN format: 5 letters + 4 digits + 1 letter e.g. ABCDE1234F",
   },
   DL: {
-    hint: "DL formats - (e.g. MH-12-2019-1234567)",
-    placeholder: "AB-XX-XXXX-XXXXXXX ",
+    hint: "DL formats e.g. MH-12-2019-1234567",
+    placeholder: "AB-XX-XXXX-XXXXXXX",
     maxRaw: 16,
     clean: (raw) => {
       const c = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 16);
       if (/^[A-Z]{2}\d{2}/.test(c)) {
         if (c.length <= 2) return c;
-        if (c.length <= 4) return `${c.slice(0,2)}-${c.slice(2)}`;
-        if (c.length <= 8) return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4)}`;
-        return `${c.slice(0,2)}-${c.slice(2,4)}-${c.slice(4,8)}-${c.slice(8)}`;
+        if (c.length <= 4) return `${c.slice(0, 2)}-${c.slice(2)}`;
+        if (c.length <= 8) return `${c.slice(0, 2)}-${c.slice(2, 4)}-${c.slice(4)}`;
+        return `${c.slice(0, 2)}-${c.slice(2, 4)}-${c.slice(4, 8)}-${c.slice(8)}`;
       }
       return c;
     },
-    display: (v) => v,
     validate: (v) => {
       const raw = v.replace(/-/g, "");
       const pattern = /^[A-Z]{2}\d{2}[A-Z0-9]{3,5}\d{6,9}$/;
-      if (pattern.test(raw)) return null;
-      return "Invalid DL format";
-    }
-  }
+      return pattern.test(raw) ? null : "Invalid DL format";
+    },
+  },
 };
 
 const VEH_REGEX = /^[A-Z]{2}\d{1,2}(?:[A-Z]{1,3})?\d{4}$/;
-function cleanVehicleNumber(raw) {
-  return raw.replace(/[-\s]/g, "").toUpperCase().slice(0, 10);
-}
-
+function cleanVehicleNumber(raw) { return raw.replace(/[-\s]/g, "").toUpperCase().slice(0, 10); }
 function displayVehicleNumber(raw) {
   const c = cleanVehicleNumber(raw);
   const m = c.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
   return m ? `${m[1]} ${m[2]} ${m[3]} ${m[4]}` : c;
 }
-
 function validateVehicleNumber(raw) {
   const c = cleanVehicleNumber(raw);
   return VEH_REGEX.test(c) ? null : "Format: SS NN LLL NNNN (e.g. RJ 14 AB 1234)";
@@ -69,314 +71,242 @@ function validateVehicleNumber(raw) {
 // ─── LocalStorage Helpers ─────────────────────────────────────────────────────
 const LS_INTERNAL = "veh_modal_internal_draft";
 const LS_EXTERNAL = "veh_modal_external_draft";
-const LS_TAB      = "veh_modal_active_tab";
+const LS_TAB = "veh_modal_active_tab";
 
 const CUSTOMER = [
-  { v: "Abs Electroplaters", l: "Abs Electroplaters", type: "customer" },
-  { v: "Acerpure India Pvt Ltd", l: "Acerpure India Pvt Ltd", type: "customer" },
-  { v: "Air Liquide", l: "Air Liquide", type: "customer" },
-  { v: "Amber Enterprises India Ltd", l: "Amber Enterprises India Ltd", type: "customer" },
-  { v: "Amstrad Consumer India Pvt Ltd", l: "Amstrad Consumer India Pvt Ltd", type: "customer" },
-  { v: "Assiya Paint", l: "Assiya Paint", type: "customer" },
-  { v: "Atul Plast Cr", l: "Atul Plast Cr", type: "customer" },
-  { v: "Atomberg Technologies Pvt Ltd", l: "Atomberg Technologies Pvt Ltd", type: "customer" },
-  { v: "Avadhoot Paper", l: "Avadhoot Paper", type: "customer" },
-  { v: "Belrise Industries Ltd", l: "Belrise Industries Ltd", type: "customer" },
-  { v: "Blue Star Ltd", l: "Blue Star Ltd", type: "customer" },
-  { v: "BPL Ltd", l: "BPL Ltd", type: "customer" },
-  { v: "Carrier Airconditioning & Refrigeration Ltd", l: "Carrier Airconditioning & Refrigeration Ltd", type: "customer" },
-  { v: "Carrier Midea India Pvt Ltd", l: "Carrier Midea India Pvt Ltd", type: "customer" },
-  { v: "Croma", l: "Croma", type: "customer" },
-  { v: "Enpar Steels", l: "Enpar Steels", type: "customer" },
-  { v: "Flipkart Internet Pvt Ltd", l: "Flipkart Internet Pvt Ltd", type: "customer" },
-  { v: "Godrej Enterprises Group", l: "Godrej Enterprises Group", type: "customer" },
-  { v: "Haier Appliances India Pvt Ltd", l: "Haier Appliances India Pvt Ltd", type: "customer" },
-  { v: "Hamster Air Conditioner", l: "Hamster Air Conditioner", type: "customer" },
-  { v: "Havells India Ltd", l: "Havells India Ltd", type: "customer" },
-  { v: "Hitachi", l: "Hitachi", type: "customer" },
-  { v: "Infiniti Retail Ltd", l: "Infiniti Retail Ltd", type: "customer" },
-  { v: "Jabil Circuit India Pvt Ltd", l: "Jabil Circuit India Pvt Ltd", type: "customer" },
-  { v: "Jaydeep Industries", l: "Jaydeep Industries", type: "customer" },
-  { v: "Kenstar", l: "Kenstar", type: "customer" },
-  { v: "Kinetic Green Energy And Power Solution Ltd", l: "Kinetic Green Energy And Power Solution Ltd", type: "customer" },
-  { v: "Kosh Innovations Pvt Ltd", l: "Kosh Innovations Pvt Ltd", type: "customer" },
-  { v: "LG Electronics India Pvt Ltd", l: "LG Electronics India Pvt Ltd", type: "customer" },
-  { v: "Machhar Packaging", l: "Machhar Packaging", type: "customer" },
-  { v: "Maniar Plast", l: "Maniar Plast", type: "customer" },
-  { v: "Marq Solutions", l: "Marq Solutions", type: "customer" },
-  { v: "Md Graphics Pvt Ltd", l: "Md Graphics Pvt Ltd", type: "customer" },
-  { v: "Microtask Engineering", l: "Microtask Engineering", type: "customer" },
-  { v: "Minda Vast Access Systems Pvt Ltd", l: "Minda Vast Access Systems Pvt Ltd", type: "customer" },
-  { v: "Mirc Electronics Ltd", l: "Mirc Electronics Ltd", type: "customer" },
-  { v: "Motorola Mobility India Pvt Ltd", l: "Motorola Mobility India Pvt Ltd", type: "customer" },
-  { v: "Navin Fluorine International Ltd", l: "Navin Fluorine International Ltd", type: "customer" },
-  { v: "Nidec India Ltd", l: "Nidec India Ltd", type: "customer" },
-  { v: "Onida", l: "Onida", type: "customer" },
-  { v: "Pankaj Plastics Product", l: "Pankaj Plastics Product", type: "customer" },
-  { v: "Pacoline Industries Pvt Ltd", l: "Pacoline Industries Pvt Ltd", type: "customer" },
-  { v: "Paramount Polymers Pvt Ltd", l: "Paramount Polymers Pvt Ltd", type: "customer" },
-  { v: "PG Electroplast", l: "PG Electroplast", type: "customer" },
-  { v: "PG Technoplast", l: "PG Technoplast", type: "customer" },
-  { v: "Poonam Petrochem", l: "Poonam Petrochem", type: "customer" },
-  { v: "Posco India Pune Processing Center Pvt Ltd", l: "Posco India Pune Processing Center Pvt Ltd", type: "customer" },
-  { v: "Pravin Engineering Works", l: "Pravin Engineering Works", type: "customer" },
-  { v: "Procyon Star Pvt Ltd", l: "Procyon Star Pvt Ltd", type: "customer" },
-  { v: "Qualis Engineers", l: "Qualis Engineers", type: "customer" },
-  { v: "Ravago Shah Polymers", l: "Ravago Shah Polymers", type: "customer" },
-  { v: "Realme Mobile Telecommunications India Pvt Ltd", l: "Realme Mobile Telecommunications India Pvt Ltd", type: "customer" },
-  { v: "Reliance Retail Ltd", l: "Reliance Retail Ltd", type: "customer" },
-  { v: "Renu Electronics Pvt Ltd", l: "Renu Electronics Pvt Ltd", type: "customer" },
-  { v: "Royalux Lighting Pvt Ltd", l: "Royalux Lighting Pvt Ltd", type: "customer" },
-  { v: "Sadguru Industries", l: "Sadguru Industries", type: "customer" },
-  { v: "Samarth Enterprises", l: "Samarth Enterprises", type: "customer" },
-  { v: "Sharp Business Systems India Pvt Ltd", l: "Sharp Business Systems India Pvt Ltd", type: "customer" },
-  { v: "Shree Enterprises", l: "Shree Enterprises", type: "customer" },
-  { v: "Shree Swaraj Mold", l: "Shree Swaraj Mold", type: "customer" },
-  { v: "Shreenath Plastic", l: "Shreenath Plastic", type: "customer" },
-  { v: "SP Industries", l: "SP Industries", type: "customer" },
-  { v: "SRF Limited", l: "SRF Limited", type: "customer" },
-  { v: "Starion India Pvt Ltd", l: "Starion India Pvt Ltd", type: "customer" },
-  { v: "Styrenix Performance Materials Ltd", l: "Styrenix Performance Materials Ltd", type: "customer" },
-  { v: "Sudarshan Polyblends Pvt Ltd", l: "Sudarshan Polyblends Pvt Ltd", type: "customer" },
-  { v: "Sunshine Technoplast", l: "Sunshine Technoplast", type: "customer" },
-  { v: "Supreme", l: "Supreme", type: "customer" },
-  { v: "Syrma SGS Technology Ltd", l: "Syrma SGS Technology Ltd", type: "customer" },
-  { v: "TCL", l: "TCL", type: "customer" },
-  { v: "Trinity Material Handling Solutions", l: "Trinity Material Handling Solutions", type: "customer" },
-  { v: "Tri Gases Pvt Ltd", l: "Tri Gases Pvt Ltd", type: "customer" },
-  { v: "Tushar Engineering", l: "Tushar Engineering", type: "customer" },
-  { v: "UKB Electronics Ltd", l: "UKB Electronics Ltd", type: "customer" },
-  { v: "VBROS Auto Pvt Ltd", l: "VBROS Auto Pvt Ltd", type: "customer" },
-  { v: "Victor Pushin Cords", l: "Victor Pushin Cords", type: "customer" },
-  { v: "Voltas Ltd", l: "Voltas Ltd", type: "customer" },
-  { v: "Voltbek Home Appliances Pvt Ltd", l: "Voltbek Home Appliances Pvt Ltd", type: "customer" },
-  { v: "Whirlpool Of India Ltd", l: "Whirlpool Of India Ltd", type: "customer" },
-  { v: "Yash Engineering", l: "Yash Engineering", type: "customer" },
-  { v: "Yashoda Industries", l: "Yashoda Industries", type: "customer" },
-  { v: "Others", l: "Others", type: "customer" }
+  { v: "Abs Electroplaters", l: "Abs Electroplaters" }, { v: "Acerpure India Pvt Ltd", l: "Acerpure India Pvt Ltd" },
+  { v: "Air Liquide", l: "Air Liquide" }, { v: "Amber Enterprises India Ltd", l: "Amber Enterprises India Ltd" },
+  { v: "Amstrad Consumer India Pvt Ltd", l: "Amstrad Consumer India Pvt Ltd" }, { v: "Assiya Paint", l: "Assiya Paint" },
+  { v: "Atul Plast Cr", l: "Atul Plast Cr" }, { v: "Atomberg Technologies Pvt Ltd", l: "Atomberg Technologies Pvt Ltd" },
+  { v: "Avadhoot Paper", l: "Avadhoot Paper" }, { v: "Belrise Industries Ltd", l: "Belrise Industries Ltd" },
+  { v: "Blue Star Ltd", l: "Blue Star Ltd" }, { v: "BPL Ltd", l: "BPL Ltd" },
+  { v: "Carrier Airconditioning & Refrigeration Ltd", l: "Carrier Airconditioning & Refrigeration Ltd" },
+  { v: "Carrier Midea India Pvt Ltd", l: "Carrier Midea India Pvt Ltd" }, { v: "Croma", l: "Croma" },
+  { v: "Enpar Steels", l: "Enpar Steels" }, { v: "Flipkart Internet Pvt Ltd", l: "Flipkart Internet Pvt Ltd" },
+  { v: "Godrej Enterprises Group", l: "Godrej Enterprises Group" }, { v: "Haier Appliances India Pvt Ltd", l: "Haier Appliances India Pvt Ltd" },
+  { v: "Hamster Air Conditioner", l: "Hamster Air Conditioner" }, { v: "Havells India Ltd", l: "Havells India Ltd" },
+  { v: "Hitachi", l: "Hitachi" }, { v: "Infiniti Retail Ltd", l: "Infiniti Retail Ltd" },
+  { v: "Jabil Circuit India Pvt Ltd", l: "Jabil Circuit India Pvt Ltd" }, { v: "Jaydeep Industries", l: "Jaydeep Industries" },
+  { v: "Kenstar", l: "Kenstar" }, { v: "Kinetic Green Energy And Power Solution Ltd", l: "Kinetic Green Energy And Power Solution Ltd" },
+  { v: "Kosh Innovations Pvt Ltd", l: "Kosh Innovations Pvt Ltd" }, { v: "LG Electronics India Pvt Ltd", l: "LG Electronics India Pvt Ltd" },
+  { v: "Machhar Packaging", l: "Machhar Packaging" }, { v: "Maniar Plast", l: "Maniar Plast" },
+  { v: "Marq Solutions", l: "Marq Solutions" }, { v: "Md Graphics Pvt Ltd", l: "Md Graphics Pvt Ltd" },
+  { v: "Microtask Engineering", l: "Microtask Engineering" }, { v: "Minda Vast Access Systems Pvt Ltd", l: "Minda Vast Access Systems Pvt Ltd" },
+  { v: "Mirc Electronics Ltd", l: "Mirc Electronics Ltd" }, { v: "Motorola Mobility India Pvt Ltd", l: "Motorola Mobility India Pvt Ltd" },
+  { v: "Navin Fluorine International Ltd", l: "Navin Fluorine International Ltd" }, { v: "Nidec India Ltd", l: "Nidec India Ltd" },
+  { v: "Onida", l: "Onida" }, { v: "Pankaj Plastics Product", l: "Pankaj Plastics Product" },
+  { v: "Pacoline Industries Pvt Ltd", l: "Pacoline Industries Pvt Ltd" }, { v: "Paramount Polymers Pvt Ltd", l: "Paramount Polymers Pvt Ltd" },
+  { v: "PG Electroplast", l: "PG Electroplast" }, { v: "PG Technoplast", l: "PG Technoplast" },
+  { v: "Poonam Petrochem", l: "Poonam Petrochem" }, { v: "Posco India Pune Processing Center Pvt Ltd", l: "Posco India Pune Processing Center Pvt Ltd" },
+  { v: "Pravin Engineering Works", l: "Pravin Engineering Works" }, { v: "Procyon Star Pvt Ltd", l: "Procyon Star Pvt Ltd" },
+  { v: "Qualis Engineers", l: "Qualis Engineers" }, { v: "Ravago Shah Polymers", l: "Ravago Shah Polymers" },
+  { v: "Realme Mobile Telecommunications India Pvt Ltd", l: "Realme Mobile Telecommunications India Pvt Ltd" },
+  { v: "Reliance Retail Ltd", l: "Reliance Retail Ltd" }, { v: "Renu Electronics Pvt Ltd", l: "Renu Electronics Pvt Ltd" },
+  { v: "Royalux Lighting Pvt Ltd", l: "Royalux Lighting Pvt Ltd" }, { v: "Sadguru Industries", l: "Sadguru Industries" },
+  { v: "Samarth Enterprises", l: "Samarth Enterprises" }, { v: "Sharp Business Systems India Pvt Ltd", l: "Sharp Business Systems India Pvt Ltd" },
+  { v: "Shree Enterprises", l: "Shree Enterprises" }, { v: "Shree Swaraj Mold", l: "Shree Swaraj Mold" },
+  { v: "Shreenath Plastic", l: "Shreenath Plastic" }, { v: "SP Industries", l: "SP Industries" },
+  { v: "SRF Limited", l: "SRF Limited" }, { v: "Starion India Pvt Ltd", l: "Starion India Pvt Ltd" },
+  { v: "Styrenix Performance Materials Ltd", l: "Styrenix Performance Materials Ltd" }, { v: "Sudarshan Polyblends Pvt Ltd", l: "Sudarshan Polyblends Pvt Ltd" },
+  { v: "Sunshine Technoplast", l: "Sunshine Technoplast" }, { v: "Supreme", l: "Supreme" },
+  { v: "Syrma SGS Technology Ltd", l: "Syrma SGS Technology Ltd" }, { v: "TCL", l: "TCL" },
+  { v: "Trinity Material Handling Solutions", l: "Trinity Material Handling Solutions" }, { v: "Tri Gases Pvt Ltd", l: "Tri Gases Pvt Ltd" },
+  { v: "Tushar Engineering", l: "Tushar Engineering" }, { v: "UKB Electronics Ltd", l: "UKB Electronics Ltd" },
+  { v: "VBROS Auto Pvt Ltd", l: "VBROS Auto Pvt Ltd" }, { v: "Victor Pushin Cords", l: "Victor Pushin Cords" },
+  { v: "Voltas Ltd", l: "Voltas Ltd" }, { v: "Voltbek Home Appliances Pvt Ltd", l: "Voltbek Home Appliances Pvt Ltd" },
+  { v: "Whirlpool Of India Ltd", l: "Whirlpool Of India Ltd" }, { v: "Yash Engineering", l: "Yash Engineering" },
+  { v: "Yashoda Industries", l: "Yashoda Industries" }, { v: "Others", l: "Others" },
 ];
 
 const SUPPLIERS = [
-  { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" },
-  { v: "NGM : Next Generation Mfg", l: "NGM : Next Generation Mfg" },
-  { v: "PGTI-2/Sanjeevani", l: "PGTI-2/Sanjeevani" },
-  { v: "PG4: PG Electroplast", l: "PG4: PG Electroplast" },
-  { v: "TRIUMPH Warehouse", l: "TRIUMPH Warehouse" },
-  { v: "VIHAAN Warehouse", l: "VIHAAN Warehouse" },
-  { v: "D111 Warehouse", l: "D111 Warehouse" },
-  { v: "Pg Bhiwadi", l: "Pg Bhiwadi" },
-  { v: "STYROTECH INDUSTRIES", l: "STYROTECH INDUSTRIES" },
-  { v: "KSH DISTRIPARKS PVT.LTD", l: "KSH DISTRIPARKS PVT.LTD" },
-  { v: "MD GRAPHICS PRIVATE LIMITED", l: "MD GRAPHICS PRIVATE LIMITED" },
-  { v: "Carrier Midea", l: "Carrier Midea" },
-  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" },
-  { v: "SAI AUTO COMPONENTS PVT.LTD", l: "SAI AUTO COMPONENTS PVT.LTD" },
-  { v: "Hakimuddin", l: "Hakimuddin" },
-  { v: "Prijai cooltech", l: "Prijai cooltech" },
-  { v: "V G ENGINEERING ENTERPRISES", l: "V G ENGINEERING ENTERPRISES" },
-  { v: "SUMITI PACKING", l: "SUMITI PACKING" },
-  { v: "YEEMAK PVT LTD", l: "YEEMAK PVT LTD" },
-  { v: "ALIGN COMPONENTS PVT.LTD", l: "ALIGN COMPONENTS PVT.LTD" },
-  { v: "VAIBHAV AMIT IND HP GAS AGENCY.", l: "VAIBHAV AMIT IND HP GAS AGENCY." },
-  { v: "SP INDUSTRIES", l: "SP INDUSTRIES" },
-  { v: "MD Graphics", l: "MD Graphics" },
-  { v: "YASH ENGINEERING", l: "YASH ENGINEERING" },
-  { v: "ATUL PLAST", l: "ATUL PLAST" },
-  { v: "Unipack Packaging Pvt Ltd", l: "Unipack Packaging Pvt Ltd" },
-  { v: "Productive technologies", l: "Productive technologies" },
-  { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
-  { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" },
-  { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
-  { v: "MADAN ELECTRO", l: "MADAN ELECTRO" },
-  { v: "KV BOXCORP", l: "KV BOXCORP" },
-  { v: "Suyog eng", l: "Suyog eng" },
-  { v: "AVADHOOT PAPER PRO", l: "AVADHOOT PAPER PRO" },
-  { v: "SAMARTH", l: "SAMARTH" },
-  { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
-  { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" },
-  { v: "Macdermid alpha", l: "Macdermid alpha" },
-  { v: "SHRI JI FOAM", l: "SHRI JI FOAM" },
-  { v: "Metacool", l: "Metacool" },
-  { v: "OM SANTOSHI", l: "OM SANTOSHI" },
-  { v: "M/S. S.B", l: "M/S. S.B" },
-  { v: "CRAFTED SOLUTION", l: "CRAFTED SOLUTION" },
-  { v: "SKM GALVA", l: "SKM GALVA" },
-  { v: "Axalta coating", l: "Axalta coating" },
-  { v: "M/s S.B. PRECISON SPRINGS - 2025-26", l: "M/s S.B. PRECISON SPRINGS - 2025-26" },
-  { v: "METCAP TUB PVT. LTD.", l: "METCAP TUB PVT. LTD." },
-  { v: "Royal polymer", l: "Royal polymer" },
-  { v: "ANUSHKA INDUS", l: "ANUSHKA INDUS" },
-  { v: "OIENTECH INDIA PVT.LTD.", l: "OIENTECH INDIA PVT.LTD." },
-  { v: "Nahata plastikos llp", l: "Nahata plastikos llp" },
-  { v: "KINGFA", l: "KINGFA" },
-  { v: "Nidec INDIA", l: "Nidec INDIA" },
-  { v: "Steel Suppliers Ltd", l: "Steel Suppliers Ltd" },
-  { v: "Plastic Materials Co", l: "Plastic Materials Co" },
-  { v: "Empire Fastner", l: "Empire Fastner" },
-  { v: "Asian Paint", l: "Asian Paint" },
-  { v: "SHREE ENTERPRISES", l: "SHREE ENTERPRISES" },
-  { v: "MACHHAR PACKAGING", l: "MACHHAR PACKAGING" },
-  { v: "PRAVIN ENGINEERING WORKS", l: "PRAVIN ENGINEERING WORKS" },
-  { v: "ATUL PLAST-CR", l: "ATUL PLAST-CR" },
-  { v: "SPF LIMITED", l: "SPF LIMITED" },
-  { v: "SUPREME PETROCHEM LTD", l: "SUPREME PETROCHEM LTD" },
-  { v: "FRIENDS AND COMPANY UNIT-2", l: "FRIENDS AND COMPANY UNIT-2" },
-  { v: "VINDHYAWASNI INDUSTRIES", l: "VINDHYAWASNI INDUSTRIES" },
-  { v: "TUSHAR ENG.", l: "TUSHAR ENG." },
-  { v: "SHARDA INDUSTRIES", l: "SHARDA INDUSTRIES" },
-  { v: "BHARGAVI ENTERPRISES", l: "BHARGAVI ENTERPRISES" },
-  { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" },
-  { v: "MAULI POLYMER", l: "MAULI POLYMER" },
-  { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" },
-  { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" },
+  { v: "PGTI : PG Technoplast", l: "PGTI : PG Technoplast" }, { v: "NGM : Next Generation Mfg", l: "NGM : Next Generation Mfg" },
+  { v: "PGTI-2/Sanjeevani", l: "PGTI-2/Sanjeevani" }, { v: "PG4: PG Electroplast", l: "PG4: PG Electroplast" },
+  { v: "TRIUMPH Warehouse", l: "TRIUMPH Warehouse" }, { v: "VIHAAN Warehouse", l: "VIHAAN Warehouse" },
+  { v: "D111 Warehouse", l: "D111 Warehouse" }, { v: "Pg Bhiwadi", l: "Pg Bhiwadi" },
+  { v: "STYROTECH INDUSTRIES", l: "STYROTECH INDUSTRIES" }, { v: "KSH DISTRIPARKS PVT.LTD", l: "KSH DISTRIPARKS PVT.LTD" },
+  { v: "MD GRAPHICS PRIVATE LIMITED", l: "MD GRAPHICS PRIVATE LIMITED" }, { v: "Carrier Midea", l: "Carrier Midea" },
+  { v: "AIR LIQUIDE INDIA HOLDING PVT.LTD", l: "AIR LIQUIDE INDIA HOLDING PVT.LTD" }, { v: "SAI AUTO COMPONENTS PVT.LTD", l: "SAI AUTO COMPONENTS PVT.LTD" },
+  { v: "Hakimuddin", l: "Hakimuddin" }, { v: "Prijai cooltech", l: "Prijai cooltech" },
+  { v: "V G ENGINEERING ENTERPRISES", l: "V G ENGINEERING ENTERPRISES" }, { v: "SUMITI PACKING", l: "SUMITI PACKING" },
+  { v: "YEEMAK PVT LTD", l: "YEEMAK PVT LTD" }, { v: "ALIGN COMPONENTS PVT.LTD", l: "ALIGN COMPONENTS PVT.LTD" },
+  { v: "VAIBHAV AMIT IND HP GAS AGENCY.", l: "VAIBHAV AMIT IND HP GAS AGENCY." }, { v: "SP INDUSTRIES", l: "SP INDUSTRIES" },
+  { v: "MD Graphics", l: "MD Graphics" }, { v: "YASH ENGINEERING", l: "YASH ENGINEERING" },
+  { v: "ATUL PLAST", l: "ATUL PLAST" }, { v: "Unipack Packaging Pvt Ltd", l: "Unipack Packaging Pvt Ltd" },
+  { v: "Productive technologies", l: "Productive technologies" }, { v: "SAIDEEP POLYTHERM", l: "SAIDEEP POLYTHERM" },
+  { v: "SULTAN ENTERPRISES", l: "SULTAN ENTERPRISES" }, { v: "SHAMBHURAV POLYPLAST", l: "SHAMBHURAV POLYPLAST" },
+  { v: "MADAN ELECTRO", l: "MADAN ELECTRO" }, { v: "KV BOXCORP", l: "KV BOXCORP" },
+  { v: "Suyog eng", l: "Suyog eng" }, { v: "AVADHOOT PAPER PRO", l: "AVADHOOT PAPER PRO" },
+  { v: "SAMARTH", l: "SAMARTH" }, { v: "ELIN ELECTRONIC", l: "ELIN ELECTRONIC" },
+  { v: "SHREENATH PLASTIC", l: "SHREENATH PLASTIC" }, { v: "Macdermid alpha", l: "Macdermid alpha" },
+  { v: "SHRI JI FOAM", l: "SHRI JI FOAM" }, { v: "Metacool", l: "Metacool" },
+  { v: "OM SANTOSHI", l: "OM SANTOSHI" }, { v: "M/S. S.B", l: "M/S. S.B" },
+  { v: "CRAFTED SOLUTION", l: "CRAFTED SOLUTION" }, { v: "SKM GALVA", l: "SKM GALVA" },
+  { v: "Axalta coating", l: "Axalta coating" }, { v: "M/s S.B. PRECISON SPRINGS - 2025-26", l: "M/s S.B. PRECISON SPRINGS - 2025-26" },
+  { v: "METCAP TUB PVT. LTD.", l: "METCAP TUB PVT. LTD." }, { v: "Royal polymer", l: "Royal polymer" },
+  { v: "ANUSHKA INDUS", l: "ANUSHKA INDUS" }, { v: "OIENTECH INDIA PVT.LTD.", l: "OIENTECH INDIA PVT.LTD." },
+  { v: "Nahata plastikos llp", l: "Nahata plastikos llp" }, { v: "KINGFA", l: "KINGFA" },
+  { v: "Nidec INDIA", l: "Nidec INDIA" }, { v: "Steel Suppliers Ltd", l: "Steel Suppliers Ltd" },
+  { v: "Plastic Materials Co", l: "Plastic Materials Co" }, { v: "Empire Fastner", l: "Empire Fastner" },
+  { v: "Asian Paint", l: "Asian Paint" }, { v: "SHREE ENTERPRISES", l: "SHREE ENTERPRISES" },
+  { v: "MACHHAR PACKAGING", l: "MACHHAR PACKAGING" }, { v: "PRAVIN ENGINEERING WORKS", l: "PRAVIN ENGINEERING WORKS" },
+  { v: "ATUL PLAST-CR", l: "ATUL PLAST-CR" }, { v: "SPF LIMITED", l: "SPF LIMITED" },
+  { v: "SUPREME PETROCHEM LTD", l: "SUPREME PETROCHEM LTD" }, { v: "FRIENDS AND COMPANY UNIT-2", l: "FRIENDS AND COMPANY UNIT-2" },
+  { v: "VINDHYAWASNI INDUSTRIES", l: "VINDHYAWASNI INDUSTRIES" }, { v: "TUSHAR ENG.", l: "TUSHAR ENG." },
+  { v: "SHARDA INDUSTRIES", l: "SHARDA INDUSTRIES" }, { v: "BHARGAVI ENTERPRISES", l: "BHARGAVI ENTERPRISES" },
+  { v: "SAMARTH SERVICES", l: "SAMARTH SERVICES" }, { v: "MAULI POLYMER", l: "MAULI POLYMER" },
+  { v: "FORTUNE ENTERPRISES", l: "FORTUNE ENTERPRISES" }, { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" },
 ];
 
 const lsGet = (key, fallback) => {
   try {
     const v = localStorage.getItem(key);
     if (!v) return fallback;
-    const parsed = JSON.parse(v);
-    return { ...fallback, ...parsed };
+    return { ...fallback, ...JSON.parse(v) };
   } catch { return fallback; }
 };
-
 const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
-const lsDel = (...keys) => keys.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+const lsDel = (...keys) => keys.forEach((k) => { try { localStorage.removeItem(k); } catch {} });
 
 // ─── Default Shapes ───────────────────────────────────────────────────────────
-const DEFAULT_DRIVER = {
-  driverName: "", driverContact: "", driverIdType: "Aadhar",
-  driverIdNumber: "", licenseNumber: "",
-};
-
-const DEFAULT_VEHICLE = {
-  vehicleNumber: "", typeOfVehicle: "truck",
-  transporterName: "", PUCExpiry: "",
-};
-
+const DEFAULT_DRIVER = { driverName: "", driverContact: "", driverIdType: "Aadhar", driverIdNumber: "", licenseNumber: "" };
+const DEFAULT_VEHICLE = { vehicleNumber: "", typeOfVehicle: "truck", transporterName: "", PUCExpiry: "" };
 const DEFAULT_TRIP_COMMON = { purpose: "", materialType: "" };
 
-// ── Internal trip: no isInternalShifting toggle (it IS internal shifting),
-//    no source field (auto-set from user.factory), passType always "Incoming"
 const DEFAULT_TRIP_INTERNAL = {
-  ...DEFAULT_TRIP_COMMON,
-  destinationFactoryId: "",
-  supplier: "", material: "", quantity: "", invoiceNo: "",
-  invoiceAmount: "", customer: "",
-  passType: "Incoming",
+  ...DEFAULT_TRIP_COMMON, destinationFactoryId: "", supplier: "", material: "", quantity: "",
+  invoiceNo: "", invoiceAmount: "", customer: "", passType: "Incoming",
+  isIntraPlant: false, siteId: "", blockId: "",
 };
 
 const DEFAULT_TRIP_EXTERNAL = {
-  ...DEFAULT_TRIP_COMMON,
-  supplier: "", material: "", quantity: "", invoiceNo: "",
-  invoiceAmount: "", customer: "", isInternalShifting: false,
-  destinationFactoryId: "", passType: "Incoming", source: "",
+  ...DEFAULT_TRIP_COMMON, supplier: "", material: "", quantity: "", invoiceNo: "",
+  invoiceAmount: "", customer: "", isInternalShifting: false, destinationFactoryId: "",
+  passType: "Incoming", source: "", isIntraPlant: false, siteId: "", blockId: "",
 };
 
 const DEFAULT_INTERNAL = { ...DEFAULT_DRIVER, ...DEFAULT_VEHICLE, ...DEFAULT_TRIP_INTERNAL };
 const DEFAULT_EXTERNAL = { ...DEFAULT_DRIVER, ...DEFAULT_VEHICLE, ...DEFAULT_TRIP_EXTERNAL };
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
-const Icon = {
-  x:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-  check:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>,
-  truck:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
-  search:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
-  spinner: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "vehSpin .8s linear infinite" }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>,
-  save:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+const ID_TYPES = [{ value: "Aadhar", label: "Aadhar" }, { value: "PAN", label: "PAN" }, { value: "DL", label: "Driving Licence" }];
+const MATERIAL_TYPES = [
+  { value: "RM", label: "RM – Raw Material" }, { value: "FG", label: "FG – Finished Goods" },
+  { value: "Scrap", label: "Scrap" }, { value: "NewMachines", label: "New Machines" }, { value: "Others", label: "Others" },
+];
+
+const PURPOSE_OPTS = [{ value: "Pickup", label: "Pickup" }, { value: "Delivery", label: "Delivery" }];
+const PASS_TYPE_OPTS = [{ value: "Incoming", label: "Incoming" }, { value: "Outgoing", label: "Outgoing" }];
+const VEHICLE_TYPES = [
+  { value: "truck", label: "Truck" }, { value: "car", label: "Car" }, { value: "bike", label: "Bike" }, { value: "byHand", label: "By Hand" },
+  { value: "trackter", label: "Trackter" }, { value: "miniTruck", label: "Mini Truck" }, { value: "mixerTruck", label: "Mixer Truck" },
+  { value: "autoRikshaw", label: "Auto Rikshaw" }, { value: "waterTanker", label: "Water Tanker" }, { value: "containerTruck", label: "Container Truck" },
+];
+const CUSTOMER_OPTS = CUSTOMER.map((c) => ({ value: c.v, label: c.l }));
+const SUPPLIER_OPTS = SUPPLIERS.map((s) => ({ value: s.v, label: s.l }));
+const ALL_SOURCE_OPTS = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l)).map((o) => ({ value: o.v, label: o.l }));
+
+function debounce(fn, delay) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+}
+
+// ─── Theme tokens ───────────────────────────────────────────────────────────────
+const THEME = {
+  internal: { grad: "linear-gradient(135deg,#6366f1 0%,#4f46e5 60%,#4338ca 100%)", soft: "linear-gradient(135deg,#eef2ff,#e0e7ff)", border: "#a5b4fc", text: "#4338ca", icon: "#6366f1", iconBg: "#ede9fe", boxShadow: "0 2px 10px rgba(99,102,241,.04)" },
+  external: {
+    grad: "linear-gradient(135deg,#10b981 0%,#059669 60%,#047857 100%)",
+    soft: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+    border: "#6ee7b7",
+    text: "#065f46",
+    icon: "#059669",
+    iconBg: "#d1fae5"
+  },
+ok: { soft: "linear-gradient(135deg,#ecfdf5,#d1fae5)", border: "#6ee7b7", text: "#065f46", icon: "#10b981" },
 };
 
-// ─── Modal Shell ──────────────────────────────────────────────────────────────
-function Modal({ open, onClose, children, title, width = 780 }) {
-  if (!open) return null;
+// ─── Compact section card ──────────────────────────────────────────────────────
+function Section({ icon, title, subtitle, theme, found, foundMsg, children }) {
+  const t = found ? THEME.ok : theme;
   return (
     <>
-      <style>{`
-        @keyframes vehSpin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes vehIn    { from{opacity:0;transform:scale(.97) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
-        @keyframes vehFade  { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes tabSlide { from{opacity:0;transform:translateX(6px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes layerOpen { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes fmtShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-4px)} 40%{transform:translateX(4px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)} }
-        .veh-btn-p { transition:all .15s; }
-        .veh-btn-p:hover:not(:disabled) { filter:brightness(1.08); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.18); }
-        .veh-btn-c { transition:background .15s; }
-        .veh-btn-c:hover { background:#e5e7eb!important; }
-        .veh-inp:focus { border-color:#6366f1!important; box-shadow:0 0 0 3px rgba(99,102,241,.12)!important; outline:none; }
-        .veh-sec { animation:tabSlide .18s ease; }
-        .veh-badge { animation:vehFade .25s ease; }
-        .layer-body { animation:layerOpen .18s ease; }
-        .tab-pill { transition:all .22s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden; }
-        .tab-pill::before { content:''; position:absolute; inset:0; opacity:0; transition:opacity .22s; }
-        .tab-pill.active::before { opacity:1; }
-        .fmt-err { animation:fmtShake .35s ease; }
-        ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:#f9fafb} ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:8px}
-      `}</style>
-      <div
-        style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(10,10,20,.5)", backdropFilter:"blur(6px)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
-        onClick={e => e.target === e.currentTarget && onClose()}
-      >
-        <div style={{ background:"#fff", borderRadius:18, width:"100%", maxWidth:width, maxHeight:"94vh", overflow:"hidden", display:"flex", flexDirection:"column", boxShadow:"0 32px 90px rgba(0,0,0,.26), 0 0 0 1px rgba(99,102,241,.08)", animation:"vehIn .22s ease" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 20px 11px", background:"linear-gradient(135deg,#6366f1 0%,#4f46e5 60%,#4338ca 100%)", borderRadius:"18px 18px 0 0", flexShrink:0 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-              <div style={{ width:30, height:30, borderRadius:9, background:"rgba(255,255,255,.18)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <span style={{ width:17, height:17, color:"#fff" }}>{Icon.truck}</span>
-              </div>
-              <div>
-                <h2 style={{ margin:0, fontSize:14, fontWeight:800, color:"#fff", letterSpacing:-.3 }}>{title}</h2>
-                <p style={{ margin:0, fontSize:9.5, color:"rgba(255,255,255,.65)", fontWeight:400 }}>All draft fields are auto-saved locally</p>
-              </div>
-            </div>
-            <button onClick={onClose} style={{ border:"none", background:"rgba(255,255,255,.18)", cursor:"pointer", borderRadius:8, width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", transition:"background .15s" }}
-              onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,.28)"}
-              onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,.18)"}
-            >
-              <span style={{ width:13, height:13 }}>{Icon.x}</span>
-            </button>
-          </div>
-          <div style={{ overflowY:"auto", padding:"14px 18px 16px", flex:1 }}>{children}</div>
+    <style>{`
+
+      .section-card:hover {
+        // box-shadow: 0 8px 20px ${found ? "#059669" : "#4b5563"}33;
+        outline: 1px solid ${found ? "#059669" : "#4b5563"}22;
+      }
+    `}</style>
+    <div
+      style={{
+        // border: `1.25px solid rgba(0,1,5,.06)`,
+        borderRadius: 12,
+        marginBottom: 10,
+        overflow: "hidden",
+        background: "#fff",
+        boxShadow: "0 4px 14px rgba(15,23,42,.08), 0 1px 3px rgba(15,23,42,.06)",
+      }}
+      className="section-card"
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", background: t.soft }}>
+        <div style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: found ? "#6ee7b7" : t.iconBg, display: "flex", alignItems: "center", justifyContent: "center", color: found ? "#065f46" : t.icon, fontSize: 13 }}>
+          {icon}
         </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text strong style={{ fontSize: 12.5, color: found ? "#065f46" : "#1f2937" }}>{title}</Text>
+          <div style={{ fontSize: 10, color: found ? "#059669" : "#6b7280", fontWeight: 500 }}>{found ? foundMsg : subtitle}</div>
+        </div>
+        {found && <Tag color="success" icon={<CheckCircleFilled />} style={{ borderRadius: 999, fontWeight: 700, fontSize: 10 }}>Auto-filled</Tag>}
       </div>
+      <div style={{ padding: "10px 12px 2px" }}>{children}</div>
+    </div>
     </>
   );
 }
 
-// ─── Premium Tab Bar ──────────────────────────────────────────────────────────
-function TabBar({ active, setActive, hasDraft, showExternal }) {
-  const tabs = [
-    {
-      key: "internal", label: "Internal Vehicle", sub: "Plant to plant transfer",
-      icon: <Factory size={15} strokeWidth={2} />,
-      gradient: "linear-gradient(135deg,#6366f1,#4f46e5)",
-      activeBg: "linear-gradient(135deg,#eef2ff,#e0e7ff)", activeColor: "#4338ca",
-      activeBorder: "#a5b4fc", iconBg: "#ede9fe", iconColor: "#6366f1",
-    },
-    {
-      key: "external", label: "External Vehicle", sub: "Gate entry & check-in",
-      icon: <Truck size={15} strokeWidth={2} />,
-      gradient: "linear-gradient(135deg,#f59e0b,#d97706)",
-      activeBg: "linear-gradient(135deg,#fffbeb,#fef3c7)", activeColor: "#92400e",
-      activeBorder: "#fcd34d", iconBg: "#fef3c7", iconColor: "#d97706",
-    },
-  ].filter(t => t.key === "internal" || showExternal);
+// ─── Sticky, big, pattern-recognizable mode switcher ───────────────────────────
+function ModeSwitcher({ active, setActive, showExternal, hasDraft }) {
+  const modes = [
+    { key: "internal", label: "INTERNAL", sub: "Plant → Plant transfer", icon: <BankOutlined style={{ fontSize: 19 }} />, theme: THEME.internal },
+    { key: "external", label: "EXTERNAL", sub: "Gate entry / check-in", icon: <TruckOutlined style={{ fontSize: 19 }} />, theme: THEME.external },
+  ].filter((m) => m.key === "internal" || showExternal);
 
-  if (tabs.length === 1) return null;
+  if (modes.length === 1) {
+    const m = modes[0];
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 13, background: m.theme.grad, marginBottom: 10, boxShadow: `0 6px 16px ${m.theme.border}66` }}>
+        <div style={{ width: 32, height: 32, borderRadius: 10, background: "rgba(255,255,255,.22)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{m.icon}</div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#fff", letterSpacing: 0.3 }}>{m.label} VEHICLE</div>
+          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.85)", fontWeight: 500 }}>{m.sub}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display:"flex", gap:8, marginBottom:12, flexShrink:0 }}>
-      {tabs.map(t => {
-        const isActive = active === t.key;
+    <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+      {modes.map((m) => {
+        const isActive = active === m.key;
         return (
-          <button key={t.key} className={`tab-pill${isActive?" active":""}`} onClick={() => setActive(t.key)}
-            style={{ flex:1, border:isActive?`1.5px solid ${t.activeBorder}`:"1.5px solid #e5e7eb", background:isActive?t.activeBg:"#fafafa", borderRadius:10, padding:"9px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:10, transition:"all .22s cubic-bezier(.4,0,.2,1)", boxShadow:isActive?`0 2px 12px ${t.activeBorder}55`:"none", position:"relative" }}
+          <button
+            key={m.key}
+            onClick={() => setActive(m.key)}
+            style={{
+              flex: 1, cursor: "pointer", border: "none", borderRadius: 13, padding: "9px 12px",
+              display: "flex", alignItems: "center", gap: 10,
+              background: isActive ? m.theme.grad : "#f3f4f6",
+              boxShadow: isActive ? `0 2px 5px rgb(0, 0, 0, 0.1)` : "inset 0 0 0 1.25px #e5e7eb",
+              transform: isActive ? "translateY(-1px)" : "none",
+              transition: "all .22s cubic-bezier(.4,0,.2,1)", position: "relative",
+            }}
           >
-            <div style={{ width:32, height:32, borderRadius:9, flexShrink:0, background:isActive?t.iconBg:"#f3f4f6", display:"flex", alignItems:"center", justifyContent:"center", color:isActive?t.iconColor:"#9ca3af", transition:"all .22s", boxShadow:isActive?`0 0 0 3px ${t.iconColor}18`:"none" }}>{t.icon}</div>
-            <div style={{ textAlign:"left", minWidth:0 }}>
-              <div style={{ fontSize:11.5, fontWeight:800, color:isActive?t.activeColor:"#6b7280", letterSpacing:-.1, transition:"color .22s" }}>{t.label}</div>
-              <div style={{ fontSize:9.5, color:isActive?t.activeColor+"aa":"#9ca3af", fontWeight:500, transition:"color .22s" }}>{t.sub}</div>
+            <div style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: isActive ? "rgba(255,255,255,.22)" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: isActive ? "#fff" : "#9ca3af", boxShadow: isActive ? "0 2px 6px rgba(0,0,0,.1)" : "0 1px 3px rgba(0,0,0,.06)" }}>
+              {m.icon}
             </div>
-            {hasDraft[t.key] && (<div style={{ position:"absolute", top:7, right:9, width:6, height:6, borderRadius:"50%", background:"#6366f1", boxShadow:"0 0 0 2px #fff" }} title="Draft saved" />)}
-            {isActive && (<div style={{ position:"absolute", bottom:0, left:"10%", width:"80%", height:2, borderRadius:"2px 2px 0 0", background:t.gradient }} />)}
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.3, color: isActive ? "#fff" : "#6b7280" }}>{m.label}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: isActive ? "rgba(255,255,255,.85)" : "#9ca3af" }}>{m.sub}</div>
+            </div>
+            {hasDraft[m.key] && <span style={{ position: "absolute", top: 7, right: 9, width: 7, height: 7, borderRadius: "50%", background: isActive ? "#fff" : m.theme.icon, boxShadow: "0 0 0 2px rgba(255,255,255,.5)" }} />}
           </button>
         );
       })}
@@ -384,150 +314,43 @@ function TabBar({ active, setActive, hasDraft, showExternal }) {
   );
 }
 
-// ─── Collapsible Layer ────────────────────────────────────────────────────────
-function Layer({ icon, title, subtitle, color, bg, border, found, foundMsg, children, defaultOpen=true }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div style={{ border:`1.5px solid ${found?"#6ee7b7":border}`, borderRadius:10, marginBottom:8, overflow:"hidden", transition:"border-color .2s" }}>
-      <button onClick={() => setOpen(p => !p)} style={{ width:"100%", background:found?"linear-gradient(135deg,#ecfdf5,#d1fae5)":bg, border:"none", padding:"8px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:9, transition:"background .2s" }}>
-        <div style={{ width:26, height:26, borderRadius:7, background:found?"#6ee7b7":color+"22", display:"flex", alignItems:"center", justifyContent:"center", color:found?"#065f46":color, flexShrink:0 }}>{icon}</div>
-        <div style={{ textAlign:"left", flex:1, minWidth:0 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:found?"#065f46":"#374151" }}>{title}</div>
-          <div style={{ fontSize:9, color:found?"#059669":"#9ca3af", fontWeight:500 }}>{found?foundMsg:subtitle}</div>
-        </div>
-        {found && (<span style={{ fontSize:9, background:"#059669", color:"#fff", borderRadius:5, padding:"1px 6px", fontWeight:700, marginRight:4 }}>AUTO-FILLED</span>)}
-        <span style={{ color:"#9ca3af", display:"flex", alignItems:"center" }}>{open?<ChevronUp size={13}/>:<ChevronDown size={13}/>}</span>
-      </button>
-      {open && (<div className="layer-body" style={{ padding:"10px 12px 10px", background:"#fff" }}>{children}</div>)}
-    </div>
-  );
-}
-
-function SL({ label, color="#6366f1" }) {
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, marginTop:2 }}>
-      <span style={{ fontSize:9, fontWeight:800, color, textTransform:"uppercase", letterSpacing:.8, whiteSpace:"nowrap" }}>{label}</span>
-      <div style={{ flex:1, height:1, background:`${color}30` }} />
-    </div>
-  );
-}
-
-function DraftBadge({ show }) {
-  if (!show) return null;
-  return (
-    <span style={{ fontSize:10, color:"#6366f1", fontWeight:600, display:"flex", alignItems:"center", gap:3, animation:"vehFade .2s ease" }}>
-      <span style={{ width:11, height:11 }}>{Icon.save}</span> Draft saved
-    </span>
-  );
-}
-
-function FormatHint({ idType }) {
-  const rule = ID_FORMAT[idType];
-  if (!rule) return null;
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:6, background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:6, padding:"4px 10px", marginBottom:6, fontSize:9.5, color:"#1d4ed8", fontWeight:500 }}>
-      <span style={{ fontSize:11 }}>ℹ️</span>
-      <span>{rule.hint}</span>
-    </div>
-  );
-}
-
-function VehicleFormatHint({ value }) {
-  const err = value.length >= 4 ? validateVehicleNumber(value) : null;
-  if (!err && !value) return (
-    <div style={{ fontSize:9, color:"#6b7280", marginTop:2 }}>Format: SS NN LLL NNNN — e.g. <code style={{ background:"#f3f4f6", padding:"0 3px", borderRadius:3 }}>RJ 14 AB 1234</code></div>
-  );
-  if (err && value.length >= 4) return (
-    <div className="fmt-err" style={{ fontSize:9, color:"#dc2626", marginTop:2, fontWeight:600 }}>⚠ {err}</div>
-  );
-  if (!err && value.length >= 8) return (
-    <div style={{ fontSize:9, color:"#059669", marginTop:2, fontWeight:600 }}>✓ {displayVehicleNumber(value)}</div>
-  );
-  return null;
-}
-
-const SourceField = ({ value, onChange, options }) => {
-  return (
-    <div style={{display:"flex", flexDirection:"column", gap:4}}>
-      <label className="text-[10px] text-gray-500 font-semibold">Source Factory</label>
-      <AutoComplete
-        required
-        value={value || ""}
-        style={{ width: "100%", height:32 }}
-        placeholder="Source Factory"
-        options={options.map((o) => ({
-          value: o.v,
-          label: o.l,
-        }))}
-        filterOption={(inputValue, option) =>
-          option.label.toLowerCase().includes(inputValue.toLowerCase())
-        }
-        onChange={(val) => {
-          onChange("source", val);
-        }}
-      />
-    </div>
-  );
-};
-
 // ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdit = null }) {
   const isEditMode = !!tripToEdit;
-  const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
-
-  const workLocation  = user.workLocation;
-  const showExternal  = workLocation === "atGate";
+  const { user } = useUser();
+  const isIsIntraPlant = user.factory?.isIntraMovementAllowed || false;
+  
+  const workLocation = user.workLocation;
+  const showExternal = workLocation === "atGate";
   const canAutoLookup = true;
-  const [messageApi, contextHolder] = message.useMessage()
+  const [pucModalOpen, setPucModalOpen] = useState(false);
+
+  const [messageApi, contextHolder] = message.useMessage();
   const deviceInfo = getDeviceInfo();
 
-  const [activeTab, setActiveTab]       = useState(() => workLocation === "atGate" ? lsGet(LS_TAB, "external") : lsGet(LS_TAB, "internal"));
-  const [factories, setFactories]       = useState([]);
-  const [fetchingFactories, setFF]      = useState(false);
-  const [internalForm, _setInternal]    = useState(() => lsGet(LS_INTERNAL, DEFAULT_INTERNAL));
-  const [externalForm, _setExternal]    = useState(() => lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
-  const [errors, setErrors]             = useState({});
-  const [submitting, setSubmitting]     = useState(false);
-  const [draftSaved, setDraftSaved]     = useState(false);
-  const [hasDraft, setHasDraft]         = useState({ internal:false, external:false });
-  const [driverLookup, setDL]           = useState({ loading:false, found:false, foundBy:null });
-  const [vehicleLookup, setVL]          = useState({ loading:false, found:false });
+  const [activeTab, setActiveTab] = useState(() => (workLocation === "atGate" ? lsGet(LS_TAB, "external") : lsGet(LS_TAB, "internal")));
+  const [factories, setFactories] = useState([]);
+  const [fetchingFactories, setFF] = useState(false);
+  const [siteBlocks, setSiteBlocks] = useState([]);
+  const [fetchingSites, setFS] = useState(false);
+  const [internalForm, _setInternal] = useState(() => lsGet(LS_INTERNAL, DEFAULT_INTERNAL));
+  const [externalForm, _setExternal] = useState(() => lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const [hasDraft, setHasDraft] = useState({ internal: false, external: false });
+  const [driverLookup, setDL] = useState({ loading: false, found: false, foundBy: null });
+  const [vehicleLookup, setVL] = useState({ loading: false, found: false });
   const draftTimer = useRef(null);
-  const ALL_CUSTOMERS = [...CUSTOMER, ...SUPPLIERS].sort((a,b) => a.l.localeCompare(b.l));
 
-  useEffect(() => {
-    if (!showExternal && activeTab === "external") {
-      setActiveTab("internal");
-    }
-  }, [showExternal, activeTab]);
+  useEffect(() => { if (!showExternal && activeTab === "external") setActiveTab("internal"); }, [showExternal, activeTab]);
+  
 
   const checkDraft = useCallback((intForm, extForm) => {
     const hasData = (form, defaults) =>
-      Object.keys(defaults).some(k => {
-        if (typeof defaults[k] === "boolean") return form[k] !== defaults[k];
-        return form[k] && form[k] !== defaults[k];
-      });
-    setHasDraft({ internal:hasData(intForm, DEFAULT_INTERNAL), external:hasData(extForm, DEFAULT_EXTERNAL) });
+      Object.keys(defaults).some((k) => (typeof defaults[k] === "boolean" ? form[k] !== defaults[k] : form[k] && form[k] !== defaults[k]));
+    setHasDraft({ internal: hasData(intForm, DEFAULT_INTERNAL), external: hasData(extForm, DEFAULT_EXTERNAL) });
   }, []);
-
-  const setInternalForm = useCallback(updater => {
-    _setInternal(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (!isEditMode) { lsSet(LS_INTERNAL, next); flashDraft(); }
-      checkDraft(next, lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
-      return next;
-    });
-  }, [checkDraft, isEditMode]);
-
-  const setExternalForm = useCallback(updater => {
-    _setExternal(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (!isEditMode) { lsSet(LS_EXTERNAL, next); flashDraft(); }
-      checkDraft(lsGet(LS_INTERNAL, DEFAULT_INTERNAL), next);
-      return next;
-    });
-  }, [checkDraft, isEditMode]);
 
   const flashDraft = () => {
     setDraftSaved(true);
@@ -535,59 +358,57 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     draftTimer.current = setTimeout(() => setDraftSaved(false), 2000);
   };
 
-  useEffect(() => { lsSet(LS_TAB, activeTab); }, [activeTab]);
+  const setInternalForm = useCallback((updater) => {
+    _setInternal((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (!isEditMode) { lsSet(LS_INTERNAL, next); flashDraft(); }
+      checkDraft(next, lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL));
+      return next;
+    });
+  }, [checkDraft, isEditMode]);
 
+  const setExternalForm = useCallback((updater) => {
+    _setExternal((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (!isEditMode) { lsSet(LS_EXTERNAL, next); flashDraft(); }
+      checkDraft(lsGet(LS_INTERNAL, DEFAULT_INTERNAL), next);
+      return next;
+    });
+  }, [checkDraft, isEditMode]);
+
+  useEffect(() => { lsSet(LS_TAB, activeTab); }, [activeTab]);
 
   useEffect(() => {
     if (!open) return;
 
     if (isEditMode && tripToEdit) {
       const trip = tripToEdit;
-      const mat  = trip.materials?.[0] || {};
-      const drv  = trip.driver  || {};
-      const veh  = trip.vehicle || {};
+      const mat = trip.materials?.[0] || {};
+      const drv = trip.driver || {};
+      const veh = trip.vehicle || {};
 
       const prefilled = {
-        // driver
-        driverName:    drv.driverName    || "",
-        driverContact: drv.driverContact || "",
-        driverIdType:  drv.driverIdType  || "Aadhar",
-        driverIdNumber:drv.driverIdNumber|| "",
+        driverName: drv.driverName || "", driverContact: drv.driverContact || "",
+        driverIdType: drv.driverIdType || "Aadhar", driverIdNumber: drv.driverIdNumber || "",
         licenseNumber: drv.licenseNumber || "",
-        // vehicle
-        vehicleNumber:   veh.vehicleNumber   || "",
-        typeOfVehicle:   veh.typeOfVehicle   || "truck",
-        transporterName: veh.transporterName || "",
-        PUCExpiry:       veh.PUCExpiry ? veh.PUCExpiry.split("T")[0] : "",
-        // trip
-        purpose:              trip.purpose              || "",
-        materialType:         mat.name                  || "",
-        material:             mat.material              || "",
-        quantity:             mat.quantity              || "",
-        invoiceNo:            mat.invoiceNo             || "",
-        invoiceAmount:        mat.invoiceAmount         || "",
-        customer:             mat.customer              || "",
-        supplier:             mat.supplier              || "",
+        vehicleNumber: veh.vehicleNumber || "", typeOfVehicle: veh.typeOfVehicle || "truck",
+        transporterName: veh.transporterName || "", PUCExpiry: veh.PUCExpiry ? veh.PUCExpiry.split("T")[0] : "",
+        purpose: trip.purpose || "", materialType: mat.name || "", material: mat.material || "",
+        quantity: mat.quantity || "", invoiceNo: mat.invoiceNo || "", invoiceAmount: mat.invoiceAmount || "",
+        customer: mat.customer || "", supplier: mat.supplier || "",
         destinationFactoryId: trip.destinationFactory?._id || trip.destinationFactoryId || "",
-        source:               trip.externalSource       || "",
-        isInternalShifting:   trip.type === "internal_transfer",
-        passType:             "Incoming",
-        seal:                 mat.seal                  || "sealed",
-        unit:                 mat.unit                  || "",
+        source: trip.externalSource || "", isInternalShifting: trip.type === "internal_transfer",
+        passType: "Incoming", seal: mat.seal || "sealed", unit: mat.unit || "",
+        isIntraPlant: !!trip.isIntraPlant,
+        siteId: trip.siteId?._id || trip.siteId || "",
+        blockId: trip.blockId?._id || trip.blockId || "",
       };
 
-      if (trip.type === "internal_transfer") {
-        _setInternal({ ...DEFAULT_INTERNAL, ...prefilled });
-        setActiveTab("internal");
-      } else {
-        _setExternal({ ...DEFAULT_EXTERNAL, ...prefilled });
-        setActiveTab("external");
-      }
-
-      return; // skip draft restore in edit mode
+      if (trip.type === "internal_transfer") { _setInternal({ ...DEFAULT_INTERNAL, ...prefilled }); setActiveTab("internal"); }
+      else { _setExternal({ ...DEFAULT_EXTERNAL, ...prefilled }); setActiveTab("external"); }
+      return;
     }
 
-    // normal create mode — restore drafts
     const si = lsGet(LS_INTERNAL, DEFAULT_INTERNAL);
     const se = lsGet(LS_EXTERNAL, DEFAULT_EXTERNAL);
     _setInternal(si); _setExternal(se);
@@ -599,550 +420,621 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     if (!open) return;
     setFF(true);
     api.get("/factories")
-      .then(res => setFactories(res.data?.factories || res.data || []))
+      .then((res) => setFactories(res.data?.factories || res.data || []))
       .catch(() => messageApi.error("Could not load factories"))
       .finally(() => setFF(false));
   }, [open]);
 
-  // ── Driver Lookup ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchSites = async () => {
+      if (!open) return;
+      const factoryId = user?.factory?._id;
+      if (!factoryId) return;
+      try {
+        setFS(true);
+        const res = await api.get("/sites", { params: { factoryId } });
+        setSiteBlocks(res.data?.data || res.data || []);
+      } catch {
+        messageApi.error("Could not load sites/blocks");
+      } finally {
+        setFS(false);
+      }
+    };
+    fetchSites();
+  }, [open]);
+
+
+  const getLocationOptions = useCallback((purpose) => {
+    const opts = [];
+
+    // Normalize user's own site + block ids (handle populated or raw id)
+    const userSiteId = user?.siteId?._id || user?.siteId || null;
+    const userBlockId = user?.blockId?._id || user?.blockId || null;
+
+    // Only consider sites that this user's factory actually allows —
+    // prevents same-named sites from other factories leaking in as duplicates
+    const factoryAllowedSiteIds = new Set(
+      (user?.factory?.allowedSites || []).map((s) => s?._id || s)
+    );
+
+    const scopedSiteBlocks = siteBlocks.filter((site) =>
+      factoryAllowedSiteIds.has(site._id)
+    );
+
+    scopedSiteBlocks.forEach((site) => {
+      const siteName = site.name?.trim().toLowerCase();
+
+      // Always exclude Security
+      if (siteName === "security") return;
+
+      const isUsersSite = userSiteId && site._id === userSiteId;
+
+      (site.allowedBlocks || site.blocks || []).forEach((block) => {
+        // Only exclude this specific block when it's the user's own site AND own block
+        if (isUsersSite && userBlockId && block._id === userBlockId) return;
+
+        opts.push({
+          value: `${site._id}__${block._id}`,
+          label: `${site.name} ${block.name}`,
+        });
+      });
+    });
+
+    return opts;
+  }, [siteBlocks, user?.siteId, user?.blockId, user?.factory?.allowedSites]);
+
+  const handleLocationChange = (onChange, val) => {
+    const [siteId, blockId] = (val || "").split("__");
+    onChange("siteId", siteId || "");
+    onChange("blockId", blockId || "");
+  };
+
   const lookupDriver = useCallback(
     debounce(async (value, field, currentTab) => {
       if (!canAutoLookup) return;
       if (field === "driverContact" && value.length < 10) return;
       if (field === "driverIdNumber" && value.length < 4) return;
-      setDL({ loading:true, found:false, foundBy:null });
+      setDL({ loading: true, found: false, foundBy: null });
       try {
-        const res = await api.get(`/lookup`, { params:{ [field]:value } });
+        const res = await api.get(`/lookup`, { params: { [field]: value } });
         const d = res.data?.driver || res.data;
         if (d) {
-          const patch = { driverName:d.driverName||"", driverContact:d.driverContact||"", driverIdType:d.driverIdType||"Aadhar", driverIdNumber:d.driverIdNumber||"", licenseNumber:d.licenseNumber||"" };
-          if (currentTab==="internal") setInternalForm(p=>({...p,...patch}));
-          else setExternalForm(p=>({...p,...patch}));
-          setDL({ loading:false, found:true, foundBy:field });
-        } else { setDL({ loading:false, found:false, foundBy:null }); }
-      } catch { setDL({ loading:false, found:false, foundBy:null }); }
+          const patch = { driverName: d.driverName || "", driverContact: d.driverContact || "", driverIdType: d.driverIdType || "Aadhar", driverIdNumber: d.driverIdNumber || "", licenseNumber: d.licenseNumber || "" };
+          if (currentTab === "internal") setInternalForm((p) => ({ ...p, ...patch }));
+          else setExternalForm((p) => ({ ...p, ...patch }));
+          setDL({ loading: false, found: true, foundBy: field });
+        } else setDL({ loading: false, found: false, foundBy: null });
+      } catch { setDL({ loading: false, found: false, foundBy: null }); }
     }, 700),
     [setInternalForm, setExternalForm, canAutoLookup]
   );
 
-  // ── Vehicle Lookup ─────────────────────────────────────────────────────────
   const lookupVehicle = useCallback(
     debounce(async (vehicleNumber, currentTab) => {
       if (!canAutoLookup) return;
       if (!vehicleNumber || vehicleNumber.length < 4) return;
-      setVL({ loading:true, found:false });
+      setVL({ loading: true, found: false });
       try {
         const res = await api.get(`/vehicles/number/${vehicleNumber}`);
         const v = res.data?.vehicle || res.data;
-        if (v) {
-          const patch = { typeOfVehicle:v.typeOfVehicle||"truck", transporterName:v.transporterName||"", PUCExpiry:v.PUCExpiry?v.PUCExpiry.split("T")[0]:"" };
-          if (currentTab==="internal") setInternalForm(p=>({...p,...patch}));
-          else setExternalForm(p=>({...p,...patch}));
-          setVL({ loading:false, found:true });
-        } else { setVL({ loading:false, found:false }); }
-      } catch { setVL({ loading:false, found:false }); }
-    }, 700),
-    [setInternalForm, setExternalForm, canAutoLookup]
-  );
+        if(v.PUCExpiry && new Date(v.PUCExpiry) < new Date()) {
+          setPucModalOpen(true);
+        }
 
-  // ── Field handlers ─────────────────────────────────────────────────────────
+        if (v) {
+          const patch = { typeOfVehicle: v.typeOfVehicle || "truck", transporterName: v.transporterName || "", PUCExpiry: v.PUCExpiry ? v.PUCExpiry.split("T")[0] : "" };
+          if (currentTab === "internal") setInternalForm((p) => ({ ...p, ...patch }));
+          else setExternalForm((p) => ({ ...p, ...patch }));
+          setVL({ loading: false, found: true });
+        } else setVL({ loading: false, found: false });
+      } catch { setVL({ loading: false, found: false }); }
+    }, 700),
+    [setInternalForm, setExternalForm, canAutoLookup]);
+
+  const clearErr = (k) => setErrors((p) => ({ ...p, [k]: "" }));
+
   const setInternal = (k, v) => {
-    setInternalForm(p => ({ ...p, [k]:v }));
-    if (k==="vehicleNumber")  lookupVehicle(cleanVehicleNumber(v), "internal");
-    if (k==="driverContact")  lookupDriver(v, "driverContact", "internal");
-    if (k==="driverIdNumber") lookupDriver(v, "driverIdNumber", "internal");
+    setInternalForm((p) => ({ ...p, [k]: v }));
+    if (k === "vehicleNumber") lookupVehicle(cleanVehicleNumber(v), "internal");
+    if (k === "driverContact") lookupDriver(v, "driverContact", "internal");
+    if (k === "driverIdNumber") lookupDriver(v, "driverIdNumber", "internal");
     clearErr(k);
   };
 
   const setExternal = (k, v) => {
-    setExternalForm(p => ({ ...p, [k]:v }));
-    if (k==="vehicleNumber")  lookupVehicle(cleanVehicleNumber(v), "external");
-    if (k==="driverContact")  lookupDriver(v, "driverContact", "external");
-    if (k==="driverIdNumber") lookupDriver(v, "driverIdNumber", "external");
+    setExternalForm((p) => ({ ...p, [k]: v }));
+    if (k === "vehicleNumber") lookupVehicle(cleanVehicleNumber(v), "external");
+    if (k === "driverContact") lookupDriver(v, "driverContact", "external");
+    if (k === "driverIdNumber") lookupDriver(v, "driverIdNumber", "external");
     clearErr(k);
   };
 
-  const clearErr = k => setErrors(p => ({ ...p, [k]:"" }));
-
-  // ── Validation ─────────────────────────────────────────────────────────────
   const getFormatErrors = (form) => {
     const e = {};
     const vehErr = validateVehicleNumber(form.vehicleNumber);
     if (form.vehicleNumber && vehErr) e.vehicleNumber = vehErr;
     const rule = ID_FORMAT[form.driverIdType];
-    if (rule && form.driverIdNumber) {
-      const idErr = rule.validate(form.driverIdNumber);
-      if (idErr) e.driverIdNumber = idErr;
-    }
-    if (form.licenseNumber) {
-      const dlErr = ID_FORMAT.DL.validate(form.licenseNumber);
-      if (dlErr) e.licenseNumber = dlErr;
-    }
+    if (rule && form.driverIdNumber) { const idErr = rule.validate(form.driverIdNumber); if (idErr) e.driverIdNumber = idErr; }
+    if (form.licenseNumber) { const dlErr = ID_FORMAT.DL.validate(form.licenseNumber); if (dlErr) e.licenseNumber = dlErr; }
     return e;
   };
 
-  // ── Internal validation: no source check (auto-set), no isInternalShifting
   const validateInternal = () => {
     const e = {};
-    if (!internalForm.driverContact)        e.driverContact = "Required";
-    if (!internalForm.driverName)           e.driverName = "Required";
-    if (!internalForm.driverIdNumber)       e.driverIdNumber = "Required";
-    if (!internalForm.vehicleNumber)        e.vehicleNumber = "Required";
-    if (!internalForm.transporterName)      e.transporterName = "Required";
-    if (!internalForm.destinationFactoryId) e.destinationFactoryId = "Required";
-    if (!internalForm.purpose)              e.purpose = "Required";
-    if (!internalForm.materialType)         e.materialType = "Required";
-    // Material detail validation — skip if purpose is Pickup
-    if (internalForm.purpose !== "Pickup") {
-      // if (internalForm.materialType === "RM" && !internalForm.supplier)   e.supplier = "Required";
-      // if (["RM","FG","Scrap","NewMachines","Others"].includes(internalForm.materialType) ) e.material = "Required";
-      if (internalForm.materialType === "FG" && !internalForm.customer)   e.customer = "Required";
-    }
-    const fmtErr = getFormatErrors(internalForm);
-    const merged = { ...e, ...fmtErr };
-    setErrors(merged); 
+    if (!internalForm.driverContact) e.driverContact = "Required";
+    if (!internalForm.driverName) e.driverName = "Required";
+    if (!internalForm.driverIdNumber) e.driverIdNumber = "Required";
+    if (!internalForm.vehicleNumber) e.vehicleNumber = "Required";
+    if (!internalForm.transporterName) e.transporterName = "Required";
+    if (!internalForm.purpose) e.purpose = "Required";
+    if (!internalForm.materialType) e.materialType = "Required";
+    if (internalForm.isIntraPlant) {
+      if (!internalForm.siteId || !internalForm.blockId) e.blockId = "Required";
+    } else if (!internalForm.destinationFactoryId) e.destinationFactoryId = "Required";
+    if (internalForm.purpose !== "Pickup" && internalForm.materialType === "FG" && !internalForm.customer) e.customer = "Required";
+    const merged = { ...e, ...getFormatErrors(internalForm) };
+    setErrors(merged);
     return !Object.keys(merged).length;
   };
 
   const validateExternal = () => {
     const e = {};
-    if (!externalForm.driverContact)   e.driverContact = "Required";
-    if (!externalForm.driverName)      e.driverName = "Required";
-    if (!externalForm.driverIdNumber)  e.driverIdNumber = "Required";
-    if (!externalForm.vehicleNumber)   e.vehicleNumber = "Required";
-    if (!externalForm.typeOfVehicle)   e.typeOfVehicle = "Required";
+    if (!externalForm.driverContact) e.driverContact = "Required";
+    if (!externalForm.driverName) e.driverName = "Required";
+    if (!externalForm.driverIdNumber) e.driverIdNumber = "Required";
+    if (!externalForm.vehicleNumber) e.vehicleNumber = "Required";
+    if (!externalForm.typeOfVehicle) e.typeOfVehicle = "Required";
     if (!externalForm.transporterName) e.transporterName = "Required";
-    if (!externalForm.purpose)         e.purpose = "Required";
-    if (!externalForm.materialType)    e.materialType = "Required";
-    if (!externalForm.source)          e.source = "Required";
-    if (externalForm.isInternalShifting && !externalForm.supplier)             e.supplier = "Required";
-    if (externalForm.isInternalShifting && !externalForm.destinationFactoryId) e.destinationFactoryId = "Required";
-    if (externalForm.purpose !== "Pickup") {
-      if (externalForm.materialType === "RM" && !externalForm.supplier)   e.supplier = "Required";
-      if (["RM", "Scrap","NewMachines","Others"].includes(externalForm.materialType) && !externalForm.material) e.material = "Required";
-      if (externalForm.materialType === "FG" && !externalForm.customer)   e.customer = "Required";
+    if (!externalForm.purpose) e.purpose = "Required";
+    if (!externalForm.materialType) e.materialType = "Required";
+    if (!externalForm.source) e.source = "Required";
+    if (externalForm.isIntraPlant) {
+      if (!externalForm.siteId || !externalForm.blockId) e.blockId = "Required";
     }
-    const fmtErr = getFormatErrors(externalForm);
-    const merged = { ...e, ...fmtErr };
-    setErrors(merged); 
+    if (externalForm.isInternalShifting && !externalForm.supplier) e.supplier = "Required";
+    if (externalForm.isInternalShifting && !externalForm.isIntraPlant && !externalForm.destinationFactoryId) e.destinationFactoryId = "Required";
+    if (externalForm.purpose !== "Pickup") {
+      if (externalForm.materialType === "RM" && !externalForm.supplier) e.supplier = "Required";
+      if (["RM", "Scrap", "NewMachines", "Others"].includes(externalForm.materialType) && !externalForm.material) e.material = "Required";
+      if (externalForm.materialType === "FG" && !externalForm.customer) e.customer = "Required";
+    }
+    const merged = { ...e, ...getFormatErrors(externalForm) };
+    setErrors(merged);
     return !Object.keys(merged).length;
   };
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmitInternal = async () => {
-    console.log("Submitting internal form:", internalForm);
-    if (!validateInternal()) {
-      messageApi.error("Please fill all required fields.");
-      return;
-    }
+    if (!validateInternal()) return messageApi.error("Please fill all required fields.");
     setSubmitting(true);
-
     try {
       if (isEditMode) {
         await api.patch(`/trip/update/${tripToEdit._id}`, {
-          ...internalForm,
-          deviceDetails: deviceInfo,
+          ...internalForm, deviceDetails: deviceInfo,
           vehicleNumber: cleanVehicleNumber(internalForm.vehicleNumber),
           sourceFactoryId: user.factory?._id,
         });
         messageApi.success("Trip updated successfully");
       } else {
         await api.post("/new/internal-trip", {
-          ...internalForm,
-          vehicleNumber:   cleanVehicleNumber(internalForm.vehicleNumber),
+          ...internalForm, vehicleNumber: cleanVehicleNumber(internalForm.vehicleNumber),
           sourceFactoryId: user.factory?._id,
-          source:          user.factory?.name || user.factory?._id || "",
-          status:          "inside_factory",
+          source: user.factory?.name || user.factory?._id || "",
+          status: "inside_factory",
         });
         messageApi.success("Internal vehicle entry created");
       }
-
       setTimeout(() => { onRefresh(); handleClose(); }, 500);
-    } catch (e) {
-      messageApi.error(e.response?.data?.message || "Failed");
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (e) { messageApi.error(e.response?.data?.message || "Failed"); }
+    finally { setSubmitting(false); }
   };
 
-const handleSubmitExternal = async () => {
-  if (!validateExternal()) return messageApi.error("Please fill all required fields.");
-  setSubmitting(true);
-  try {
-    if (isEditMode) {
-      await api.patch(`/trip/update/${tripToEdit._id}`, {
-        ...externalForm,
-        deviceDetails: deviceInfo,
-        vehicleNumber: cleanVehicleNumber(externalForm.vehicleNumber),
-        sourceFactoryId: user.factory?._id,
-      });
-      messageApi.success("Trip updated successfully");
-    } else {
-      const response = await api.post("/new/external-trip", {
-        ...externalForm,
-        deviceDetails: deviceInfo,
-        vehicleNumber:   cleanVehicleNumber(externalForm.vehicleNumber),
-        sourceFactoryId: user.factory?._id,
-      });
-      messageApi.success(response?.data?.message || "External Vehicle created.");
-    }
-    setTimeout(() => { onRefresh(); handleClose(); }, 500);
-  } catch (e) {
-    messageApi.error(String(e.response?.data?.message || "Failed"));
-  } finally {
-    setSubmitting(false);
-  }
-};
-
+  const handleSubmitExternal = async () => {
+    if (!validateExternal()) return messageApi.error("Please fill all required fields.");
+    setSubmitting(true);
+    try {
+      if (isEditMode) {
+        await api.patch(`/trip/update/${tripToEdit._id}`, {
+          ...externalForm, deviceDetails: deviceInfo,
+          vehicleNumber: cleanVehicleNumber(externalForm.vehicleNumber),
+          sourceFactoryId: user.factory?._id,
+        });
+        messageApi.success("Trip updated successfully");
+      } else {
+        const response = await api.post("/new/external-trip", {
+          ...externalForm, deviceDetails: deviceInfo,
+          vehicleNumber: cleanVehicleNumber(externalForm.vehicleNumber),
+          sourceFactoryId: user.factory?._id,
+        });
+        messageApi.success(response?.data?.message || "External Vehicle created.");
+      }
+      setTimeout(() => { onRefresh(); handleClose(); }, 500);
+    } catch (e) { messageApi.error(String(e.response?.data?.message || "Failed")); }
+    finally { setSubmitting(false); }
+  };
 
   const handleClose = () => {
     onClose();
     _setInternal(DEFAULT_INTERNAL); lsSet(LS_INTERNAL, DEFAULT_INTERNAL);
     _setExternal(DEFAULT_EXTERNAL); lsSet(LS_EXTERNAL, DEFAULT_EXTERNAL);
     lsDel(LS_TAB);
-    setErrors({}); setVL({ loading:false, found:false }); setDL({ loading:false, found:false, foundBy:null });
-    setHasDraft({ internal:false, external:false });
+    setErrors({}); setVL({ loading: false, found: false }); setDL({ loading: false, found: false, foundBy: null });
+    setHasDraft({ internal: false, external: false });
   };
 
-  // ── Style tokens ───────────────────────────────────────────────────────────
-  const g2  = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 };
-  const g3  = { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:8 };
-  const col = { display:"flex", flexDirection:"column", gap:2 };
-  const LBL = { fontSize:10, fontWeight:600, color:"#4b5563" };
-  const ERR = { fontSize:8.5, color:"#dc2626", marginTop:1 };
-  const IB  = { borderRadius:7, padding:"6px 9px", fontSize:12, outline:"none", background:"#fafafa", color:"#111", width:"100%", boxSizing:"border-box", transition:"border-color .15s,box-shadow .15s", fontFamily:"inherit", height:30 };
+  const factoryOpts = factories.filter((f) => f._id !== user.factory?._id).map((f) => ({ value: f._id, label: `${f.name} – ${f.location}` }));
 
-  const ID_TYPES       = [{ v:"Aadhar",l:"Aadhar"},{v:"PAN",l:"PAN"},{v:"DL",l:"Driving Licence"}];
-  const MATERIAL_TYPES = [{ v:"RM",l:"RM – Raw Material"},{v:"FG",l:"FG – Finished Goods"},{v:"Scrap",l:"Scrap"},{v:"NewMachines",l:"New Machines"},{v:"Others",l:"Others"}];
-  const PURPOSE_OPTS   = [{ v:"Pickup",l:"Pickup"},{v:"Delivery",l:"Delivery"}];
-  const PASS_TYPE_OPTS = [{ v:"Incoming",l:"Incoming"},{v:"Outgoing",l:"Outgoing"}];
-  const factoryOpts    = factories.filter(f=>f._id!==user.factory?._id).map(f=>({v:f._id,l:`${f.name} – ${f.location}`}));
-  const VEHICLE_TYPES  = [
-    {v:"truck",l:"Truck"},{v:"car",l:"Car"},{v:"bike",l:"Bike"},{v:"byHand",l:"By Hand"},
-    {v:"trackter",l:"Trackter"},{v:"miniTruck",l:"Mini Truck"},{v:"mixerTruck",l:"Mixer Truck"},
-    {v:"autoRikshaw",l:"Auto Rikshaw"},{v:"waterTanker",l:"Water Tanker"},{v:"containerTruck",l:"Container Truck"},
-  ];
+  // ── Field renderers (compact) ─────────────────────────────────────────────────
+  const lookupSuffix = (key) => {
+    const isDriverLookup = key === "driverContact" || key === "driverIdNumber";
+    const isVehicleLookup = key === "vehicleNumber";
+    if (!isDriverLookup && !isVehicleLookup) return null;
+    const loading = (isDriverLookup && driverLookup.loading) || (isVehicleLookup && vehicleLookup.loading);
+    return loading ? <LoadingOutlined spin style={{ color: THEME.internal.icon, fontSize: 12 }} /> : <SearchOutlined style={{ color: "#c0c4cc", fontSize: 12 }} />;
+  };
 
-  // ── Field builders ─────────────────────────────────────────────────────────
-  const inp = (key, label, value, onChange, type="text", placeHolder, req=false, activeIdType=null) => {
-    const isDriverLookupField  = key==="driverContact"||key==="driverIdNumber";
-    const isVehicleLookupField = key==="vehicleNumber";
-    const showSpinner = canAutoLookup && ((isDriverLookupField&&driverLookup.loading)||(isVehicleLookupField&&vehicleLookup.loading));
-    const showSearch  = canAutoLookup && (isDriverLookupField||isVehicleLookupField) && !showSpinner;
+  const fieldStyle = { borderRadius: 8, height: 34, fontSize: 13 };
+  const lbl = (text, req) => <Text strong style={{ fontSize: 11.5, color: "#4b5563" }}>{text}{req && <span style={{ color: "#ef4444" }}> *</span>}</Text>;
 
-    let placeholder = placeHolder;
-    let maxLen;
-    if (key==="driverIdNumber" && activeIdType && ID_FORMAT[activeIdType]) {
-      placeholder = ID_FORMAT[activeIdType].placeholder;
-      maxLen = key==="driverIdNumber" && activeIdType==="DL" ? 19 : ID_FORMAT[activeIdType].maxRaw;
-    }
-    if (key==="licenseNumber") { placeholder = ID_FORMAT.DL.placeholder; maxLen = 19; }
-    if (key==="vehicleNumber") { placeholder = "MH 12 AB 1234"; maxLen = 13; }
-    if (key==="driverContact") { maxLen = 10; }
+ const renderTextField = (form, onChange, key, label, { required, type = "text", maxLen, placeholder, addonBefore, idType } = {}) => {
+  let status = errors[key] ? "error" : undefined;
+  let help = errors[key];
 
-    const handleChange = (e) => {
-      let val = e.target.value;
-      if (key==="driverContact") {
-        val = val.replace(/\D/g,"").slice(0,10);
-      } else if (key==="vehicleNumber") {
-        val = val.replace(/[^A-Z0-9\s-]/gi,"").toUpperCase().slice(0,13);
-      } else if (key==="driverIdNumber" && activeIdType) {
-        const rule = ID_FORMAT[activeIdType];
-        if (rule) val = rule.clean(val);
-      } else if (key==="licenseNumber") {
-        val = ID_FORMAT.DL.clean(val);
-      } else {
-        val = val.toUpperCase();
-      }
-      onChange(key, val);
-      clearErr(key);
-    };
+  if (!help && key === "vehicleNumber" && form.vehicleNumber.length >= 8) {
+    const err = validateVehicleNumber(form.vehicleNumber);
+    if (!err) { status = "success"; help = `✓ ${displayVehicleNumber(form.vehicleNumber)}`; }
+  }
+  if (!help && key === "driverIdNumber" && idType && form.driverIdNumber) {
+    const rule = ID_FORMAT[idType];
+    if (rule && !rule.validate(form.driverIdNumber)) { status = "success"; help = `✓ Format Valid for ${idType}`; }
+  }
+  if (!help && key === "licenseNumber" && form.licenseNumber) {
+    if (!ID_FORMAT.DL.validate(form.licenseNumber)) { status = "success"; help = "✓ Format Valid for DL"; }
+  }
 
-    return (
-      <div style={col}>
-        <label style={LBL}>{label}{req&&<span style={{ color:"#6366f1",marginLeft:2 }}>*</span>}</label>
-        <div style={{ display:"flex", alignItems:"center", border:errors[key]?"1.5px solid #dc2626":"1.5px solid #e5e7eb", borderRadius:6, overflow:"hidden", position:"relative" }}>
-          {key==="driverContact" && (
-            <span style={{ padding:"0px 8px", background:"#f3f4f6", borderRight:"1px solid #e5e7eb", fontSize:13, color:"#374151", height:"100%", display:"flex", alignItems:"center" }}>+91</span>
-          )}
-          <input
-            type={key==="driverContact"?"text":type}
-            inputMode={key==="driverContact"?"numeric":"text"}
-            value={value}
-            maxLength={maxLen}
-            onChange={handleChange}
-            placeholder={placeholder}
-            className="veh-inp"
-            style={{ ...IB, border:"none", flex:1, paddingRight:(isDriverLookupField||isVehicleLookupField)?28:undefined }}
+  // Render success help text in green explicitly — antd doesn't color it by default
+  const helpNode = status === "success" && help
+    ? <span style={{ color: "#52c41a" }}>{help}</span>
+    : help;
+
+  const handleChange = (e) => {
+    let val = e.target.value;
+    if (key === "driverContact") val = val.replace(/\D/g, "").slice(0, 10);
+    else if (key === "vehicleNumber") val = val.replace(/[^A-Z0-9\s-]/gi, "").toUpperCase().slice(0, 13);
+    else if (key === "driverIdNumber" && idType && ID_FORMAT[idType]) val = ID_FORMAT[idType].clean(val);
+    else if (key === "licenseNumber") val = ID_FORMAT.DL.clean(val);
+    else if (type === "text") val = val.toUpperCase();
+    onChange(key, val);
+  };
+
+  return (
+    <Form.Item
+      layout="vertical"
+      label={lbl(label, required)}
+      validateStatus={status}
+      help={helpNode}
+      labelCol={{ span: 24 }}
+      wrapperCol={{ span: 24 }}
+      style={{ marginBottom: 11 }}
+    >
+      <Input
+        value={form[key]}
+        maxLength={maxLen}
+        placeholder={placeholder}
+        addonBefore={addonBefore}
+        suffix={lookupSuffix(key)}
+        onChange={handleChange}
+        style={fieldStyle}
+      />
+    </Form.Item>
+  );
+ };
+
+  const renderSelectField = (form, onChange, key, label, options, required = false) => (
+    <Form.Item
+      layout="vertical"
+      label={lbl(label, required)}
+      validateStatus={errors[key] ? "error" : undefined}
+      help={errors[key]}
+      labelCol={{ span: 24 }}
+      wrapperCol={{ span: 24 }}
+      style={{ marginBottom: 11 }}
+    >
+      <Select value={form[key] || undefined} placeholder="Select…" options={options} showSearch optionFilterProp="label" style={{ width: "100%" }} className="veh-select" onChange={(val) => { onChange(key, val); clearErr(key); }} />
+    </Form.Item>
+  );
+  
+  const driverHint = (idType) => ID_FORMAT[idType]?.hint;
+
+  // ── Driver row: Phone (narrow) | Driver Name (wide) | ID Number (medium) ──────
+  const renderDriverSection = (form, onChange) => (
+    <>
+      {driverHint(form.driverIdType) && <Alert type="info" showIcon message={driverHint(form.driverIdType)} style={{ marginBottom: 10, borderRadius: 8, fontSize: 11.5, padding: "4px 10px" }} />}
+      <Row gutter={10}>
+        <Col xs={24} sm={8}>{renderTextField(form, onChange, "driverContact", "Phone Number", { maxLen: 10, addonBefore: "+91", required: true, placeholder: "Enter phone number" })}</Col>
+        <Col xs={24} sm={8}>{renderTextField(form, onChange, "driverName", "Driver Name", { required: true, placeholder: "Enter driver name" })}</Col>
+        <Col xs={24} sm={8}>{renderTextField(form, onChange, "driverIdNumber", "ID Number", { idType: form.driverIdType, maxLen: ID_FORMAT[form.driverIdType]?.maxRaw, placeholder: ID_FORMAT[form.driverIdType]?.placeholder })}</Col>
+      </Row>
+      <Row gutter={10}>
+        <Col xs={24} sm={12}>{renderSelectField(form, onChange, "driverIdType", "ID Type", ID_TYPES)}</Col>
+        <Col xs={24} sm={12}>{renderTextField(form, onChange, "licenseNumber", "Licence No.", { maxLen: 19, placeholder: ID_FORMAT.DL.placeholder })}</Col>
+      </Row>
+      {!driverLookup.found && (form.driverContact.length === 10 || form.driverIdNumber.length >= 4) && (
+        <Alert type="warning" showIcon message="Driver not found — new record will be created." style={{ borderRadius: 8, fontSize: 11.5, padding: "4px 10px" }} />
+      )}
+    </>
+  );
+
+  const renderVehicleSection = (form, onChange) => (
+  <>
+    <Row gutter={10}>
+      <Col xs={24} sm={12}>{renderTextField(form, onChange, "vehicleNumber", "Vehicle Number", { required: true, maxLen: 13, placeholder: "MH 12 AB 1234" })}</Col>
+      <Col xs={24} sm={12}>{renderSelectField(form, onChange, "typeOfVehicle", "Vehicle Type", VEHICLE_TYPES, true)}</Col>
+    </Row>
+    <Row gutter={10}>
+      <Col xs={24} sm={12}>{renderTextField(form, onChange, "transporterName", "Transporter", { required: true, placeholder: "Enter transporter name" })}</Col>
+      <Col xs={24} sm={12}>
+        <Form.Item
+          layout="vertical"
+          label={<span>{lbl("PUC Expiry")} <span className="text-red-500 font-semibold tracking-wide" >{form.PUCExpiry ? new Date(form.PUCExpiry) < new Date() ? "(Expired ⚠)" : "Valid" : null}</span> </span>}
+          labelCol={{ span: 24 }}
+          wrapperCol={{ span: 24 }}
+          style={{ marginBottom: 11 }}
+        >
+          <DatePicker
+            style={{ width: "100%", ...fieldStyle }}
+            value={form.PUCExpiry ? dayjs(form.PUCExpiry) : null}
+            onChange={(_, dateString) => onChange("PUCExpiry", dateString || "")}
           />
-          {(showSpinner||showSearch) && (
-            <span style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", width:13, height:13, color:showSpinner?"#6366f1":"#9ca3af" }}>
-              {showSpinner?Icon.spinner:Icon.search}
-            </span>
-          )}
-        </div>
-        {errors[key] && <span className="fmt-err" style={ERR}>⚠ {errors[key]}</span>}
-        {key==="vehicleNumber" && !errors[key] && <VehicleFormatHint value={value} />}
-        {key==="driverIdNumber" && !errors[key] && activeIdType && (() => {
-          const rule = ID_FORMAT[activeIdType];
-          if (!rule || !value) return null;
-          const err = rule.validate(value);
-          if (err && value.length >= 4) return <span className="fmt-err" style={ERR}>⚠ {err}</span>;
-          if (!err) return <span style={{ fontSize:9, color:"#059669", marginTop:2, fontWeight:600 }}>✓ Valid {rule.label} number</span>;
-          return null;
-        })()}
-        {key==="licenseNumber" && !errors[key] && (() => {
-          if (!value) return null;
-          const err = ID_FORMAT.DL.validate(value);
-          if (err && value.length >= 4) return <span className="fmt-err" style={ERR}>⚠ {err}</span>;
-          if (!err) return <span style={{ fontSize:9, color:"#059669", marginTop:2, fontWeight:600 }}>✓ Valid DL number</span>;
-          return null;
-        })()}
-      </div>
-    );
-  };
+        </Form.Item>
+      </Col>
+    </Row>
+    {!vehicleLookup.found && form.vehicleNumber.length >= 4 && (
+      <Alert type="warning" showIcon message="Vehicle not found — new record will be created." style={{ borderRadius: 8, fontSize: 11.5, padding: "4px 10px" }} />
+    )}
+  </>
+);
 
-  const sel = (key, label, value, onChange, options, req=false) => (
-    <div style={col}>
-      <label style={LBL}>{label}{req&&<span style={{ color:"#6366f1",marginLeft:2 }}>*</span>}</label>
-      <select value={value} onChange={e=>{ onChange(key,e.target.value); clearErr(key); }} className="veh-inp"
-        style={{ ...IB, border:errors[key]?"1.5px solid #dc2626":"1.5px solid #e5e7eb", cursor:"pointer" }}
-      >
-        <option value="" hidden>Select…</option>
-        {options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-      </select>
-      {errors[key]&&<span style={ERR}>{errors[key]}</span>}
-    </div>
-  );
-
-  const submitRow = (label, onClick, gradient) => (
-    <div style={{ display:"flex", alignItems:"center", gap:8, paddingTop:10, borderTop:"1px solid #f0f0f0", marginTop:4, flexShrink:0 }}>
-      <button className="veh-btn-p" onClick={onClick} disabled={submitting}
-        style={{ background:gradient, color:"#fff", border:"none", borderRadius:8, padding:"7px 18px", fontWeight:700, fontSize:11.5, cursor:submitting?"not-allowed":"pointer", opacity:submitting?0.7:1, display:"flex", alignItems:"center", gap:5, boxShadow:"0 2px 8px rgba(0,0,0,.14)" }}>
-        <span style={{ width:12, height:12 }}>{submitting?Icon.spinner:Icon.check}</span>{label}
-      </button>
-      <button className="veh-btn-c" onClick={handleClose} disabled={submitting}
-        style={{ background:"#f3f4f6", color:"#374151", border:"none", borderRadius:8, padding:"7px 14px", fontWeight:600, fontSize:11.5, cursor:"pointer" }}>
-        Cancel
-      </button>
-      <div style={{ marginLeft:"auto" }}><DraftBadge show={draftSaved} /></div>
-    </div>
-  );
-
-  // ── Driver Layer ───────────────────────────────────────────────────────────
-  const renderDriverLayer = (form, onChange) => (
-    <Layer
-      icon={<User size={13}/>} title="Driver Details"
-      subtitle="Lookup by phone or ID — or enter manually"
-      color="#6366f1" bg="linear-gradient(135deg,#eef2ff,#f5f3ff)" border="#e0e7ff"
-      found={driverLookup.found}
-      foundMsg={`Driver found via ${driverLookup.foundBy==="driverContact"?"phone number":"ID number"} — fields auto-filled`}
-      defaultOpen={true}
-    >
-      <FormatHint idType={form.driverIdType} />
-      <div style={g3}>
-        {inp("driverContact",  "Phone Number", form.driverContact,  onChange, "text", undefined, false, null)}
-        {inp("driverIdNumber", "ID Number",    form.driverIdNumber, onChange, "text", undefined, false, form.driverIdType)}
-        {inp("licenseNumber",  "Licence No.",  form.licenseNumber,  onChange, "text", undefined, false, null)}
-      </div>
-      <div style={g2}>
-        {inp("driverName",   "Driver Name", form.driverName,   onChange, "text", undefined, true, null)}
-        {sel("driverIdType", "ID Type",     form.driverIdType, onChange, ID_TYPES)}
-      </div>
-      {!driverLookup.found && (form.driverContact.length===10||form.driverIdNumber.length>=4) && (
-        <div style={{ background:"#fffbeb", border:"1px solid #fcd34d", borderRadius:6, padding:"5px 10px", fontSize:10, color:"#92400e", fontWeight:500 }}>
-          ⚠️ Driver not found — a new driver record will be created on submit.
-        </div>
-      )}
-    </Layer>
-  );
-
-  // ── Vehicle Layer ──────────────────────────────────────────────────────────
-  const renderVehicleLayer = (form, onChange) => (
-    <Layer
-      icon={<Car size={13}/>} title="Vehicle Details"
-      subtitle="Lookup by vehicle number — or enter manually"
-      color="#0891b2" bg="linear-gradient(135deg,#ecfeff,#cffafe)" border="#a5f3fc"
-      found={vehicleLookup.found} foundMsg="Vehicle found — details auto-filled"
-      defaultOpen={true}
-    >
-      <div style={g3}>
-        {inp("vehicleNumber",   "Vehicle Number", form.vehicleNumber,   onChange, "text", undefined, true)}
-        {sel("typeOfVehicle",   "Vehicle Type",   form.typeOfVehicle,   onChange, VEHICLE_TYPES)}
-        {inp("transporterName", "Transporter",    form.transporterName, onChange)}
-      </div>
-      <div style={g2}>
-        {inp("PUCExpiry", "PUC Expiry", form.PUCExpiry, onChange, "date")}
-        <div/>
-      </div>
-      {!vehicleLookup.found && form.vehicleNumber.length>=4 && (
-        <div style={{ background:"#fffbeb", border:"1px solid #fcd34d", borderRadius:6, padding:"5px 10px", fontSize:10, color:"#92400e", fontWeight:500 }}>
-          ⚠️ Vehicle not found — a new vehicle record will be created on submit.
-        </div>
-      )}
-    </Layer>
-  );
-
-  // ── Material Detail Sections ───────────────────────────────────────────────
   const renderMaterialDetails = (form, onChange, isPickup) => {
-    if (isPickup) return null;
-    const supplierOpts = SUPPLIERS.map(s=>({value:s.v,label:s.l}));
+    if (isPickup || !form.materialType) return null;
 
     if (form.materialType === "RM") return (
-      <div style={{ animation:"vehFade .18s ease" }}>
-        <SL label="Raw Material Details" color="#059669"/>
-        <div style={{ background:"#f0fdf4", border:"1.5px solid #bbf7d0", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
-          <div style={g3}>
-            <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-              <label style={LBL}>Supplier <span style={{ color:"#6366f1",marginLeft:2 }}>*</span></label>
-              <Select mode="tags" showSearch style={{ width:"100%", height:32 }} placeholder="Search or enter supplier"
-                value={form.supplier?[form.supplier]:[]}
-                onChange={(value)=>onChange("supplier",value[0]||"")}
-                options={supplierOpts}
-              />
-              {errors.supplier&&<span style={ERR}>{errors.supplier}</span>}
-            </div>
-            {inp("material","Material Name",form.material,onChange,"text",undefined,true)}
-            {inp("quantity","Quantity",form.quantity,onChange,"number")}
-          </div>
-          <div style={g2}>
-            {inp("invoiceNo","Invoice No.",form.invoiceNo,onChange)}
-            {inp("invoiceAmount","Invoice Amount (₹)",form.invoiceAmount,onChange,"number")}
-          </div>
-        </div>
-      </div>
+      <>
+        <Row gutter={10}>
+          <Col xs={24} sm={8}>
+            <Form.Item  layout="vertical" label={lbl("Supplier", true)} validateStatus={errors.supplier ? "error" : undefined} help={errors.supplier} style={{ marginBottom: 11 }}>
+              <Select mode="tags" showSearch style={{ width: "100%" }} placeholder="Search or enter supplier" value={form.supplier ? [form.supplier] : []} onChange={(value) => onChange("supplier", value[0] || "")} options={SUPPLIER_OPTS} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={8}>{renderTextField(form, onChange, "material", "Material Name", { required: true, placeholder: "Enter material name" })}</Col>
+          <Col xs={24} sm={8}>{renderTextField(form, onChange, "quantity", "Quantity", { type: "number", placeholder: "Enter quantity" })}</Col>
+        </Row>
+        <Row gutter={10}>
+          <Col xs={24} sm={12}>{renderTextField(form, onChange, "invoiceNo", "Invoice No.", { placeholder: "Enter invoice number" })}</Col>
+          <Col xs={24} sm={12}>{renderTextField(form, onChange, "invoiceAmount", "Invoice Amount (₹)", { type: "number", placeholder: "Enter invoice amount" })}</Col>
+        </Row>
+      </>
     );
 
     if (form.materialType === "FG") return (
-      <div style={{ animation:"vehFade .18s ease" }}>
-        <SL label="Finished Goods Details" color="#2563eb"/>
-        <div style={{ background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
-          <div style={g2}>
-            {sel("customer","Customer",form.customer,onChange,CUSTOMER,true)}
-            {inp("invoiceNo","Invoice No.",form.invoiceNo,onChange)}
-          </div>
-          <div style={g2}>
-            {inp("quantity","Quantity",form.quantity,onChange,"number")}
-            {inp("invoiceAmount","Invoice Amount (₹)",form.invoiceAmount,onChange,"number")}
-          </div>
-        </div>
-      </div>
+      <>
+        <Row gutter={10}>
+          <Col xs={24} sm={12}>{renderSelectField(form, onChange, "customer", "Customer", CUSTOMER_OPTS, true)}</Col>
+          <Col xs={24} sm={12}>{renderTextField(form, onChange, "invoiceNo", "Invoice Number", { placeholder: "Enter invoice number" })}</Col>
+        </Row>
+        <Row gutter={10}>
+          <Col xs={24} sm={12}>{renderTextField(form, onChange, "quantity", "Quantity", { type: "number", placeholder: "Enter quantity" })}</Col>
+          <Col xs={24} sm={12}>{renderTextField(form, onChange, "invoiceAmount", "Invoice Amount (₹)", { type: "number", placeholder: "Enter invoice amount" })}</Col>
+        </Row>
+      </>
     );
 
-    if (["Scrap","NewMachines","Others"].includes(form.materialType)) return (
-      <div style={{ animation:"vehFade .18s ease" }}>
-        <SL label="Additional Details" color="#7c3aed"/>
-        <div style={{ background:"#faf5ff", border:"1.5px solid #e9d5ff", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
-          <div style={g2}>
-            {inp("material","Material / Description",form.material,onChange,"text",undefined,true)}
-            {inp("quantity","Quantity",form.quantity,onChange,"number")}
-          </div>
-        </div>
-      </div>
+    if (["Scrap", "NewMachines", "Others"].includes(form.materialType)) return (
+      <Row gutter={10}>
+        <Col xs={24} sm={12}>{renderTextField(form, onChange, "material", "Material / Description", { required: true, placeholder: "Enter material description" })}</Col>
+        <Col xs={24} sm={12}>{renderTextField(form, onChange, "quantity", "Quantity", { type: "number", placeholder: "Enter quantity" })}</Col>
+      </Row>
     );
 
     return null;
   };
 
-  return (
-    <Modal open={open} onClose={handleClose} title={isEditMode ? `Edit Trip — ${tripToEdit?.vehicle?.vehicleNumber || ""}` : "New Vehicle Entry"}
-    >
-    {contextHolder}
-      <TabBar
-        active={activeTab}
-        setActive={setActiveTab}
-        hasDraft={hasDraft}
-        showExternal={showExternal}
-      />
-
-      {/* ── INTERNAL TAB ── */}
-      {activeTab==="internal" && (
-        <div className="veh-sec">
-          {/* Source factory info pill — read-only, no input needed */}
-          <div style={{ background:"linear-gradient(135deg,#eef2ff,#e0e7ff)", borderRadius:8, padding:"6px 11px", marginBottom:9, fontSize:10, color:"#4338ca", fontWeight:500, display:"flex", alignItems:"center", gap:5 }}>
-            <Factory size={12}/>
-            Source: <strong style={{ marginLeft:4 }}>{user.factory?.name || "Your Factory"}</strong>
-            <span style={{ marginLeft:8, opacity:.6 }}>· Status set to</span>
-            <code style={{ background:"rgba(99,102,241,.12)", padding:"0 5px", borderRadius:3, marginLeft:2 }}>inside_factory</code>
+  const renderIntraPlantBlock = (form, onChange) => (
+    <>
+      <div style={{ background: form.isIntraPlant ? THEME.internal.soft : "#f8fafc", border: `1.25px solid ${form.isIntraPlant ? THEME.internal.border : "#e5e7eb"}`, borderRadius: 11, padding: "8px 12px", marginBottom: form.isIntraPlant ? 8 : 11, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "all .2s" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 9, background: form.isIntraPlant ? "#ede9fe" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,.07)" }}>
+            <EnvironmentOutlined style={{ color: form.isIntraPlant ? THEME.internal.icon : "#9ca3af", fontSize: 13 }} />
           </div>
-
-          {renderDriverLayer(internalForm, setInternal)}
-          {renderVehicleLayer(internalForm, setInternal)}
-
-          <Layer icon={<ClipboardList size={13}/>} title="Trip Details" subtitle="Destination, purpose and material info"
-            color="#7c3aed" bg="linear-gradient(135deg,#faf5ff,#ede9fe)" border="#e9d5ff"
-            found={false} foundMsg="" defaultOpen={true}
-          >
-            {/* Destination + Purpose + Material Type in one row */}
-            <div style={g3}>
-              {sel("destinationFactoryId","Destination Factory",internalForm.destinationFactoryId,setInternal,fetchingFactories?[{v:"",l:"Loading…"}]:factoryOpts,true)}
-              {sel("purpose","Purpose",internalForm.purpose,setInternal,PURPOSE_OPTS,true)}
-              {sel("materialType","Material Type",internalForm.materialType,setInternal,MATERIAL_TYPES,true)}
-            </div>
-
-            {/* Material detail sections — hidden when purpose is Pickup */}
-            {internalForm.materialType && renderMaterialDetails(internalForm, setInternal, internalForm.purpose === "Pickup")}
-          </Layer>
-
-          {submitRow(isEditMode ? "Update Entry" : "Create Internal Entry", handleSubmitInternal, "linear-gradient(135deg,#6366f1,#4f46e5)")}
-        </div>
-      )}
-
-      {/* ── EXTERNAL TAB — only visible to atGate ── */}
-      {activeTab==="external" && showExternal && (
-        <div className="veh-sec">
-          <div style={{ background:"linear-gradient(135deg,#fffbeb,#fef3c7)", borderRadius:8, padding:"6px 11px", marginBottom:9, fontSize:10, color:"#92400e", fontWeight:500, display:"flex", alignItems:"center", gap:5 }}>
-            <Truck size={12}/> External vehicles await <strong style={{ marginLeft:2 }}>gate check-in</strong>. Material type reveals extra fields.
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 12, color: "#374151" }}>Active Intra Movement</div>
+            <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Within-factory site / block</div>
           </div>
-          {renderDriverLayer(externalForm, setExternal)}
-          {renderVehicleLayer(externalForm, setExternal)}
-          <Layer icon={<ClipboardList size={13}/>} title="Trip Details" subtitle="Purpose, material, internal shifting config"
-            color="#d97706" bg="linear-gradient(135deg,#fffbeb,#fef3c7)" border="#fcd34d"
-            found={false} foundMsg="" defaultOpen={true}
-          >
-            {/* Internal Shifting Toggle — external only */}
-            <div style={{ background:"linear-gradient(135deg,#f8faff,#eef2ff)", border:"1.5px solid #e0e7ff", borderRadius:10, padding:"8px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 1px 4px rgba(99,102,241,.07)" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:externalForm.isInternalShifting?"#ede9fe":"#f3f4f6", display:"flex", alignItems:"center", justifyContent:"center", transition:"background .2s" }}>
-                  <Factory size={14} color={externalForm.isInternalShifting?"#6366f1":"#9ca3af"}/>
-                </div>
-                <div>
-                  <div style={{ fontWeight:700, fontSize:11.5, color:"#374151" }}>Internal Shifting</div>
-                  <div style={{ fontSize:9.5, color:"#9ca3af", fontWeight:400 }}>Plant to Plant transfer</div>
-                </div>
-              </div>
-              <div
-                onClick={()=>setExternalForm(p=>({...p,isInternalShifting:!p.isInternalShifting}))}
-                style={{ width:44, height:24, borderRadius:12, background:externalForm.isInternalShifting?"linear-gradient(135deg,#6366f1,#4f46e5)":"#e5e7eb", position:"relative", cursor:"pointer", transition:"background .25s", boxShadow:externalForm.isInternalShifting?"0 0 0 3px rgba(99,102,241,.2)":"none", flexShrink:0 }}
-              >
-                <div style={{ position:"absolute", width:18, height:18, background:"#fff", borderRadius:"50%", top:3, left:externalForm.isInternalShifting?23:3, transition:"left .25s cubic-bezier(.4,0,.2,1)", boxShadow:"0 1px 4px rgba(0,0,0,.25)" }}/>
-              </div>
-            </div>
-
-            {externalForm.isInternalShifting && (
-              <div style={{ ...g2, animation:"vehFade .18s ease", marginBottom:9 }}>
-                {sel("passType","Pass Type",externalForm.passType,setExternal,PASS_TYPE_OPTS,true)}
-                {sel("destinationFactoryId","Destination Factory",externalForm.destinationFactoryId,setExternal,fetchingFactories?[{v:"",l:"Loading…"}]:factoryOpts,true)}
-              </div>
-            )}
-
-            <div style={g3}>
-              <SourceField value={externalForm.source} onChange={setExternal} options={ALL_CUSTOMERS} />
-              {sel("purpose","Purpose",externalForm.purpose,setExternal,PURPOSE_OPTS,true)}
-              {sel("materialType","Material Type",externalForm.materialType,setExternal,MATERIAL_TYPES,true)}
-            </div>
-
-            {externalForm.materialType && renderMaterialDetails(externalForm, setExternal, externalForm.purpose === "Pickup")}
-          </Layer>
-          {submitRow(isEditMode ? "Update Entry" : "Create External Entry", handleSubmitExternal, "linear-gradient(135deg,#f59e0b,#d97706)")}
         </div>
-      )}
-    </Modal>
+        <Switch size="large" checked={form.isIntraPlant} checkedChildren="ON" unCheckedChildren="OFF"
+          onChange={(checked) => {
+            onChange("isIntraPlant", checked);
+            if (checked) onChange("destinationFactoryId", "");
+            else { onChange("siteId", ""); onChange("blockId", ""); }
+          }}
+        />
+      </div>
+        {form.isIntraPlant && (
+          <Form.Item  layout="vertical" label={lbl(form.purpose === "Pickup" ? "Pickup Location" : "Drop Location", true)} validateStatus={errors.blockId ? "error" : undefined} help={errors.blockId || (!form.purpose && "Select a Purpose first")} style={{ marginBottom: 11 }}>
+            <Select
+              style={{ width: "100%" }} loading={fetchingSites} disabled={!form.purpose}
+              placeholder={form.purpose === "Pickup" ? "Select dispatch block" : form.purpose === "Delivery" ? "Select store block" : "Select purpose first"}
+              value={form.siteId && form.blockId ? `${form.siteId}__${form.blockId}` : undefined}
+              options={getLocationOptions(form.purpose)} showSearch optionFilterProp="label"
+              onChange={(val) => handleLocationChange(onChange, val)}
+            />
+          </Form.Item>
+        )}
+    </>
   );
-}
 
-// ─── Debounce ─────────────────────────────────────────────────────────────────
-function debounce(fn, delay) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+  const renderInternal = () => (
+    <div>
+      <div style={{ background: THEME.internal.soft, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.1)`, borderRadius: 10, padding: "6px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 7 }}>
+        <BankOutlined style={{ color: THEME.internal.icon, fontSize: 14 }} />
+        <Text style={{ fontSize: 11.5, color: THEME.internal.text, fontWeight: 600 }}>
+          Source: <strong>{user.factory?.name || "Your Factory"}</strong>
+        </Text>
+        <Tag color="purple" style={{ marginLeft: "auto", borderRadius: 999, fontSize: 10 }}>Inside factory</Tag>
+      </div>
+
+      <Section icon={<UserOutlined style={{ fontSize: 18 }} />} title="Driver Details" subtitle="Lookup by phone or ID or enter manually" theme={THEME.internal}
+        found={driverLookup.found} foundMsg={`Driver found via ${driverLookup.foundBy === "driverContact" ? "phone" : "ID"} — auto-filled`}>
+        {renderDriverSection(internalForm, setInternal)}
+      </Section>
+
+      <Section icon={<CarOutlined style={{ fontSize: 18 }} />} title="Vehicle Details" subtitle="Lookup by vehicle number or enter manually" theme={THEME.internal}
+        found={vehicleLookup.found} foundMsg="Vehicle found — auto-filled">
+        {renderVehicleSection(internalForm, setInternal)}
+      </Section>
+
+      <Section icon={<FileTextOutlined style={{ fontSize: 18 }} />} title="Trip Details" subtitle="Destination, purpose and material info" theme={THEME.internal} found={false}>
+        <Row gutter={10}>
+          {!internalForm.isIntraPlant && (
+            <Col xs={24} sm={8}>{renderSelectField(internalForm, setInternal, "destinationFactoryId", "Destination Factory", fetchingFactories ? [] : factoryOpts, true)}</Col>
+          )}
+          <Col xs={24} sm={internalForm.isIntraPlant ? 12 : 8}>{renderSelectField(internalForm, setInternal, "purpose", "Purpose", PURPOSE_OPTS, true)}</Col>
+          <Col xs={24} sm={internalForm.isIntraPlant ? 12 : 8}>{renderSelectField(internalForm, setInternal, "materialType", "Material Type", MATERIAL_TYPES, true)}</Col>
+        </Row>
+        { isIsIntraPlant && workLocation !== "atGate" && renderIntraPlantBlock(internalForm, setInternal) }
+        {renderMaterialDetails(internalForm, setInternal, internalForm.purpose === "Pickup")}
+      </Section>
+    </div>
+  );
+
+  const renderExternal = () => (
+    <div>
+      <Alert type="warning" showIcon message="External vehicles await gate check-in. Material type reveals extra fields." style={{ marginBottom: 10, borderRadius: 8, fontSize: 11.5, padding: "5px 10px", border:"none", boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)" }} />
+
+      <Section icon={<UserOutlined style={{ fontSize: 18 }} />} title="Driver Details" subtitle="Lookup by phone or ID or enter manually" theme={THEME.external}
+        found={driverLookup.found} foundMsg={`Driver found via ${driverLookup.foundBy === "driverContact" ? "phone" : "ID"} auto-filled`}>
+        {renderDriverSection(externalForm, setExternal)}
+      </Section>
+
+      <Section icon={<CarOutlined style={{ fontSize: 18 }} />} title="Vehicle Details" subtitle="Lookup by vehicle number or enter manually" theme={THEME.external}
+        found={vehicleLookup.found} foundMsg="Vehicle found — auto-filled">
+        {renderVehicleSection(externalForm, setExternal)}
+      </Section>
+
+      <Section icon={<FileTextOutlined style={{ fontSize: 18 }} />} title="Trip Details" subtitle="Purpose, material, internal shifting & intra-plant config" theme={THEME.external} found={false}>
+        {/* <div style={{ background: "linear-gradient(135deg,#f8faff,#eef2ff)", border: "1.25px solid #e0e7ff", borderRadius: 11, padding: "8px 12px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 9, background: externalForm.isInternalShifting ? "#ede9fe" : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <SwapOutlined style={{ color: externalForm.isInternalShifting ? THEME.internal.icon : "#9ca3af", fontSize: 13 }} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: "#374151" }}>Internal Shifting</div>
+              <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Plant to Plant transfer</div>
+            </div>
+          </div>
+          <Switch size="small" checked={externalForm.isInternalShifting} onChange={(checked) => setExternalForm((p) => ({ ...p, isInternalShifting: checked }))} />
+        </div> */}
+
+        {externalForm.isInternalShifting && !externalForm.isIntraPlant && (
+          <Row gutter={10}>
+            <Col xs={24} sm={12}>{renderSelectField(externalForm, setExternal, "passType", "Pass Type", PASS_TYPE_OPTS, true)}</Col>
+            <Col xs={24} sm={12}>{renderSelectField(externalForm, setExternal, "destinationFactoryId", "Destination Factory", fetchingFactories ? [] : factoryOpts, true)}</Col>
+          </Row>
+        )}
+
+        <Row gutter={10}>
+          <Col xs={24} sm={8}>
+            <Form.Item layout="vertical" label={lbl("Source Factory", true)} validateStatus={errors.source ? "error" : undefined} help={errors.source} style={{ marginBottom: 11 }}>
+              <AutoComplete
+                value={externalForm.source || ""} placeholder="Source Factory" options={ALL_SOURCE_OPTS} style={{ width: "100%" }}
+                filterOption={(inputValue, option) => option.label.toLowerCase().includes(inputValue.toLowerCase())}
+                onChange={(val) => setExternal("source", val)}
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={8}>{renderSelectField(externalForm, setExternal, "purpose", "Purpose", PURPOSE_OPTS, true)}</Col>
+          <Col xs={24} sm={8}>{renderSelectField(externalForm, setExternal, "materialType", "Material Type", MATERIAL_TYPES, true)}</Col>
+        </Row>
+
+        {/* {renderIntraPlantBlock(externalForm, setExternal)} */}
+        {renderMaterialDetails(externalForm, setExternal, externalForm.purpose === "Pickup")}
+      </Section>
+    </div>
+  );
+
+  const activeTheme = activeTab === "internal" ? THEME.internal : THEME.external;
+
+  return (
+    <>
+      <style>{`
+        .veh-vmodal .ant-modal-content { border-radius: 18px !important; overflow: hidden; padding:0 !important; box-shadow: 0 24px 60px rgba(15,23,42,.32) !important; }
+        .veh-vmodal .ant-modal-body { padding: 0 !important; }
+        .veh-vmodal .ant-modal-mask { backdrop-filter: blur(5px); background: rgba(15,23,42,.48) !important; }
+        .veh-select .ant-select-selector { border-radius: 8px !important; min-height: 34px !important; align-items:center; font-size: 13px; }
+        .ant-input, .ant-input-affix-wrapper, .ant-picker { border-radius: 8px !important; font-size: 13px !important; }
+        .ant-input-affix-wrapper { padding-top:0 !important; padding-bottom:0 !important; }
+        .ant-input-affix-wrapper > input.ant-input { height: 32px !important; }
+        .ant-picker { height: 34px !important; }
+        .ant-form-item-explain-error { font-size: 10.5px !important; font-weight: 600; }
+        .veh-footer-btn { border-radius: 10px !important; height: 38px !important; font-weight: 700 !important; font-size: 13px !important; }
+        .veh-sticky-switcher { position: sticky; top: -10px; z-index: 5; background: #fff; padding-top: 2px; }
+      `}</style>
+      <Modal
+        open={open}
+        onCancel={handleClose}
+        width={820}
+        centered
+        className="veh-vmodal"
+        closeIcon={<span style={{ color: "#fff", background: "gray", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontSize: 14 }}>✕</span>}
+        title={null}
+        footer={null}
+        destroyOnClose
+      >
+        {/* Compact header */}
+       <div style={{ background:"#e6e8e6", padding:"12px 20px", borderRadius:12, display:"flex", alignItems:"center", gap:10, boxShadow:"0 4px 14px rgba(15,23,42,.08), 0 1px 3px rgba(15,23,42,.06)", border:"1px solid rgba(0,0,0,.06)" }}>
+          <div style={{ width:32, height:32, borderRadius:10, background:"#eef2ff", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <CarOutlined style={{ color:"#6366f1", fontSize:15 }} />
+          </div>
+
+          <div>
+            <Title level={5} style={{ margin:0, color:"#111827", fontWeight:800, fontSize:14.5 }}>
+              {isEditMode ? `Edit Trip — ${tripToEdit?.vehicle?.vehicleNumber || ""}` : "New Vehicle Entry"}
+            </Title>
+            <Text style={{ color:"#6b7280", fontSize:10.5 }}>Draft fields auto-saved locally</Text>
+          </div>
+        </div>
+
+        {/* Scrollable body with sticky switcher */}
+        <div style={{ padding: "10px 8px 4px", maxHeight: "70vh", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "#cbd5e1 #f1f5f9" }}>
+          {contextHolder}
+          <div className="veh-sticky-switcher">
+            <ModeSwitcher active={activeTab} setActive={setActiveTab} showExternal={showExternal} hasDraft={hasDraft} />
+          </div>
+          {activeTab === "internal" ? renderInternal() : showExternal && renderExternal()}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 18px 16px", borderTop: "1px solid #f1f5f9" }}>
+          <Button className="veh-footer-btn" onClick={handleClose} disabled={submitting} style={{ background: "#f3f4f6", border: "none", color: "#374151" }}>
+            Cancel
+          </Button>
+          <Button
+            className="veh-footer-btn" type="primary" loading={submitting}
+            onClick={activeTab === "internal" ? handleSubmitInternal : handleSubmitExternal}
+            style={{ background: activeTheme.grad, border: "none", flex: 1, boxShadow: `0 6px 16px ${activeTheme.border}77` }}
+          >
+            {isEditMode ? "Update Entry" : activeTab === "internal" ? "Create Internal Entry" : "Create External Entry"}
+          </Button>
+          {draftSaved && <Tag icon={<SaveOutlined />} color="processing" style={{ borderRadius: 999, marginLeft: 2, fontSize: 11 }}>Saved</Tag>}
+        </div>
+      </Modal>
+
+
+      <PucExpiredModal
+        open={pucModalOpen}
+        onClose={() => setPucModalOpen(false)}
+        vehicleNumber={internalForm?.vehicleNumber?? externalForm?.vehicleNumber?? null}
+        pucExpiryDate={internalForm?.pucExpiryDate ? fmtTime(internalForm.pucExpiryDate) : externalForm?.pucExpiryDate ? fmtTime(externalForm.pucExpiryDate) : null}
+      />
+    </>
+  );
 }

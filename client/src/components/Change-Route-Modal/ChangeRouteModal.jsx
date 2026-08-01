@@ -13,6 +13,7 @@ import {
     CircleX,
 } from "lucide-react";
 import api from "../../../services/API/Api/api";
+import { useUser } from "../../Global/User-Context/UserContext.jsx"; // adjust path if different
 
 
 
@@ -178,60 +179,89 @@ const SUPPLIERS = [
   { v: "ANUP PRINTERS PVT LTD", l: "ANUP PRINTERS PVT LTD" }
 ];
 
-export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal, onConfirmLoadMaterialAndNewTrip }) {
-  const [open, setOpen]       = useState(false);
-  const [trip, setTrip]       = useState(null);
-  const [step, setStep]       = useState("select");    // "select" | "internal" | "external"
-  const [selected, setSelected] = useState(null); 
-  const customers = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l)); // sort alphabetically by label
+export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal, onConfirmIntraPlant, onConfirmLoadMaterialAndNewTrip }) {
+  const [open, setOpen]         = useState(false);
+  const [trip, setTrip]         = useState(null);
+  const [step, setStep]         = useState("select");   // "select" | "internal" | "external" | "intraplant"
+  const [selected, setSelected] = useState(null);
+  const [selectedSite, setSelectedSite]   = useState(null);
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  const customers = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l));
 
   const openChangeRouteModal = (tripData) => {
     setTrip(tripData);
-    setStep("select");
+    setStep(tripData?.isIntraPlant ? "intraplant" : "select");
     setSelected(null);
+    setSelectedSite(null);
+    setSelectedBlock(null);
     setOpen(true);
   };
 
   const close = () => {
     setOpen(false);
-    setTimeout(() => { setStep("select"); setSelected(null); setTrip(null); }, 300);
+    setTimeout(() => {
+      setStep("select");
+      setSelected(null);
+      setSelectedSite(null);
+      setSelectedBlock(null);
+      setTrip(null);
+    }, 300);
   };
 
-    const handleConfirmInternal = async () => {
-        await onConfirmInternal?.(selected, trip);
-        close();
-    };
+  const handleConfirmInternal = async () => {
+    await onConfirmInternal?.(selected, trip);
+    close();
+  };
 
-    const handleConfirmExternal = async () => {
-        await onConfirmExternal?.(selected, trip);
-        close();
-    };
+  const handleConfirmExternal = async () => {
+    await onConfirmExternal?.(selected, trip);
+    close();
+  };
 
-
+  const handleConfirmIntraPlant = async () => {
+    await onConfirmIntraPlant?.(selectedSite, selectedBlock, trip);
+    close();
+  };
 
   return {
     openChangeRouteModal,
     modalProps: {
-      open, trip, step, setStep, selected, setSelected, customers,
+      open, trip, step, setStep,
+      selected, setSelected,
+      selectedSite, setSelectedSite,
+      selectedBlock, setSelectedBlock,
+      customers,
       onClose: close,
       onConfirmInternal: handleConfirmInternal,
       onConfirmExternal: handleConfirmExternal,
+      onConfirmIntraPlant: handleConfirmIntraPlant,
     },
   };
 }
-
 /* ═══════════════════════════════════════════════════════════════
    ChangeRouteModal — the actual modal component
 ═══════════════════════════════════════════════════════════════ */
-export default function ChangeRouteModal({open, trip, step, setStep, selected, setSelected, onClose, onConfirmInternal, onConfirmExternal, onConfirmLoadMaterialAndNewTrip}) {
+
+export default function ChangeRouteModal({
+  open, trip, step, setStep,
+  selected, setSelected,
+  selectedSite, setSelectedSite,
+  selectedBlock, setSelectedBlock,
+  onClose, onConfirmInternal, onConfirmExternal, onConfirmIntraPlant, onConfirmLoadMaterialAndNewTrip
+}) {
   const isInternal = step === "internal";
   const isExternal = step === "external";
+  const isIntraPlant = step === "intraplant";
   const inSelectStep = step === "select";
-  const [factories, setFactories] = useState([])  
+  const [factories, setFactories] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [blocks, setBlocks] = useState([]);
   const [searchText, setSearchText] = useState("");
-  const [filteredCustomers, setFilteredCustomers] = useState([...CUSTOMER, ...SUPPLIERS])   // factory obj or customer string
-  const user = JSON.parse(localStorage.getItem("user")) || {};
-  const customers = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l)); // sort alphabetically by label
+  const [filteredCustomers, setFilteredCustomers] = useState([...CUSTOMER, ...SUPPLIERS]);
+  const { user } = useUser();
+  const userBlockId = String(user?.blockId?._id || user?.blockId || "");
+  const userSiteId  = String(user?.siteId?._id || user?.siteId || "");
+  const customers = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l));
 
   
     const handleFilterCustomers = (value) => {
@@ -250,20 +280,56 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
       handleFilterCustomers(searchText);
     }, [searchText]);
 
+    const [currentFactory, setCurrentFactory] = useState(null);
+
     useEffect(() => {
-      try {
-        const fetchFactories = async () => {
+      const fetchFactories = async () => {
+        try {
           const res = await api.get("/factories");
-          const excludeUserFactory = res.data.factories.filter(f => f._id !== user.factory?._id);
+          const allFactories = res?.data?.data || res?.data?.factories || [];
+          const excludeUserFactory = allFactories.filter(f => f._id !== user.factory?._id);
+          const mine = allFactories.find(f => f._id === user.factory?._id);
           setFactories(excludeUserFactory);
-        };
-        
-        fetchFactories();
-      } catch (error) {
+          setCurrentFactory(mine || null);
+        } catch (error) {
           message.error("Failed to fetch factories");
-      }
-        
+        }
+      };
+      fetchFactories();
     }, []);
+
+    useEffect(() => {
+    const fetchSites = async () => {
+      try {
+        const res = await api.get("/sites");
+        console.log("Fetched sites:", res?.data?.data);
+        setSites(res?.data?.data || []);
+      } catch (error) {
+        message.error("Failed to fetch sites");
+      }
+    };
+
+    const fetchBlocks = async () => {
+      try {
+        const res = await api.get("/blocks");
+        setBlocks(res?.data?.data || []);
+      } catch (error) {
+        message.error("Failed to fetch blocks");
+      }
+    };
+
+    fetchSites();
+    fetchBlocks();
+  }, []);
+
+  const toId = (v) => (typeof v === "string" ? v : v?._id);
+  const isVehicleAtDestination = String(user?.siteId?._id || user?.siteId || "") === String(trip?.destinationSite?._id || trip?.destinationSiteId || "");
+
+  const allowedSiteIds = (currentFactory?.allowedSites || []).map(toId);
+  const allowedSites = sites.filter(s => allowedSiteIds.includes(s._id) && s.isActive && s.name !== "Security");
+
+  const allowedBlockIds = (selectedSite?.allowedBlocks || []).map(toId);
+  const allowedBlocksForSite = blocks.filter(b => allowedBlockIds.includes(b._id) && b.isActive  );
 
 
   return (
@@ -380,13 +446,14 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
               <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>
                 {inSelectStep ? "Select the movement type to continue" :
                  isInternal   ? "Choose destination factory" :
+                 isIntraPlant ? (selectedSite ? `Choose block within ${selectedSite.name}` : "Choose destination site") :
                                 "Choose customer"}
               </div>
             </div>
           </div>
 
           {/* Breadcrumb / step indicator */}
-          {!inSelectStep && (
+          {/* {!inSelectStep && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
               <button
                 onClick={() => { setStep("select"); setSelected(null); }}
@@ -403,6 +470,30 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
                   color: isInternal ? "#4f46e5" : "#92400e",
                 }}>
                   {isInternal ? "Internal" : "External"}
+                </span>
+              </div>
+            </div>
+          )} */}
+
+          {!inSelectStep && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
+              {!isIntraPlant && (
+                <button
+                  onClick={() => { setStep("select"); setSelected(null); }}
+                  style={{ fontSize: 12, color: "#6366f1", border: "1px solid #6366f1", fontWeight: 600, background: "none", cursor: "pointer", padding: "2px 12px", borderRadius: 6, display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}
+                >
+                  ← Back
+                </button>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em" }}>Movement Type</span>
+                <ChevronRight size={12} color="#9ca3af" />
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                  background: isInternal ? "#ede9fe" : isIntraPlant ? "#dbeafe" : "#fef3c7",
+                  color: isInternal ? "#4f46e5" : isIntraPlant ? "#1d4ed8" : "#92400e",
+                }}>
+                  {isInternal ? "Internal" : isIntraPlant ? "Intra-Plant" : "External"}
                 </span>
               </div>
             </div>
@@ -608,6 +699,168 @@ export default function ChangeRouteModal({open, trip, step, setStep, selected, s
                   Change Route{selected ? ` → ${selected}` : ""}
                 </button>
               </Popconfirm>
+            </div>
+          )}
+
+          {/* ── Step 2c: Intra-Plant — pick site then block ── */}
+          {isIntraPlant && (
+            <div className="cr-step">
+
+              {/* Selection trail: Site → Block */}
+              {selectedSite && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+                  marginBottom: 14, padding: "8px 12px",
+                  background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 10,
+                }}>
+                  <MapPin size={12} color="#6366f1" />
+                  <span
+                    onClick={() => { setSelectedSite(null); setSelectedBlock(null); }}
+                    style={{
+                      fontSize: 11.5, fontWeight: 700, color: "#4f46e5",
+                      cursor: "pointer", textDecoration: "underline",
+                      textUnderlineOffset: 2,
+                    }}
+                  >
+                    {selectedSite.name}
+                  </span>
+
+                  {selectedSite.supportsBlocks && (
+                    <>
+                      <ChevronRight size={12} color="#a5a1f7" />
+                      {selectedBlock ? (
+                        <span
+                          onClick={() => setSelectedBlock(null)}
+                          style={{
+                            fontSize: 11.5, fontWeight: 700, color: "#4f46e5",
+                            cursor: "pointer", textDecoration: "underline",
+                            textUnderlineOffset: 2,
+                          }}
+                        >
+                          {selectedBlock.name}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "#9ca3af", fontStyle: "italic" }}>
+                          Select block…
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              {!selectedSite ? (
+                <>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 12px", fontWeight: 500 }}>
+                    Select the destination site within this plant
+                  </p>
+                  <div style={{ maxHeight: 300, overflowY: "auto", marginBottom: 16, paddingRight: 2 }}>
+                    {allowedSites.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "32px 0", color: "#9ca3af", fontSize: 13 }}>
+                        No sites available
+                      </div>
+                    ) : allowedSites.map(s => (
+                      <div
+                        key={s._id}
+                        className={`cr-list-item${selectedSite === s ? " selected" : ""}`}
+                        onClick={() => { setSelectedSite(s); setSelectedBlock(null); }}
+                      >
+                        <div style={{
+                          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+                          background: "#f3f4f6",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <MapPin size={15} color="#9ca3af" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>{s.name}</div>
+                          {!s.supportsBlocks && (
+                            <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>No block selection needed</div>
+                          )}
+                        </div>
+                        <ChevronRight size={14} color="#9ca3af" />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : selectedSite.supportsBlocks && !selectedBlock ? (
+                <>
+                  <button
+                    onClick={() => setSelectedSite(null)}
+                    style={{ fontSize: 11, color: "#6366f1", border: "1px solid #6366f1", fontWeight: 600, background: "none", cursor: "pointer", padding: "2px 10px", borderRadius: 6, marginBottom: 12, fontFamily: "inherit" }}
+                  >
+                    ← Change site
+                  </button>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 12px", fontWeight: 500 }}>
+                    Select block within <strong>{selectedSite.name}</strong>
+                  </p>
+                  <div style={{ maxHeight: 300, overflowY: "auto", marginBottom: 16, paddingRight: 2 }}>
+                    {allowedBlocksForSite.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "32px 0", color: "#9ca3af", fontSize: 13 }}>
+                        No blocks available for this site
+                      </div>
+                    ) : allowedBlocksForSite.map(b => {
+                        if(userBlockId === b._id && userSiteId === selectedSite._id) return null; // Skip rendering the block if it's the user's current block
+                      
+                      return (
+                      <button key={b._id} className="cr-list-item w-full" style={{  cursor: (userBlockId === b._id && userSiteId === selectedSite._id)? "not-allowed" : "pointer" }} disabled={userBlockId === b._id && userSiteId === selectedSite._id} onClick={() => setSelectedBlock(b)}>
+                        <button 
+                          style={{
+                            width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+                            background: "#f3f4f6",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Building2 size={15} color="#9ca3af" />
+                        </button>
+                        <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "#111827" }}>{b.name} <span className="text-blue-600" >{userBlockId === b._id && userSiteId === selectedSite._id ? "(Current)" : ""}</span> </div>
+                        <ChevronRight size={14} color="#9ca3af" />
+                      </button>
+                    )}
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => { selectedSite.supportsBlocks ? setSelectedBlock(null) : setSelectedSite(null); }}
+                    style={{ fontSize: 11, color: "#6366f1", border: "1px solid #6366f1", fontWeight: 600, background: "none", cursor: "pointer", padding: "2px 10px", borderRadius: 6, marginBottom: 12, fontFamily: "inherit" }}
+                  >
+                    ← Back
+                  </button>
+
+                  <Popconfirm
+                    title={
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13 }}>
+                        Confirm route change?
+                      </span>
+                    }
+                    description={
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: "#6b7280" }}>
+                        Vehicle will be routed to site <strong>{selectedSite?.name}</strong>
+                        {selectedBlock ? <> / block <strong>{selectedBlock.name}</strong></> : ""}.
+                      </span>
+                    }
+                    onConfirm={onConfirmIntraPlant}
+                    okText="Yes, change route"
+                    cancelText="Cancel"
+                    okButtonProps={{ style: { background: "#6366f1", borderColor: "#6366f1", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 } }}
+                    placement="top"
+                  >
+                    <button
+                      className="cr-confirm-btn"
+                      style={{
+                        width: "100%",
+                        background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                        color: "#fff",
+                        boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+                      }}
+                    >
+                      <ArrowRightLeft size={14} />
+                      Change Route → {selectedSite?.name}{selectedBlock ? ` / ${selectedBlock.name}` : ""}
+                    </button>
+                  </Popconfirm>
+                </>
+              )}
             </div>
           )}
         </div>

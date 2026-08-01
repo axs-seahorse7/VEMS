@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../../../services/API/Api/api";
 import { message } from "antd";
+import { useUser } from "../../../Global/User-Context/UserContext";
 
 const ease = [0.22, 1, 0.36, 1];
 
@@ -86,6 +87,7 @@ function OtpInput({ value, onChange, disabled }) {
 
 /* ─────────── Main ─────────── */
 export default function LoginPage() {
+  const { user, setUser } = useUser(); // Access user and setUser from context
   /* Step 1 state */
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -159,6 +161,7 @@ export default function LoginPage() {
       const response = await api.post("/auth/verify-otp", { email, otp });
       if (response.data.success) {
         localStorage.setItem("user", JSON.stringify(response.data.user));
+        setUser(response.data.user); // Update user context
         navigate(response.data.user.isSystemAdmin ? "/admin" : "/dashboard");
 
       } else {

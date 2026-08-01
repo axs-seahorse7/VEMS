@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import api from "../../../../services/API/Api/api";
 import { message, Popconfirm  } from "antd";
 import ChangeRouteModal, {useChangeRouteModal} from "../../../components/Change-Route-Modal/ChangeRouteModal"; 
@@ -14,10 +14,13 @@ import {
   Spin,
   Tabs,
   Tag,
+  Switch,
 } from "antd";
-import {WarningOutlined } from "@ant-design/icons";
+import {WarningOutlined, } from "@ant-design/icons";
 import CreateVehicleModal from "./CreateVehicalModal.jsx";
 import { useQuery } from "@tanstack/react-query";
+import {useUser} from "../../../Global/User-Context/UserContext.jsx";
+import {Truck } from "lucide-react";
 
 const { Option } = Select;
 
@@ -255,12 +258,16 @@ const ACTION_META = {
   created:  { color: "#6366f1", icon: "ri-add-circle-line",       label: "Created"  },
   checkin:  { color: "#2563eb", icon: "ri-login-box-line",        label: "Check-in" },
   checkout: { color: "#7c3aed", icon: "ri-logout-box-r-line",     label: "Checkout" },
-  arrive:   { color: "#0891b2", icon: "ri-map-pin-2-line",        label: "Arrived"  },
+  dispatched:{ color: "#f97316", icon: "ri-truck-line",             label: "Dispatched"},
+  arrived:  { color: "#0891b2", icon: "ri-map-pin-2-line",        label: "Arrived"  },
   load:     { color: "#16a34a", icon: "ri-stack-line",            label: "Loaded"   },
   unload:   { color: "#d97706", icon: "ri-stack-overflow-line",   label: "Unloaded" },
+  cancelled:{ color: "#dc2626", icon: "ri-close-circle-line",     label: "Cancelled"},
   cancel:   { color: "#dc2626", icon: "ri-close-circle-line",     label: "Cancelled"},
   complete: { color: "#059669", icon: "ri-checkbox-circle-line",  label: "Completed"},
+  closed:   { color: "#059669", icon: "ri-checkbox-circle-line",  label: "Closed"},
   route_change: { color: "#f81033", icon: "ri-signpost-fill",     label: "Route Changed"},
+  intra_plant_checkin: { color: "#09ab7a", icon: "ri-signpost-fill",     label: "Intra Movement Started"},
 };
 
 function resolveAction(entry) {
@@ -309,7 +316,7 @@ function TypeBadge({ type }) {
 }
 
 // ─── Horizontal Trip History Timeline ────────────────────────────────────────
-function TripTimeline({ tripHistory }) {
+function TripTimeline({ tripHistory, isIntraPlant }) {
   if (!Array.isArray(tripHistory) || tripHistory.length === 0) return null;
 
   const locationMap = {
@@ -343,7 +350,7 @@ function TripTimeline({ tripHistory }) {
                   </div>
                   {/* Action label */}
                   <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, marginTop: 4, textAlign: "center", lineHeight: 1.2}}>
-                    {meta.label} {locationMap[entry.actionLocation] ? ` (${locationMap[entry.actionLocation]})`: ""}
+                    {meta.label} {locationMap[entry.actionLocation] ? ` ${ isIntraPlant ? `(${locationMap[entry.actionLocation].charAt(0)}, ${entry.actionDetails?.siteId ? entry?.actionDetails?.block?.name : "N/A"})` : `at (${locationMap[entry.actionLocation]})`}`: ""}
                   </span>
                   {/* Status */}
                   <span style={{ fontSize: 9, color: "black", marginTop: 2, textAlign: "center", lineHeight: 1.2, fontWeight: 500 }}>
@@ -372,16 +379,40 @@ function TripTimeline({ tripHistory }) {
 
 function CancelTripModal({ open, onConfirm, onCancel, loading }) {
   const [form] = Form.useForm();
+  const [showOther, setShowOther] = useState(false);
+
+  const REASON_OPTIONS = [
+    { label: "Seal Damaged", value: "Seal Damaged" },
+    { label: "Wrong Entry", value: "Wrong Entry" },
+    { label: "Wrong Destination", value: "Wrong Destination" },
+    { label: "Missing Materials ", value: "Missing Materials" },
+    { label: "Empty Vehicle", value: "Empty Vehicle" },
+    { label: "Other Issue", value: "Other Issue" },
+  ];
+
+  const handleReasonChange = (value) => {
+    setShowOther(value === "Other Issue");
+    if (value !== "Other Issue") {
+      form.setFieldValue("description", undefined);
+    }
+  };
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      onConfirm(values.reason);
+      const finalReason =
+        values.reasonType === "Other Issue"
+          ? values.description
+          : values.description
+          ? `${values.reasonType} - ${values.description}`
+          : values.reasonType;
+      onConfirm(finalReason);
     } catch {}
   };
 
   const handleCancel = () => {
     form.resetFields();
+    setShowOther(false);
     onCancel();
   };
 
@@ -408,24 +439,48 @@ function CancelTripModal({ open, onConfirm, onCancel, loading }) {
       maskClosable={false}
     >
       <p style={{ color: "#6b7280", fontSize: 13, margin: "8px 0 16px" }}>
-        Please provide a reason for cancelling this trip. This will be recorded
+        Please select a reason for cancelling this trip. This will be recorded
         for audit purposes.
       </p>
       <Form form={form} layout="vertical">
         <Form.Item
-          name="reason"
+          name="reasonType"
           label={<span style={{ fontWeight: 600, fontSize: 12 }}>Cancellation Reason</span>}
-          rules={[
-            { required: true, message: "Please enter a reason" },
-            { min: 10, message: "Reason must be at least 10 characters" },
-          ]}
+          rules={[{ required: true, message: "Please select a reason" }]}
+        >
+          <Select
+            placeholder="Select a reason"
+            options={REASON_OPTIONS}
+            onChange={handleReasonChange}
+            style={{ fontSize: 13 }}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label={
+            <span style={{ fontWeight: 600, fontSize: 12 }}>
+              {showOther ? "Describe the Reason" : "Additional Details (optional)"}
+            </span>
+          }
+          rules={
+            showOther
+              ? [
+                  { required: true, message: "Please describe the reason" },
+                  { min: 10, message: "Reason must be at least 10 characters" },
+                ]
+              : []
+          }
         >
           <Input.TextArea
             rows={3}
-            placeholder="e.g. Driver unavailable, wrong destination assigned..."
+            placeholder={
+              showOther
+                ? "Please describe the issue in detail..."
+                : "Add any extra details (optional)..."
+            }
             maxLength={300}
             showCount
-            autoFocus
             style={{ borderRadius: 8, fontSize: 13 }}
           />
         </Form.Item>
@@ -440,7 +495,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   // const [isLoadMaterialAndNewTrip, setisLoadMaterialAndNewTrip] = useState(false);
-  const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
+  const {user} = useUser();
   const customers = [...CUSTOMER, ...SUPPLIERS]
 
   const DEFAULT_TRIP_INTERNAL = {
@@ -452,6 +507,8 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
     customer: "",
     shipmentCustomer: "",
     shipmentFactory: "",
+    shipmentSiteId: "",
+    shipmentBlockId: "",
   };
 
   const factories = factory.filter(f => f._id !== user?.factory?._id);  
@@ -462,7 +519,7 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
   const [tripInternal, setTripInternal] = useState(DEFAULT_TRIP_INTERNAL);
   const [shipmentType, setShipmentType] = useState("internal");
   const [isLoadAndComplete, setisLoadAndComplete] = useState(false);
-
+  const [checkinModalOpen, setCheckinModalOpen] = useState(false);
 
   const { modalProps, openChangeRouteModal } = useChangeRouteModal({
     onConfirmInternal: async (factory, trip) => {
@@ -518,15 +575,32 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
       } catch (err) {
         message.error(err.response?.data?.message || "Failed to complete load");
       }
-    }
+    },
+
+    onConfirmIntraPlant: async (site, block, trip) => {
+      try {
+        const res = await api.post(`/trip/change-route/${trip._id}`, {
+          newSiteId: site._id,
+          newBlockId: block?._id || null,
+          type: "intraplant"
+        });
+        onAction();
+        message.success(res.data?.message || `Route changed to site: ${site.name}`);
+      } catch (err) {
+        message.error(err.response?.data?.message || "Failed to change route");
+      }
+    },
 
   });
 
   // Aliases for readability
   const { location, phase, tripState, purpose, loadStatus, type } = vehicle;
   const trip = vehicle;
+  const isIntraPlant = trip?.isIntraPlant || false;
   const sourceId = trip.sourceFactory?._id;
   const destId = trip.destinationFactory?._id;
+  
+  // const securityGateId = String(user?.securityGateId?._id);
 
   const isNotClosedOrCancelled = tripState !== "CLOSED" && tripState !== "CANCELLED";
   const isInsideFactory = location === "inside_factory";
@@ -570,24 +644,45 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
         return message.error("Please fill all fields");
       }
 
-      await doAction(() =>
-        api.post(`/trip/load-material-and-newtrip/${selectedTrip._id}`,
-          {
-            newTripDetails: {
-              newDestinationFactoryId: tripInternal.shipmentFactory,
-              externalDestination: tripInternal.shipmentCustomer,
-              shipmentType,
-              type: "internal",
-              ...withTripFactory,
-              materialType: tripInternal.materialType,
-              material: tripInternal.material,
-              quantity: tripInternal.quantity,
-              invoiceNo: tripInternal.invoiceNo,
-              invoiceAmount: tripInternal.invoiceAmount,
-              customer: tripInternal.customer,
-            },
+      if (isIntraPlant) {
+        if (!tripInternal.shipmentSiteId) {
+          return message.error("Please select a destination site");
+        }
+        const site = loadSiteBlocks.find((s) => s._id === tripInternal.shipmentSiteId);
+        if (site?.supportsBlocks && !tripInternal.shipmentBlockId) {
+          return message.error("Please select a destination block");
+        }
+      }
+
+      const newTripDetails = isIntraPlant
+        ? {
+            newSiteId: tripInternal.shipmentSiteId,
+            newBlockId: tripInternal.shipmentBlockId || null,
+            type: "intraplant",
+            ...withTripFactory,
+            materialType: tripInternal.materialType,
+            material: tripInternal.material,
+            quantity: tripInternal.quantity,
+            invoiceNo: tripInternal.invoiceNo,
+            invoiceAmount: tripInternal.invoiceAmount,
+            customer: tripInternal.customer,
           }
-        )
+        : {
+            newDestinationFactoryId: tripInternal.shipmentFactory,
+            externalDestination: tripInternal.shipmentCustomer,
+            shipmentType,
+            type: "internal",
+            ...withTripFactory,
+            materialType: tripInternal.materialType,
+            material: tripInternal.material,
+            quantity: tripInternal.quantity,
+            invoiceNo: tripInternal.invoiceNo,
+            invoiceAmount: tripInternal.invoiceAmount,
+            customer: tripInternal.customer,
+          };
+
+      await doAction(() =>
+        api.post(`/trip/load-material-and-newtrip/${selectedTrip._id}`, { newTripDetails })
       );
       setOpenLoadModal(false);
       setTripInternal(DEFAULT_TRIP_INTERNAL);
@@ -638,575 +733,970 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
     }
   };
 
- 
+  const [checkinLoading, setCheckinLoading] = useState(false);
+  const [siteId, setSiteId] = useState(null);
+  const [blockId, setBlockId] = useState(null);
+  const [siteBlocks, setSiteBlocks] = useState([]);
+  const [fetchingSites, setFetchingSites] = useState(false);
+
+
+  useEffect(() => {
+    if (!checkinModalOpen) return;
+    const factoryId = userFactoryId;
+    if (!factoryId) return;
+    const fetchSites = async () => {
+      try {
+        setFetchingSites(true);
+        const res = await api.get("/sites", { params: { factoryId } });
+        setSiteBlocks(res.data?.sites || res.data?.data || res.data || []);
+      } catch {
+        message.error("Could not load sites/blocks");
+      } finally {
+        setFetchingSites(false);
+      }
+    };
+    fetchSites();
+  }, [checkinModalOpen, userFactoryId]);
+
+
+  const getLocationOptions = useCallback((purpose) => {
+    const wantSiteType = purpose === "Pickup" ? "dispatch" : "store";
+    const prefix = purpose === "Pickup" ? "Dispatch" : "Store";
+    const opts = [];
+
+    siteBlocks.forEach((site) => {
+      const siteName = site.name?.trim().toLowerCase() || "";
+
+      
+      if (!siteName.includes(wantSiteType)) return;
+
+      (site.allowedBlocks || []).forEach((block) => {
+        opts.push({
+          value: `${site._id}__${block._id}`,
+          label: `${prefix} ${block.name}`,
+        });
+      });
+    });
+
+    return opts;
+  }, [siteBlocks, trip.purpose]);
+
+  const handleLocationChange = (val) => {
+    const [s, b] = (val || "").split("__");
+    setSiteId(s || null);
+    setBlockId(b || null);
+  };
+
+  const resetCheckinModal = () => {
+    setCheckinModalOpen(false);
+    setIsIntraPlant(false);
+    setSiteId(null);
+    setBlockId(null);
+  };
+
+  const handleCheckinConfirm = async () => {
+    // siteId always required
+    if (!siteId) {
+      return message.error("Please select a site");
+    }
+    // blockId required only when intra movement is ON
+    if (isIntraPlant && !blockId) {
+      return message.error("Please select a block for Intra Movement");
+    }
+
+    setCheckinLoading(true);
+
+    try {
+      const res = await api.post(`/trip/checkin/${trip._id}`, {
+        ...withFactory,
+        siteId,                                    // always sent
+        isIntraPlant,
+        blockId: isIntraPlant ? blockId : undefined, // only sent when intra is ON
+      });
+      message.success(res.data?.message || "Vehicle checked in");
+      onAction();
+      resetCheckinModal();
+    } catch (e) {
+      message.error(e.response?.data?.message || "Action failed");
+    } finally {
+      setCheckinLoading(false);
+    }
+  };
 
   // ─── Button Definitions ──────────────────────────────────────────────────────
-  // Each entry: { label, confirmTitle, color, onConfirm, condition }
-  const actions = [
-    // 1. atGate | outside/enroute | DESTINATION → Allow Entry
-    {
-      condition:
-        userRole === "atGate" &&
-        isOutsideOrEnroute &&
-        phase === "DESTINATION" &&
-        isNotClosedOrCancelled,
-      label: "✓ Allow Entry (Checkin)",
-      confirmTitle: "Allow this vehicle to enter the factory?",
-      color: "#10b981",
-      onConfirm: () => doAction(() => api.post(`/trip/checkin/${trip._id}`, withFactory)),
-    },
+// ─── Workflow Action Codes (mirrors server's ACTIONS enum — keep in sync manually) ──
+const ACTIONS = {
+  ARRIVED: "ARRIVED",
+  CHECKIN: "CHECKIN",
+  CANCEL: "CANCEL",
+  UNLOAD: "UNLOAD",
+  LOAD: "LOAD",
+  COMPLETE: "COMPLETE",
+  NEXT_TRIP: "NEXT_TRIP",
+  DISPATCH_CHECKOUT: "DISPATCH_CHECKOUT",
+  NEXT_LOCATION: "NEXT_LOCATION",
+  EXIT_CHECKOUT: "EXIT_CHECKOUT",
+  ROUTE_CHANGED: "ROUTE_CHANGED",
+  ROUTE_CHANGE_WITHOUT_LOAD: "ROUTE_CHANGE_WITHOUT_LOAD",
+  ROUTE_CHANGE_WITHOUT_UNLOAD: "ROUTE_CHANGE_WITHOUT_UNLOAD",
+  VEHICLE_LOADED: "VEHICLE_LOADED",
+  LOAD_AND_ROUTE_CHANGE: "LOAD_AND_ROUTE_CHANGE",
 
-    // 2. atGate | outside/enroute | DESTINATION → Cancel Trip
-    {
-      condition:
-        userRole === "atGate" &&
-        isOutsideOrEnroute &&
-        phase === "DESTINATION" &&
-        isNotClosedOrCancelled,
-      label: "✕ Cancel Trip",
-      confirmTitle: "Are you sure you want to cancel this trip?",
-      color: "#D75656",
-      onConfirm: () => {
-        setCancelModalOpen(true);
-      },
-    },
+   // INTRA-FACTORY MOVEMENT ACTIONS
+  ARRIVAL:          "ARRIVAL",
+  LOAD:             "LOAD",
+  UNLOAD:           "UNLOAD",
+  ROUTE_CHANGE:     "ROUTE_CHANGE",
+  DISPATCH:         "DISPATCH",
+  CLOSE:             "CLOSE",
+  COMPLETE:          "COMPLETE",
+  LOAD_NEW_MATERIAL: "LOAD_NEW_MATERIAL",
+};
 
-    // 3. atGate | outside/enroute | ORIGIN | at destination factory → Mark Arrived
-    {
-      condition:
-        userRole === "atGate" &&
-        isOutsideOrEnroute &&
-        phase === "ORIGIN" &&
-        userFactoryId === destId &&
-        isNotClosedOrCancelled,
-      label: "✓ Mark Arrived",
-      confirmTitle: "Mark this vehicle as arrived?",
-      color: "#10b981",
-      onConfirm: () => doAction(() => api.post(`/trip/arrive/${trip._id}`, withFactory)),
-    },
+const { allowedActions = [], stage, actionRequiredBy } = vehicle.workflow || {};
 
-    // 4. atGate | inside | ORIGIN | at source factory → Dispatch Vehicle
-    {
-      condition:
-        userRole === "atGate" &&
-        isInsideFactory &&
-        phase === "ORIGIN" &&
-        userFactoryId === sourceId && trip.type === "internal_transfer" &&
-        isNotClosedOrCancelled,
-      label: "→ Dispatch Vehicle (Checkout)",
-      confirmTitle: "Dispatch this vehicle to its destination?",
-      color: "#6366f1",
-      onConfirm: () => doAction(() => api.post(`/trip/checkout/${trip._id}`, withSourceDest)),
-    },
+const requiredActor  = actionRequiredBy?.actor || [];   // e.g. "storeSite", "atGate"
+const requiredSiteId = actionRequiredBy?.siteId || [];
 
-    // 5. atGate | inside | DESTINATION | not source factory | not ACTIVE → Checkout & Exit
-    {
-      condition:
-        userRole === "atGate" &&
-        isInsideFactory &&
-        phase === "DESTINATION" &&
-        trip.location === "inside_factory" &&
-        (userFactoryId !== sourceId || type === "external_delivery" ) &&
-        tripState !== "CLOSED" &&
-        tripState !== "ACTIVE" &&
-        tripState !== "CANCELLED",
-      label: "Checkout & Exit",
-      confirmTitle: "Check this vehicle out and allow it to exit?",
-      color: "#D75656",
-      onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
-    },
-    {
-      condition:
-        userRole === "atGate" &&
-        isInsideFactory &&
-        phase === "ORIGIN" &&
-        trip.location === "inside_factory" &&
-        userFactoryId === sourceId && type === "external_delivery"  &&
-        tripState !== "CLOSED" &&
-        tripState === "ACTIVE" &&
-        tripState !== "CANCELLED",
-      label: "Checkout & Exit",
-      confirmTitle: "Check this vehicle out and allow it to exit?",
-      color: "#D75656",
-      onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
-    },
-    {
-      condition:
-      userRole === "atGate" &&
-      trip.purpose === "visitor",
-      label: "Checkout & Exit",
-      confirmTitle: "Check this vehicle out and allow it to exit?",
-      color: "#D75656",
-      onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
-    },
+const userWorkLocation = user?.workLocation;
+const userSiteId       = String(user?.siteId?._id || "");
+const userBlockId      = String(user?.blockId?._id || "");
+const tripSiteId       = String(trip?.site?._id || trip?.siteId || "");
+const tripBlockId      = String(trip?.block?._id || trip?.blockId || "");
 
-    // 6. storeSite/dispatchSite | inside | Delivery | not unloaded | external_delivery or internal_transfer | at dest → Mark Unloaded
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        phase === "DESTINATION" &&
-        isInsideFactory &&
-        purpose === "Delivery" &&
-        loadStatus !== "unloaded" && 
-        (type === "external_delivery" || type === "internal_transfer") &&
-        destId === userFactoryId &&
-        isNotClosedOrCancelled,
-      label: "↓ Mark Unloaded",
-      confirmTitle: "Confirm the vehicle has been fully unloaded?",
-      color: "#f59e0b",
-      onConfirm: () => doAction(() => api.post(`/trip/unload/${trip._id}`, withFactory)),
+
+const effectiveSiteIds = Array.isArray(requiredSiteId)
+  ? requiredSiteId.map(String)
+  : requiredSiteId
+    ? [String(requiredSiteId)]
+    : [];
+const actorMatches = requiredActor.length === 0 || requiredActor.includes(userWorkLocation);
+const siteMatches = effectiveSiteIds.length === 0 || effectiveSiteIds.includes(userSiteId);
+const blockMatches = !trip?.isIntraPlant || String(userBlockId) === tripBlockId;
+const canAct = actorMatches || siteMatches
+
+
+
+const ACTION_REGISTRY = {
+  
+  // INTRA PLANT MOVEMENT ACTIONS
+  [ACTIONS.ARRIVAL]: {
+    label: "✓ Mark Arrived",
+    confirmTitle: "Mark this vehicle as arrived at the site?",
+    color: "#10b981",
+    onConfirm: () => doAction(() => api.post(`/trip/arrive/${trip._id}`, withFactory)),
+  },
+
+  [ACTIONS.UNLOAD]: {
+    label: "↓ Mark Unloaded",
+    confirmTitle: "Confirm the vehicle has been fully unloaded at the site?",
+    color: "#f59e0b",
+    onConfirm: () => doAction(() => api.post(`/trip/intra-plant-unload/${trip._id}`, withFactory)),
+  },
+
+  // [ACTIONS.LOAD]: {
+  //   label: "↑ Mark Load Complete intra-plant",
+  //   confirmTitle: "Confirm the vehicle has been fully loaded at the site?",
+  //   color: "#8b5cf6",
+  //   onConfirm: () => {
+  //     setSelectedTrip(trip);
+  //     setTripInternal(DEFAULT_TRIP_INTERNAL);
+  //     setisLoadAndComplete(false);
+  //     setOpenLoadModal(true);
+  //   },
+  // },
+
+  [ACTIONS.ROUTE_CHANGE]: {
+    label: "Select Next Block → ",
+    confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
+    color: "#667eea",
+    onConfirm: () => openChangeRouteModal(trip),
+  },
+
+  [ACTIONS.DISPATCH]: {
+    label: "→ Dispatch Vehicle (Move to Next Block)",
+    confirmTitle: "Dispatch this vehicle to its destination?",
+    color: "#6366f1",
+    onConfirm: () => doAction(() => api.post(`/trip/intra-plant-dispatch/${trip._id}`, withSourceDest)),
+  },
+
+  [ACTIONS.CLOSE]: {
+    label: "Close Trip",
+    confirmTitle: "Are you sure you want to close this trip?",
+    color: "linear-gradient(90deg, #333333 0%, #dd1818 100%)",
+    onConfirm: () => doAction(() => api.post(`/trip/internal-transfer-complete/${trip._id}`, withTripFactory)),
+  },
+
+  [ACTIONS.LOAD_NEW_MATERIAL]: {
+    label: "Load New Material & Next Trip → ",
+    confirmTitle: "This will Close current Trip and create a new Trip with new Material. Are you sure?",
+    color: "#0fbf61",
+    onConfirm: () => {
+      setSelectedTrip(trip);
+      setTripInternal(DEFAULT_TRIP_INTERNAL);
+      setisLoadAndComplete(true);
+      setOpenLoadModal(true);
+    }
+  },
+
+
+
+  // INTER PLANT MOVEMENT ACTIONS
+  [ACTIONS.CHECKIN]: {
+    label: "✓ Allow Entry (Checkin)",
+    confirmTitle: "Allow this vehicle to enter the factory?",
+    color: "#10b981",
+    isCheckinAction: true,
+    onConfirm: () => doAction(() => api.post(`/trip/checkin/${trip._id}`, withFactory)),
+  },
+
+  [ACTIONS.CANCEL]: {
+    label: "✕ Cancel Trip",
+    confirmTitle: "Are you sure you want to cancel this trip?",
+    color: "#D75656",
+    onConfirm: () => setCancelModalOpen(true),
+  },
+
+  [ACTIONS.ARRIVED]: {
+    label: "✓ Mark Arrived",
+    confirmTitle: "Mark this vehicle as arrived?",
+    color: "#10b981",
+    onConfirm: () => doAction(() => api.post(`/trip/arrive/${trip._id}`, withFactory)),
+  },
+
+  [ACTIONS.DISPATCH_CHECKOUT]: {
+    label: "→ Dispatch Vehicle (Checkout)",
+    confirmTitle: "Dispatch this vehicle to its destination?",
+    color: "#6366f1",
+    onConfirm: () => doAction(() => api.post(`/trip/checkout/${trip._id}`, withSourceDest)),
+  },
+
+  [ACTIONS.EXIT_CHECKOUT]: {
+    label: "Checkout & Exit",
+    confirmTitle: "Check this vehicle out and allow it to exit?",
+    color: "#D75656",
+    onConfirm: () => doAction(() => api.post(`/trip/exit-checkout/${trip._id}`, withSourceDest)),
+  },
+
+  [ACTIONS.UNLOAD]: {
+    label: "↓ Mark Unloaded",
+    confirmTitle: "Confirm the vehicle has been fully unloaded?",
+    color: "#f59e0b",
+    onConfirm: () => doAction(() => api.post(`/trip/unload/${trip._id}`, withFactory)),
+  },
+
+  [ACTIONS.LOAD]: {
+    label: "↑ Mark Load Complete",
+    confirmTitle: "Confirm the vehicle has been fully loaded?",
+    color: "#8b5cf6",
+    onConfirm: () => {
+      setSelectedTrip(trip);
+      setTripInternal(DEFAULT_TRIP_INTERNAL);
+      setisLoadAndComplete(false);
+      setOpenLoadModal(true);
     },
-    // 7. storeSite/dispatchSite | inside | Pickup | internal_transfer | not loaded → Mark Load Complete
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        isInsideFactory &&
-        purpose === "Pickup" &&
-        loadStatus !== "loaded" &&
-        destId === userFactoryId &&
-        isNotClosedOrCancelled,
-      label: "↑ Mark Load Complete",
-      confirmTitle: "Confirm the vehicle has been fully loaded?",
-      color: "#8b5cf6",
-      onConfirm: () => {
-        setSelectedTrip(trip);
-        setTripInternal(DEFAULT_TRIP_INTERNAL);
-        setisLoadAndComplete(false);
-        setOpenLoadModal(true);
-      },
+  },
+
+  [ACTIONS.ROUTE_CHANGE_WITHOUT_LOAD]: {
+    label: "Change route without Load → ",
+    confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
+    color: "#db4116",
+    onConfirm: () => openChangeRouteModal(trip),
+  },
+
+  [ACTIONS.ROUTE_CHANGE_WITHOUT_UNLOAD]: {
+    label: "Change route without Unload → ",
+    confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
+    color: "#db4116",
+    onConfirm: () => openChangeRouteModal(trip),
+  },
+
+  [ACTIONS.NEXT_LOCATION]: {
+    label: "Move to Next Factory → ",
+    confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
+    color: "#3a64c7",
+    onConfirm: () => openChangeRouteModal(trip),
+  },
+
+  [ACTIONS.COMPLETE]: {
+    label: (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
+      ? "Mark Trip Completed & Close" : "Mark Ready to Checkout",
+    confirmTitle: type === "internal_transfer"
+      ? "This will complete the internal transfer and close the trip. Are you sure?"
+      : "Mark this vehicle as ready to checkout?",
+    color: "#8b5cf6",
+    onConfirm: () => {
+      const endpoint = (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
+        ? `/trip/internal-transfer-complete/${trip._id}`
+        : `/trip/complete/${trip._id}`;
+      return doAction(() => api.post(endpoint, withTripFactory));
     },
+  },
 
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        isInsideFactory && phase !== "ORIGIN" &&
-        destId === userFactoryId && loadStatus !== "unloaded" &&
-        isNotClosedOrCancelled,
-      label: (loadStatus === "pending" || loadStatus !== "loaded")? `Change route without ${trip.purpose === "Pickup"? "Load" : "Unload → "} `: "Move to Next Factory → ",
-      confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
-      color: (loadStatus === "pending" || loadStatus !== "loaded")? "#db4116" : "#3a64c7",
-      onConfirm: () =>  openChangeRouteModal(trip),
+  [ACTIONS.LOAD_AND_ROUTE_CHANGE]: {
+    label: "Load New Material & Next Trip → ",
+    confirmTitle: type === "internal_transfer"
+      ? "This will Close current Trip and create a new Trip with new Material. Are you sure?"
+      : "Mark this vehicle as ready to checkout?",
+    color: "#0fbf61",
+    onConfirm: () => {
+      setSelectedTrip(trip);
+      setTripInternal(DEFAULT_TRIP_INTERNAL);
+      setisLoadAndComplete(true);
+      setOpenLoadModal(true);
     },
+  },
+};
 
-    // 8. storeSite | inside | not pending | not CLOSED/CANCELLED/COMPLETE → Mark Trip Completed / Mark Ready to Checkout
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        isInsideFactory &&
-        loadStatus !== "pending" && loadStatus !== "loaded" &&
-        tripState !== "CLOSED" &&
-        tripState !== "CANCELLED" &&
-        tripState !== "COMPLETED",
-        label: (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal") ? "Mark Trip Completed & Close" : "Mark Ready to Checkout",
-        confirmTitle:
-        type === "internal_transfer"
-          ? "This will complete the internal transfer and close the trip. Are you sure?"
-          : "Mark this vehicle as ready to checkout?",
-      color: "#8b5cf6",
-      onConfirm: () => {
-        const endpoint =
-          (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
-            ? `/trip/internal-transfer-complete/${trip._id}`
-            : `/trip/complete/${trip._id}`;
-        return doAction(() => api.post(endpoint, withTripFactory));
-      },
-    },
+const visibleActions = canAct ? allowedActions.map((code) => {
+  const def = ACTION_REGISTRY[code];
+  if (!def) {
+    console.warn(`[WorkflowActions] No UI mapping for action code: ${code}`);
+    return null;
+  }
+  return { code, ...def };
+}).filter(Boolean) : []; 
 
-    {
-      condition:
-        (userRole === "storeSite" || userRole === "dispatchSite") &&
-        isInsideFactory &&
-        loadStatus !== "pending" && loadStatus !== "loaded" &&
-        tripState !== "CLOSED" &&
-        tripState !== "CANCELLED" &&
-        tripState !== "COMPLETED",
-        label: "Load New Material & Next Trip → ",
-        confirmTitle:
-        type === "internal_transfer"
-          ? "This will Close current Trip and create a new Trip with new Material. Are you sure?"
-          : "Mark this vehicle as ready to checkout?",
-      color: "#0fbf61",
-      onConfirm: () => {
-        setSelectedTrip(trip);
-        setTripInternal(DEFAULT_TRIP_INTERNAL);
-        setisLoadAndComplete(true);
-        setOpenLoadModal(true);
 
-      },
-    },
+  const ACTION_LABEL_REGISTRY = {
+      [ACTIONS.CHECKIN]: "Yes, Confirmed Checkin",
+      [ACTIONS.CANCEL]: "Yes, Cancel Trip",
+      [ACTIONS.ARRIVED]: "Yes, Mark Arrived",
+      [ACTIONS.ARRIVAL]: "Yes, Mark Arrived",
+      [ACTIONS.CHECKOUT]: "Yes, Checkout Vehicle",
+      [ACTIONS.EXIT_CHECKOUT]: "Yes, Checkout & Exit",
+      [ACTIONS.UNLOAD]: "Yes, Mark Unloaded",
+      [ACTIONS.LOAD]: "Yes, Mark Load Complete",
+      [ACTIONS.ROUTE_CHANGE_WITHOUT_LOAD]: "Yes, Change route without Load → ",
+      [ACTIONS.ROUTE_CHANGE_WITHOUT_UNLOAD]: "Yes, Change route without Unload → ",
+      [ACTIONS.ROUTE_CHANGED]: "Yes, Move to Next Factory → ",
+      [ACTIONS.ROUTE_CHANGE]: "Yes, Move to Next Location → ",
+      [ACTIONS.COMPLETE]: (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
+        ? "Yes, Mark Trip Completed & Close" : "Yes, Mark Ready to Checkout",
+      [ACTIONS.NEXT_TRIP]: "Yes, Load New Material & Next Trip → ",
+      [ACTIONS.CLOSE]: "Yes, Close Trip",
+      [ACTIONS.LOAD_AND_ROUTE_CHANGE]: "Yes, Load New Material & Next Trip → ",
+      [ACTIONS.LOAD_NEW_MATERIAL]: "Yes, Load New Material & Next Trip → ",
+      [ACTIONS.DISPATCH]: "Yes, Dispatch Vehicle ",
+      [ACTIONS.DISPATCH_CHECKOUT]: "Yes, Dispatch Vehicle (Checkout)",
+      
 
-  ];
+  }
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
-  const visibleActions = actions.filter((a) => a.condition);
-  if (visibleActions.length === 0) return null;
+  const getConfirmButtonLabel = (actionCode) => {
+    return ACTION_LABEL_REGISTRY[actionCode] || "Yes, Confirmed";
+  }
 
+
+  const [loadSiteBlocks, setLoadSiteBlocks] = useState([]);
+  const [fetchingLoadSites, setFetchingLoadSites] = useState(false);
+
+  useEffect(() => {
+    if (!openLoadModal || !isIntraPlant) return;
+    const factoryId = userFactoryId;
+    if (!factoryId) return;
+    const fetchSites = async () => {
+      try {
+        setFetchingLoadSites(true);
+        const res = await api.get("/sites", { params: { factoryId } });
+        setLoadSiteBlocks(res.data?.sites || res.data?.data || res.data || []);
+      } catch {
+        message.error("Could not load sites/blocks");
+      } finally {
+        setFetchingLoadSites(false);
+      }
+    };
+    fetchSites();
+  }, [openLoadModal, isIntraPlant, userFactoryId]);
+
+  const allowedLoadSites = useMemo(() => {
+    const allowedSiteIds = new Set(
+      (user?.factory?.allowedSites || [])
+        .filter((s) => s.name !== "Security")
+        .map((s) => String(s._id))
+    );
+
+    return (loadSiteBlocks || []).filter((site) => allowedSiteIds.has(String(site._id)));
+  }, [loadSiteBlocks, user]);
+
+  const currentSiteId  = trip?.siteId?._id || trip?.destinationSiteId?._id || trip?.sourceSiteId?._id || null;
+  const currentBlockId = trip?.blockId?._id || trip?.destinationBlockId?._id || trip?.sourceBlockId?._id || null;
+  
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap",}}>
-      {visibleActions.map(({ label, confirmTitle, color, onConfirm }) => (
-        <Popconfirm
-          key={label}
-          title={confirmTitle}
-          onConfirm={onConfirm}
-          okText="Yes"
-          cancelText="No"
+     {visibleActions.map(({ code, label, confirmTitle, color, onConfirm }) => (
+      <Popconfirm key={code} title={confirmTitle} onConfirm={onConfirm} okText={getConfirmButtonLabel(code)} cancelText="Cancel"  disabled={loading}>
+        <button
           disabled={loading}
+          style={{
+            background: color, color: "#fff", border: "none", borderRadius: 8,
+            padding: "9px 18px", fontWeight: 700, fontSize: 13,
+            cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1,
+          }}
         >
-          <button
-            disabled={loading}
-            style={{
-              background: color,
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "9px 18px",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            {loading ? "Please wait..." : label}
-          </button>
-        </Popconfirm>
-      ))}
+          {loading ? "Please wait..." : label}
+        </button>
+      </Popconfirm>
+    ))}
 
-      <ChangeRouteModal {...modalProps} />
+    <ChangeRouteModal {...modalProps} />
 
-      <AntModal
-        open={openLoadModal}
-        onCancel={() => setOpenLoadModal(false)}
-        footer={null}
-        width={520}
-        centered
-        closeIcon={
-          <span style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: "#f3f4f6", display: "flex",
-            alignItems: "center", justifyContent: "center",
-            fontSize: 13, color: "#6b7280", cursor: "pointer",
-            transition: "background .15s",
-          }}>✕</span>
-        }
-        styles={{
-          content: { padding: 0, borderRadius: 16, overflow: "hidden" },
-          mask: { backdropFilter: "blur(4px)", background: "rgba(0,0,0,0.35)" },
-        }}
-        title={null}
-      >
-        {/* ── Header ── */}
-        <div style={{
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          padding: "22px 24px 20px",
-          position: "relative",
-          overflow: "hidden",
-        }}>
-          <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"rgba(99,102,241,0.12)", pointerEvents:"none" }}/>
-          <div style={{ position:"absolute", bottom:-20, left:60, width:80, height:80, borderRadius:"50%", background:"rgba(34,211,238,0.07)", pointerEvents:"none" }}/>
+    <AntModal
+      open={openLoadModal}
+      onCancel={() => setOpenLoadModal(false)}
+      footer={null}
+      width={520}
+      centered
+      closeIcon={
+        <span style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: "#f3f4f6", display: "flex",
+          alignItems: "center", justifyContent: "center",
+          fontSize: 13, color: "#6b7280", cursor: "pointer",
+          transition: "background .15s",
+        }}>✕</span>
+      }
+      styles={{
+        content: { padding: 0, borderRadius: 16, overflow: "hidden" },
+        mask: { backdropFilter: "blur(4px)", background: "rgba(0,0,0,0.35)" },
+      }}
+      title={null}
+    >
+      {/* ── Header ── */}
+      <div style={{
+        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+        padding: "22px 24px 20px",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"rgba(99,102,241,0.12)", pointerEvents:"none" }}/>
+        <div style={{ position:"absolute", bottom:-20, left:60, width:80, height:80, borderRadius:"50%", background:"rgba(34,211,238,0.07)", pointerEvents:"none" }}/>
 
-          <div style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 12,
-              background: "linear-gradient(135deg,#6366f1,#4f46e5)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 18, boxShadow: "0 4px 14px rgba(99,102,241,0.4)",
-            }}>📦</div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#f8fafc", letterSpacing: -0.3 }}>
-                Complete Loading
-              </div>
-              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontWeight: 400 }}>
-                Fill in shipment details to confirm dispatch
-              </div>
+        <div style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12,
+            background: "linear-gradient(135deg,#6366f1,#4f46e5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, boxShadow: "0 4px 14px rgba(99,102,241,0.4)",
+          }}>📦</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#f8fafc", letterSpacing: -0.3 }}>
+              Complete Loading
+            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontWeight: 400 }}>
+              Fill in shipment details to confirm dispatch
             </div>
           </div>
         </div>
+      </div>
 
-        {/* ── Body ── */}
-        <div style={{ padding: "20px 24px 24px", background: "#fff" }}>
+      {/* ── Body ── */}
+      <div style={{ padding: "20px 24px 24px", background: "#fff" }}>
 
+        {/* Section label */}
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <span style={{ fontSize:10, fontWeight:700, color:"#6366f1", textTransform:"uppercase", letterSpacing:1 }}>
+            Materials Details
+          </span>
+          <div style={{ flex:1, height:1, background:"#e0e7ff" }}/>
+        </div>
+
+        {/* Row 1 — Customer + Invoice No */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Customer (optional)
+            </label>
+            <Select
+              showSearch
+              placeholder="Search customer…"
+              style={{ width: "100%" }}
+              value={tripInternal.customer || undefined}
+              onChange={(value) => setTripInternal({ ...tripInternal, customer: value })}
+              options={(customers || []).map((c) => ({ label: c.l , value: c.v }))}
+              filterOption={(input, option) =>
+                option.label.toLowerCase().includes(input.toLowerCase())
+              }
+              optionFilterProp="label"
+              styles={{ popup: { root: { borderRadius: 10 } } }}
+            />
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Invoice No. <span className="text-red-500" >*</span>
+            </label>
+            <Input
+              required
+              placeholder="e.g. INV-2024-001"
+              value={tripInternal.invoiceNo?.toUpperCase()}
+              onChange={(e) => setTripInternal({ ...tripInternal, invoiceNo: e.target.value })}
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+        </div>
+
+        {/* Row 2 — Material + Quantity */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Material <span className="text-red-500" >*</span>
+            </label>
+            <Input
+              required
+              placeholder="Material description"
+              value={tripInternal.material?.toUpperCase()}
+              onChange={(e) => setTripInternal({ ...tripInternal, material: e.target.value })}
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Material Type <span className="text-red-500" >*</span>
+            </label>
+            <Select
+              required
+              placeholder="Select material type"
+              value={tripInternal.materialType}
+              onChange={(value) =>
+                setTripInternal({
+                  ...tripInternal,
+                  materialType: value
+                })
+              }
+              options={[
+                { label: "RAW Material", value: "RM" },
+                { label: "Finish Good", value: "FG" },
+                { label: "Other", value: "OTHER" }
+              ]}
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Quantity <span className="text-red-500" >*</span>
+            </label>
+            <InputNumber
+              required
+              placeholder="0"
+              style={{ width:"100%", borderRadius: 8 }}
+              value={tripInternal.quantity}
+              onChange={(value) => setTripInternal({ ...tripInternal, quantity: value })}
+            />
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:20 }}>
+            <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+              Invoice Amount (₹) <span className="text-red-500" >*</span>
+            </label>
+            <InputNumber
+              required
+              placeholder="0.00"
+              style={{ width:"100%", borderRadius: 8 }}
+              value={tripInternal.invoiceAmount}
+              formatter={(v) => v ? `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : ""}
+              parser={(v) => v?.replace(/₹\s?|(,*)/g, "") || ""}
+              onChange={(value) => setTripInternal({ ...tripInternal, invoiceAmount: value })}
+            />
+          </div>
+        </div>
+
+        {/* Row 3 — Invoice Amount */}
+
+
+        {/* ── NEW: Shipment Type Section ── */}
+        <div style={{ height:1, background:"#f1f5f9", marginBottom:16 }}/>
+
+      {isLoadAndComplete && (
+        <>
           {/* Section label */}
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
             <span style={{ fontSize:10, fontWeight:700, color:"#6366f1", textTransform:"uppercase", letterSpacing:1 }}>
-              Materials Details
+              {isIntraPlant ? "Destination Site" : "Shipment Type"}
             </span>
             <div style={{ flex:1, height:1, background:"#e0e7ff" }}/>
           </div>
 
-          {/* Row 1 — Customer + Invoice No */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-              <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Customer (optional)
-              </label>
-              <Select
-                showSearch
-                placeholder="Search customer…"
-                style={{ width: "100%" }}
-                value={tripInternal.customer || undefined}
-                onChange={(value) => setTripInternal({ ...tripInternal, customer: value })}
-                options={(customers || []).map((c) => ({ label: c.l , value: c.v }))}
-                filterOption={(input, option) =>
-                  option.label.toLowerCase().includes(input.toLowerCase())
-                }
-                optionFilterProp="label"
-                styles={{ popup: { root: { borderRadius: 10 } } }}
-              />
-            </div>
-
-            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-              <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Invoice No. <span className="text-red-500" >*</span>
-              </label>
-              <Input
-                required
-                placeholder="e.g. INV-2024-001"
-                value={tripInternal.invoiceNo?.toUpperCase()}
-                onChange={(e) => setTripInternal({ ...tripInternal, invoiceNo: e.target.value })}
-                style={{ borderRadius: 8 }}
-              />
-            </div>
-          </div>
-
-          {/* Row 2 — Material + Quantity */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-              <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Material <span className="text-red-500" >*</span>
-              </label>
-              <Input
-                required
-                placeholder="Material description"
-                value={tripInternal.material?.toUpperCase()}
-                onChange={(e) => setTripInternal({ ...tripInternal, material: e.target.value })}
-                style={{ borderRadius: 8 }}
-              />
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-              <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Material Type <span className="text-red-500" >*</span>
-              </label>
-              <Select
-                required
-                placeholder="Select material type"
-                value={tripInternal.materialType}
-                onChange={(value) =>
-                  setTripInternal({
-                    ...tripInternal,
-                    materialType: value
-                  })
-                }
-                options={[
-                  { label: "RAW Material", value: "RM" },
-                  { label: "Finish Good", value: "FG" },
-                  { label: "Other", value: "OTHER" }
-                ]}
-                style={{ borderRadius: 8 }}
-              />
-            </div>
-
-            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-              <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Quantity <span className="text-red-500" >*</span>
-              </label>
-              <InputNumber
-                required
-                placeholder="0"
-                style={{ width:"100%", borderRadius: 8 }}
-                value={tripInternal.quantity}
-                onChange={(value) => setTripInternal({ ...tripInternal, quantity: value })}
-              />
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:20 }}>
-              <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                Invoice Amount (₹) <span className="text-red-500" >*</span>
-              </label>
-              <InputNumber
-                required
-                placeholder="0.00"
-                style={{ width:"100%", borderRadius: 8 }}
-                value={tripInternal.invoiceAmount}
-                formatter={(v) => v ? `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : ""}
-                parser={(v) => v?.replace(/₹\s?|(,*)/g, "") || ""}
-                onChange={(value) => setTripInternal({ ...tripInternal, invoiceAmount: value })}
-              />
-            </div>
-          </div>
-
-          {/* Row 3 — Invoice Amount */}
-
-
-          {/* ── NEW: Shipment Type Section ── */}
-          <div style={{ height:1, background:"#f1f5f9", marginBottom:16 }}/>
-
-        {
-          isLoadAndComplete && (  
-            <>
-              {/* Section label */}
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <span style={{ fontSize:10, fontWeight:700, color:"#6366f1", textTransform:"uppercase", letterSpacing:1 }}>
-                  Shipment Type
-                </span>
-                <div style={{ flex:1, height:1, background:"#e0e7ff" }}/>
+          {isIntraPlant ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+                  Select Site <span className="text-red-500">*</span>
+                </label>
+                <Select
+                  showSearch
+                  loading={fetchingLoadSites}
+                  placeholder="Search site…"
+                  style={{ width: "100%" }}
+                  value={tripInternal.shipmentSiteId || undefined}
+                  optionFilterProp="label"
+                  options={allowedLoadSites.map((s) => ({ label: s.name, value: s._id }))}
+                  onChange={(value) =>
+                    setTripInternal((prev) => ({ ...prev, shipmentSiteId: value, shipmentBlockId: "" }))
+                  }
+                />
               </div>
 
-              <Tabs
-                activeKey={shipmentType}
-                onChange={(key) => {
-                  setShipmentType(key);
-                  // clear previous selection when switching tabs
-                  setTripInternal((prev) => ({ ...prev, shipmentFactory: undefined, shipmentCustomer: undefined }));
-                }}
-                size="small"
-                style={{ marginBottom: 4 }}
-                items={[
-                  {
-                    key: "internal",
-                    label: (
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 12 }}>
-                        <span style={{
-                          width: 18, height: 18, borderRadius: 5,
-                          background: shipmentType === "internal" ? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e2e8f0",
-                          display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, color: shipmentType === "internal" ? "#fff" : "#94a3b8",
-                          transition: "all .2s",
-                        }}>🏭</span>
-                        Internal Shipment
-                      </span>
-                    ),
-                    children: (
-                      <div style={{ paddingTop: 12 }}>
-                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                          <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                            Select Factory
-                          </label>
-                          <Select
-                            showSearch
-                            allowClear
-                            placeholder="Search factory…"
-                            style={{ width: "100%" }}
-                            value={tripInternal.shipmentFactory || undefined}
-                            onChange={(value) =>
-                              setTripInternal(prev => ({
-                                ...prev,
-                                shipmentFactory: value
-                              }))
-                            }
-                            options={factories.map((f) => ({
-                              label: `${f?.name} (${f?.location})`,
-                              value: f?._id
-                            }))}
-                            filterOption={(input, option) =>
-                              (option?.label ?? "")
-                                .toLowerCase()
-                                .includes(input.toLowerCase())
-                            }
-                            optionFilterProp="label"
-                          />
-                          <span style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>
-                            Select the destination factory for this internal transfer.
-                          </span>
-                        </div>
+              {(() => {
+                const site = allowedLoadSites.find((s) => s._id === tripInternal.shipmentSiteId);
+                if (!site?.supportsBlocks) return null;
+
+                const isSameSiteAsCurrent = currentSiteId && String(site._id) === String(currentSiteId);
+
+                const userSiteId = user?.siteId?._id ? String(user.siteId._id) : null;
+                const userBlockId = user?.blockId?._id ? String(user.blockId._id) : null;
+                const isSameSiteAsUser = userSiteId && String(site._id) === userSiteId;
+
+                const blockOptions = (site?.allowedBlocks || []).filter((b) => {
+                  const bId = String(b._id);
+                  if (isSameSiteAsCurrent && currentBlockId && bId === String(currentBlockId)) return false;
+                  if (isSameSiteAsUser && userBlockId && bId === userBlockId) return false;
+                  return true;
+                });
+
+                return (
+                  <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                    <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+                      Select Block <span className="text-red-500">*</span>
+                    </label>
+                    <Select
+                      showSearch
+                      disabled={!tripInternal.shipmentSiteId}
+                      placeholder={!tripInternal.shipmentSiteId ? "Select a site first" : "Search block…"}
+                      style={{ width: "100%" }}
+                      value={tripInternal.shipmentBlockId || undefined}
+                      optionFilterProp="label"
+                      options={blockOptions.map((b) => ({ label: b.name, value: b._id }))}
+                      onChange={(value) =>
+                        setTripInternal((prev) => ({ ...prev, shipmentBlockId: value }))
+                      }
+                    />
+                  </div>
+                );
+              })()}
+
+              <span style={{ fontSize:10, color:"#94a3b8" }}>
+                Select the destination site (and block, if applicable) within this plant.
+              </span>
+            </div>
+          ) : (
+            <Tabs
+              activeKey={shipmentType}
+              onChange={(key) => {
+                setShipmentType(key);
+                setTripInternal((prev) => ({ ...prev, shipmentFactory: undefined, shipmentCustomer: undefined }));
+              }}
+              size="small"
+              style={{ marginBottom: 4 }}
+              items={[
+                {
+                  key: "internal",
+                  label: (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 12 }}>
+                      <span style={{
+                        width: 18, height: 18, borderRadius: 5,
+                        background: shipmentType === "internal" ? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e2e8f0",
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 10, color: shipmentType === "internal" ? "#fff" : "#94a3b8",
+                        transition: "all .2s",
+                      }}>🏭</span>
+                      Internal Shipment
+                    </span>
+                  ),
+                  children: (
+                    <div style={{ paddingTop: 12 }}>
+                      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                        <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+                          Select Factory
+                        </label>
+                        <Select
+                          showSearch
+                          allowClear
+                          placeholder="Search factory…"
+                          style={{ width: "100%" }}
+                          value={tripInternal.shipmentFactory || undefined}
+                          onChange={(value) =>
+                            setTripInternal(prev => ({ ...prev, shipmentFactory: value }))
+                          }
+                          options={factories.map((f) => ({
+                            label: `${f?.name} (${f?.location})`,
+                            value: f?._id
+                          }))}
+                          filterOption={(input, option) =>
+                            (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                          }
+                          optionFilterProp="label"
+                        />
+                        <span style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>
+                          Select the destination factory for this internal transfer.
+                        </span>
                       </div>
-                    ),
-                  },
-                  {
-                    key: "external",
-                    label: (
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 12 }}>
-                        <span style={{
-                          width: 18, height: 18, borderRadius: 5,
-                          background: shipmentType === "external" ? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e2e8f0",
-                          display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, color: shipmentType === "external" ? "#fff" : "#94a3b8",
-                          transition: "all .2s",
-                        }}>🚚</span>
-                        External Shipment
-                      </span>
-                    ),
-                    children: (
-                      <div style={{ paddingTop: 12 }}>
-                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                          <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
-                            Select Customer
-                          </label>
-                          <Select
-                            showSearch
-                            allowClear
-                            placeholder="Search customer…"
-                            style={{ width: "100%" }}
-                            value={tripInternal.shipmentCustomer || undefined}
-                            onChange={(value) => setTripInternal({ ...tripInternal, shipmentCustomer: value })}
-                            options={customers.map((c) => ({ label: c.l, value: c.v }))}
-                            filterOption={(input, option) =>
-                              option.label.toLowerCase().includes(input.toLowerCase())
-                            }
-                            optionFilterProp="label"
-                            styles={{ popup: { root: { borderRadius: 10 } } }}
-                          />
-                          <span style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>
-                            Select the customer receiving this external shipment.
-                          </span>
-                        </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: "external",
+                  label: (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 12 }}>
+                      <span style={{
+                        width: 18, height: 18, borderRadius: 5,
+                        background: shipmentType === "external" ? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#e2e8f0",
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 10, color: shipmentType === "external" ? "#fff" : "#94a3b8",
+                        transition: "all .2s",
+                      }}>🚚</span>
+                      External Shipment
+                    </span>
+                  ),
+                  children: (
+                    <div style={{ paddingTop: 12 }}>
+                      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                        <label style={{ fontSize:10, fontWeight:600, color:"#475569", textTransform:"uppercase", letterSpacing:.6 }}>
+                          Select Customer
+                        </label>
+                        <Select
+                          showSearch
+                          allowClear
+                          placeholder="Search customer…"
+                          style={{ width: "100%" }}
+                          value={tripInternal.shipmentCustomer || undefined}
+                          onChange={(value) => setTripInternal({ ...tripInternal, shipmentCustomer: value })}
+                          options={customers.map((c) => ({ label: c.l, value: c.v }))}
+                          filterOption={(input, option) =>
+                            option.label.toLowerCase().includes(input.toLowerCase())
+                          }
+                          optionFilterProp="label"
+                          styles={{ popup: { root: { borderRadius: 10 } } }}
+                        />
+                        <span style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>
+                          Select the customer receiving this external shipment.
+                        </span>
                       </div>
-                    ),
-                  },
-                ]}
-              />
-            </>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           )}
+        </>
+      )}
 
-          {/* ── Actions ── */}
-          <div style={{ height:1, background:"#f1f5f9", margin:"20px 0 16px" }}/>
-          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-            <button
-              onClick={() => {  setOpenLoadModal(false); setSelectedTrip(null); setisLoadAndComplete(false); }}
-              style={{
-                padding:"8px 16px", borderRadius:9, fontSize:12, fontWeight:600,
-                border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569",
-                cursor:"pointer", transition:"all .15s",
-              }}
-              onMouseEnter={e => e.currentTarget.style.background="#f1f5f9"}
-              onMouseLeave={e => e.currentTarget.style.background="#f8fafc"}
-            >
-              Discard
-            </button>
-            <button
-              onClick={handleLoadComplete}
-              style={{
-                padding:"8px 20px", borderRadius:9, fontSize:12, fontWeight:700,
-                border:"none", cursor:"pointer", transition:"all .15s",
-                background:"linear-gradient(135deg,#6366f1,#4f46e5)",
-                color:"#fff", boxShadow:"0 3px 10px rgba(99,102,241,0.35)",
-                display:"flex", alignItems:"center", gap:6,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.filter="brightness(1.1)"; e.currentTarget.style.transform="translateY(-1px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.filter=""; e.currentTarget.style.transform=""; }}
-            >
-              <span>✓</span> Confirm Loading
-            </button>
-          </div>
-
+        {/* ── Actions ── */}
+        <div style={{ height:1, background:"#f1f5f9", margin:"20px 0 16px" }}/>
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button
+            onClick={() => {  setOpenLoadModal(false); setSelectedTrip(null); setisLoadAndComplete(false); }}
+            style={{
+              padding:"8px 16px", borderRadius:9, fontSize:12, fontWeight:600,
+              border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569",
+              cursor:"pointer", transition:"all .15s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={e => e.currentTarget.style.background="#f8fafc"}
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleLoadComplete}
+            style={{
+              padding:"8px 20px", borderRadius:9, fontSize:12, fontWeight:700,
+              border:"none", cursor:"pointer", transition:"all .15s",
+              background:"linear-gradient(135deg,#6366f1,#4f46e5)",
+              color:"#fff", boxShadow:"0 3px 10px rgba(99,102,241,0.35)",
+              display:"flex", alignItems:"center", gap:6,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.filter="brightness(1.1)"; e.currentTarget.style.transform="translateY(-1px)"; }}
+            onMouseLeave={e => { e.currentTarget.style.filter=""; e.currentTarget.style.transform=""; }}
+          >
+            <span>✓</span> Confirm Loading
+          </button>
         </div>
-      </AntModal>
- 
 
-      <CancelTripModal
-        open={cancelModalOpen}
-        loading={cancelLoading}
-        onCancel={() => setCancelModalOpen(false)}
-        onConfirm={async (reason) => {
-          setCancelLoading(true);
-          try {
-            doAction (() => api.post(`/trip/cancel/${trip._id}`, { ...withFactory, reason }) ) ;
-            setCancelModalOpen(false);
-          } catch (e) {
-            message.error(e.response?.data?.message || "Failed to cancel trip");
-          } finally {
-            setCancelLoading(false);
-          }
-        }}
-      />
+      </div>
+    </AntModal>
+      
+    {/* Check-in Modal */}
+    <AntModal
+      open={checkinModalOpen}
+      onCancel={resetCheckinModal}
+      footer={null}
+      width={460}
+      centered
+      closeIcon={
+        <span style={{
+          width: 26, height: 26, background: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 12, color: "#6b7280", cursor: "pointer",
+        }}>✕</span>
+      }
+      styles={{
+        content: { padding: 0, borderRadius: 16, overflow: "hidden" },
+        mask: { backdropFilter: "blur(4px)", background: "rgba(0,0,0,0.35)" },
+      }}
+      title={null}
+    >
+      {/* Header */}
+      <div style={{
+        background: "linear-gradient(135deg,#10b981 0%,#059669 100%)",
+        padding: "16px 20px",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,.2)",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+        }}>✓</div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Allow Entry (Checkin)</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)" }}>
+            {vehicle?.vehicle?.vehicleNumber || "Vehicle"} — confirm entry to factory
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "18px 20px 20px", background: "#fff" }}>
+
+        {/* ── Site selector — always required, always visible ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+          <label style={{ fontSize: 10.5, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: .6 }}>
+            {trip.purpose === "Pickup" ? "Dispatch Site" : "Store Site"}
+            <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
+          </label>
+          <Select
+            loading={fetchingSites}
+            placeholder="Select site"
+            style={{ width: "100%" }}
+            value={siteId || undefined}
+            showSearch
+            optionFilterProp="label"
+            options={(() => {
+              const wantType = trip.purpose === "Pickup" ? "dispatch" : "store";
+              return siteBlocks
+                .filter((site) => {
+                  const n = site.name?.trim().toLowerCase() || "";
+                  return n.includes(wantType);
+                })
+                .map((site) => ({ value: site._id, label: site.name }));
+            })()}
+            onChange={(val) => {
+              setSiteId(val);
+              setBlockId(null); // reset block when site changes
+            }}
+          />
+        </div>
+
+        {/* ── Intra Movement toggle ── */}
+        <div style={{
+          background: isIntraPlant ? "#eef2ff" : "#f8fafc",
+          border: `1.25px solid ${isIntraPlant ? "#a5b4fc" : "#e5e7eb"}`,
+          borderRadius: 12, padding: "10px 14px",
+          marginBottom: isIntraPlant ? 12 : 0,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          transition: "all .2s",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 9,
+              background: isIntraPlant ? "#ede9fe" : "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 1px 3px rgba(0,0,0,.08)", fontSize: 14,
+            }}>📍</div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12.5, color: "#374151" }}>Enable Intra Movement</div>
+              <div style={{ fontSize: 10.5, color: "#9ca3af", fontWeight: 500 }}>
+                Assign a specific block within the site
+              </div>
+            </div>
+          </div>
+          <Switch
+            checked={isIntraPlant}
+            onChange={(checked) => {
+              setIsIntraPlant(checked);
+              if (!checked) setBlockId(null);
+            }}
+          />
+        </div>
+
+        {/* ── Block selector — only when intra movement is ON ── */}
+        {isIntraPlant && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
+            <label style={{ fontSize: 10.5, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: .6 }}>
+              {trip.purpose === "Pickup" ? "Dispatch Block" : "Store Block"}
+              <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
+            </label>
+            <Select
+              loading={fetchingSites}
+              disabled={!siteId}
+              placeholder={!siteId ? "Select a site first" : "Select block"}
+              style={{ width: "100%" }}
+              value={blockId || undefined}
+              showSearch
+              optionFilterProp="label"
+              options={(() => {
+                if (!siteId) return [];
+                const site = siteBlocks.find((s) => s._id === siteId);
+                return (site?.allowedBlocks || []).map((block) => ({
+                  value: block._id,
+                  label: block.name,
+                }));
+              })()}
+              onChange={(val) => setBlockId(val)}
+            />
+            {!siteId && (
+              <span style={{ fontSize: 10, color: "#f59e0b", fontWeight: 500 }}>
+                ⚠ Select a site above to load its blocks
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ height: 1, background: "#f1f5f9", margin: "18px 0 14px" }} />
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            onClick={resetCheckinModal}
+            disabled={checkinLoading}
+            style={{
+              padding: "8px 16px", borderRadius: 9, fontSize: 12, fontWeight: 600,
+              border: "1.5px solid #e2e8f0", background: "#f8fafc", color: "#475569",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCheckinConfirm}
+            disabled={checkinLoading}
+            style={{
+              padding: "8px 20px", borderRadius: 9, fontSize: 12, fontWeight: 700,
+              border: "none", cursor: checkinLoading ? "not-allowed" : "pointer",
+              background: "linear-gradient(135deg,#10b981,#059669)",
+              color: "#fff", boxShadow: "0 3px 10px rgba(16,185,129,0.35)",
+              opacity: checkinLoading ? 0.7 : 1,
+            }}
+          >
+            {checkinLoading ? "Checking in..." : "✓ Confirm Entry"}
+          </button>
+        </div>
+      </div>
+    </AntModal>
+
+    <CancelTripModal
+      open={cancelModalOpen}
+      loading={cancelLoading}
+      onCancel={() => setCancelModalOpen(false)}
+      onConfirm={async (reason) => {
+        setCancelLoading(true);
+        try {
+          doAction (() => api.post(`/trip/cancel/${trip._id}`, { ...withFactory, reason }) ) ;
+          setCancelModalOpen(false);
+        } catch (e) {
+          message.error(e.response?.data?.message || "Failed to cancel trip");
+        } finally {
+          setCancelLoading(false);
+        }
+      }}
+    />
       
     </div>
   );
@@ -1215,7 +1705,8 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
 // ─── Vehicle Detail Modal ─────────────────────────────────────────────────────
 export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefresh  }) {
   if(!selectedVehicleId) return null
-  const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
+  const {user} = useUser();
+  
   const userRole = user.workLocation
   const userFactoryId = user?.factory._id;
   const [factories, setFactories] = useState([]);
@@ -1235,10 +1726,11 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   });
 
   const trip = data || null;
+  console.log("trip data", trip)
 
   const location    = trip?.location;
   const vehicleData = trip?.vehicle;
-  const pucAlert    = vehicleData?.PUCExpiry;
+  const pucAlert    = isPUCExpired(vehicleData?.PUCExpiry);
   const phase       = trip?.phase;
   const stage       = getWorkflowStage(trip);
   const tripHistory = Array.isArray(trip?.tripHistory) ? trip.tripHistory : [];
@@ -1264,7 +1756,7 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
     <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, flexShrink: 0, minWidth: 110 }}>{label}</span>
     <span style={{
       fontSize: 12,
-      fontWeight: warn || accent ? 700 : 600,
+      fontWeight: warn || accent ? 700 : 500,
       color: "#0f172a",
       textAlign: "right",
       display: "inline-flex",
@@ -1278,13 +1770,13 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
 );
 
   const Section = ({ title, children }) => (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 14,}}>
       <div style={{ fontSize: 10, fontWeight: 800, color: "#6366f1", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
       <div style={{
-        background: "#fafafa",
+        background: "#fff",
         borderRadius: 8,
-        padding: "4px 10px",
-        boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
+        padding: "10px 10px",
+        boxShadow: "0 1px 6px rgba(0,0,0,0.15)",
       }}>{children}</div>
     </div>
   );
@@ -1308,19 +1800,76 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   
 
     if(selectedTripLoading) {
-    return (
-      <Modal open={!!vehicle} onClose={onClose} title="Your trip is loading..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
-          <Spin size="large" />
-        </div>
-      </Modal>
-    );
-  }
+      return (
+        <Modal open={!!vehicle} onClose={onClose} title="Your trip is loading..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
+            <Spin size="large" />
+          </div>
+        </Modal>
+      );
+    }
 
   return (
     
-    <Modal open={!!trip} onClose={onClose} title={`${vehicleData?.vehicleNumber} — Vehicle Details`} width={640} style={{ maxHeight: "90vh", scrollY: "auto", scrollbarWidth: "none", position: "relative", padding: 0, }}>
-      {/* Status & Phase row */}
+    <Modal 
+      open={!!trip} 
+      onClose={onClose} 
+      title={
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0" }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+            background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 12px rgba(99,102,241,0.28)",
+          }}>
+            <Truck size={19} color="#fff" strokeWidth={2.2} />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", letterSpacing: -0.2 }}>
+                {vehicleData?.vehicleNumber || "Vehicle"}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
+                {vehicleData?.transporterName || "Transporter"}
+              </span>
+              {trip?.isIntraPlant && (
+                <span style={{
+                  fontSize: 9.5, fontWeight: 700, color: "#4f46e5",
+                  background: "#eef2ff", border: "1px solid #c7d2fe",
+                  padding: "2px 8px", borderRadius: 20,
+                  textTransform: "uppercase", letterSpacing: 0.4,
+                }}>
+                  Intra-Plant
+                </span>
+              )}
+            </div>
+
+            <span style={{ fontSize: 11, fontWeight: 500, color: "#94a3b8", display: "flex", alignItems: "center", gap: 5 }}>
+              {trip?.updatedAt && (
+                <>
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#94a3b8", display: "inline-block" }} />
+                  Last updated {fmtTime(trip.updatedAt)}
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+      }
+      width={640}
+      style={{ maxHeight: "90vh", background: "#f3f4f6", scrollY: "auto", scrollbarWidth: "none", position: "relative", padding: 0 }}
+      styles={{
+        body: {
+          background: "#f3f4f6"
+        },
+        header: {
+          padding: "18px 24px",
+          borderBottom: "1px solid #e5e7eb",
+          background: "#fff",
+        }
+      }}
+      >
+        
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <TypeBadge type={vehicleData?.typeOfVehicle} />
         <span style={{ fontSize: 11, fontWeight: 600, color: "#374151", background: "#f3f4f6", borderRadius: 5, padding: "2px 7px" }}>
@@ -1360,9 +1909,9 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
         </Section>
         <Section title="Location">
           <Row label="State"            value={location === "outside_factory" ? "Outside Factory" : location === "inside_factory" ? "Inside Factory" : "In Transit"} accent />
-          <Row label="Source Factory"   value={trip?.sourceFactory?.name || (trip.type === "external_delivery" ? (trip.externalSource?? "External") : "Internal")} />
-          <Row label="Destination"      value={trip?.destinationFactory?.name?? trip.externalDestination?? "N/A"} />
-          <Row label="Trip Start"    value={fmtTime(trip?.createdAt) || "N/A"} />
+          <Row label="Source Factory"   value={`${trip?.sourceFactory?.name?? trip?.externalSource?? "Unknown" }, ${trip?.isIntraPlant && trip?.sourceSiteId ? `${trip?.sourceSite?.name}, ${ trip?.isIntraPlant && trip?.sourceBlock?.name}` : ""}`|| (trip?.type === "external_delivery" ? (trip?.externalSource?? "External") : "Internal")} />
+          <Row label="Destination"      value={`${trip?.destinationFactory?.name?? trip?.externalDestination?? "N/A"}, ${trip?.isIntraPlant && trip?.destinationSiteId ? `${trip?.destinationSite?.name}` : ""} ${trip?.isIntraPlant && trip?.destinationBlockId ? `${trip?.destinationBlock?.name}` : ""}`} />
+          <Row label="Trip Start"       value={fmtTime(trip?.createdAt) || "N/A"} />
         </Section>
         <Section title="Material Details">
           <Row label="Material"         value={trip?.materials[0]?.material || "-"} accent />
@@ -1379,7 +1928,7 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
         <Section title="Invoice Details">
           <Row label="Material Type"    value={trip?.materials[0]?.name === "RM" ? "Raw Material" : trip?.materials[0]?.name === "FG" ? "Finished Goods" : trip?.materials[0]?.name || "-" } accent />
           <Row label="Invoice No"       value={trip?.materials[0]?.invoiceNo || "-"} accent />
-          <Row label="Amount"           value={trip?.materials[0]?.invoiceAmount|| "-"} accent />
+          <Row label="Amount"           value={`${trip?.materials[0]?.invoiceAmount ? `₹ ${trip?.materials[0]?.invoiceAmount.toFixed(2)}` : "₹ 0.00"}`} accent />
         </Section>
       </div>
 
@@ -1391,7 +1940,7 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
         )}
 
       {/* ── Horizontal Trip History Timeline ── */}
-      <TripTimeline tripHistory={tripHistory} />
+      <TripTimeline tripHistory={tripHistory} isIntraPlant={trip?.isIntraPlant} />
 
       {/* Workflow actions */}
       <div style={{

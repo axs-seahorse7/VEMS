@@ -15,6 +15,7 @@ import api from "../../../../../services/API/Api/api";
 import NotificationSender from "../Settings-Pages/NotificationSender";
 import VersionManager from "../Settings-Pages/VersionManager";
 import SecurityManager from "../Settings-Pages/SecurityManager";
+import {useDashboard} from "../../../../Global/Dashboard-Context/DashboardProvider";
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -471,8 +472,14 @@ function ComingSoon({ label }) {
 
 // ─── Main Settings Panel ──────────────────────────────────────────────────────
 export default function SettingsPanel() {
-  const [activeSection, setActiveSection] = useState("alerts");
+  const { settingsActiveSection, setSettingsActiveSection } = useDashboard();
+  const [activeSection, setActiveSection] = useState(settingsActiveSection || "alerts");
   const user = JSON.parse(localStorage.getItem("user")) || {};
+
+  useEffect(() => {
+    setSettingsActiveSection(activeSection);
+  }, [activeSection]);
+
 
   const renderSection = () => {
     const section = SETTINGS_SECTIONS.find(s => s.key === activeSection);

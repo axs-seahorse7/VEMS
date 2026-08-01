@@ -17,6 +17,7 @@
       type: mongoose.Schema.Types.ObjectId,
       ref:"TripSegment"
     },
+    
     vehicleId: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: "Vehicle",
@@ -136,11 +137,21 @@
       location: String,
       phase: String,
       actionBy: String,
+      actionDetails:{
+        siteId          : { type: mongoose.Schema.Types.ObjectId, ref: "Site" },
+        blockId         : { type: mongoose.Schema.Types.ObjectId, ref: "Block" },
+      },
       actionLocation: String,
       factoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
       action:{
         type: String,
-        enum: ["begin", "arrived", "checkin", "checkout", "load", "unload", "cancelled", "complete", "closed", "route_change"]
+        enum: [
+          "begin", "arrived", "checkin", "intra_plant_checkin", 
+          "checkout", "load", "unload", "cancelled", "complete", 
+          "closed", "route_change", 
+          // INTRA PLANT MOVEMENT ACTIONS
+          "dispatched",
+        ]
       },
       
       deviceDetails: {
@@ -166,10 +177,40 @@
         type: mongoose.Schema.Types.ObjectId,
         ref: "TripSegment"
       }
-    }]
+    }],
+
+    isIntraPlant: Boolean,
+
+    siteId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref:"Site"
+    },
+    
+    blockId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref:"Block"
+    },
+
+    sourceSiteId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref:"Site"
+    },
+    sourceBlockId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref:"Block"
+    },
+
+    destinationSiteId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref:"Site"
+    },
+
+    destinationBlockId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref:"Block"
+    },
 
   }, { timestamps: true });
-
 
   TripSchema.index({vehicleId: 1},{
       unique: true,
@@ -180,6 +221,7 @@
       }
     }
   );
+
   TripSchema.index({ sourceFactoryId: 1, status: 1 });
   TripSchema.index({ destinationFactoryId: 1, status: 1 });
   TripSchema.index({ createdAt: -1 });

@@ -15,9 +15,20 @@ const factorySchema = new mongoose.Schema({
     email: {
         type: String,
     },
-    vans: [{
+     // Factory only decides which sites it supports
+    allowedSites: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Van"
+        ref: "Site"
+    }],
+    
+    isIntraMovementAllowed: {
+        type: Boolean,
+        default: false,
+    },
+
+    vehicles: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Vehicle", 
     }],
     factoryGioLocation: {
         type: String,

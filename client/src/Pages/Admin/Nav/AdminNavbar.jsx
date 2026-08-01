@@ -13,6 +13,7 @@ import {
 import dayjs from "dayjs";
 import api from "../../../../services/API/Api/api";
 import { useDashboard } from "../../../Global/Dashboard-Context/DashboardProvider.jsx";
+import { useUser } from "../../../Global/User-Context/UserContext.jsx";
 
 const { RangePicker } = DatePicker;
 
@@ -359,7 +360,7 @@ export default function AdminNavbar({
   const [navbarHidden, setNavbarHidden]         = useState(false);
   const navbarRef = useRef(null);
   const { setDateRange, dateRange, setLocation, location, setFactory, factory, setFactories, factories,  onDateRangeChange, dashboardRefetch } = useDashboard();
-  const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
+  const user = useUser()?.user || JSON.parse(localStorage.getItem("user")) || {};
 
   useEffect(() => {
     setLocation(user?.isSystemAdmin ? DEFAULT_LOCATION : user?.location);

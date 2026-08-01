@@ -39,6 +39,7 @@ import StatCell from "../components/Cards/StatCell.jsx";
 import Delta from "../components/Cards/Delta.jsx";
 import CardLabel from "../components/Cards/CardLabel.jsx";
 import BigNumber from "../components/Cards/BigNumber.jsx";
+import {useUser} from "../../../Global/User-Context/UserContext.jsx";
 
 
 
@@ -97,12 +98,12 @@ const C = {
 
 
 export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, activePage }) {
-  const user = JSON.parse(localStorage.getItem("user")) || {};
+  const {user} = useUser() || {};
   const [period,    setPeriod]    = useState("month");
   const [vehicleType, setVehicleType] = useState("all"); // "all" | "internal" | "external"
   const [selectTransporter, setSelectTransporter] = useState("");
   const [trendsByTransporter, setTrendsByTransporter] = useState(null);
-  const { setDateRange, setDates, setTableData, setIsFetching, setOnDateRangeChange, dateRange, setLocation, location, setFactory, factory, setOnFactoryChange, setDashboardRefetch } = useDashboard();
+  const { setDateRange, setDates, setTableData, setIsFetching, setOnDateRangeChange, dateRange,  location, setFactory, factory, setOnFactoryChange, setDashboardRefetch } = useDashboard();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadModalVisible, setDownloadModalVisible] = useState(false);
 
@@ -122,7 +123,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
     setIsDownloading(true);
     setDownloadModalVisible(true);
     message.success("Preparing your download...", 1.5);
-    const res = await api.get("/trip/download", { params: { factory: factory , from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
+    const res = await api.get("/get/trip/downloads", { params: { factory: factory , from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
     const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `closed-trips-${new Date().toISOString().slice(0,10)}.xlsx` });
     a.click(); URL.revokeObjectURL(a.href);

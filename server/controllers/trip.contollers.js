@@ -4,19 +4,20 @@ import ExcelJS from "exceljs";
 
 // models
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
-import VehicleState from "../db/models/Vehicle-Model/vehicleState.model.js";
 import Trip from "../db/models/Vehicle-Model/trip.model.js";
-import GateLog from "../db/models/Vehicle-Model/gate.model.js";
 import User from "../db/models/User-Model/user.model.js";
 import Driver from "../db/models/Driver-model/driver.model.js";
 import tripSegment from "../db/models/Vehicle-Model/tripSegment.model.js";
 import DriverTripHistory from "../db/models/Driver-model/driverStats.model.js";
 import {AlertEmailUsers} from "../db/models/Alert-Users/alertEmailUsers.model.js";
+import Site from "../db/models/Vehicle-Model/site.model.js";
 
 // utils
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../middleware/Asynct-handler/asyncHandler.js";
 import {alertMailSender, ALERT_TYPES} from "../services/alertMailSender.js";
+import computeWorkflow from "../helper/workflow/computeWorkFlow.js";
+import getTripPhase from "../helper/workflow/getTripPhase.js";
 
 
 // these controllers are not in use curremtly, and will remove later, 
@@ -177,7 +178,7 @@ const assignDriverToTrip = async ({
 
 };
  
-
+// ======================== REGISTER EXTERNAL VEHICLE ========================
 export const externalVehicleRegister = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -294,6 +295,9 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         externalSource: isInternalShifting ? null : req.body.source,
         sourceFactoryId: isInternalShifting ? user.factory._id: null,
         destinationFactoryId: isInternalShifting? req.body.destinationFactoryId: req.body.sourceFactoryId,
+        isIntraPlant: req.body.isIntraPlant || false,
+        siteId: req.body.siteId || null,
+        blockId: req.body.blockId || null,
         currentFactoryId:user.factory._id || null,
         purpose: req.body.purpose || "Delivery",
         reason:null,
@@ -319,6 +323,10 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
             location: isInternalShifting? "inside_factory": "outside_factory",
             phase: isInternalShifting? "ORIGIN": "DESTINATION",
             actionBy: user?.email || "system",
+            actionDetails: {
+              siteId: user?.siteId || null,
+              blockId: user?.blockId || null
+            },
             actionLocation: user?.workLocation,
             factoryId: isInternalShifting? req.body.sourceFactoryId: user.factory._id || null,
             action: "begin",
@@ -392,6 +400,7 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
  return res.status(201).json(responseData);
 });
 
+// ======================== REGISTER INTERNAL VEHICLE ========================
 export const internalVehicleRegister = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -405,12 +414,16 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         driverIdType,
         licenseNumber,
         destinationFactoryId,
+        isIntraPlant,
+        siteId,
+        blockId,
         purpose
       } = req.body;
 
-      
+      console.log("recived data", req.body);
+
       if (!vehicleNumber || !driverIdNumber) {
-        throw new AppError(" vehicleNumber and driverIdNumber are required", 400);
+        throw new AppError(" Vehicle Number and Driver Id are required", 400);
       }
 
       
@@ -419,7 +432,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         .session(session);
 
       if (!user) {
-        throw new AppError("Please login to continue", 400);
+        throw new AppError("Your session is expired, please login again", 400);
       }
 
      
@@ -479,50 +492,62 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
 
   
       const tripPayload = {
-        vehicleId: vehicle._id,
-        driverId: driver._id,
-        type: "internal_transfer",
-        phase: "ORIGIN",
-        location: "inside_factory",
-        sourceFactoryId: user.factory?._id || null,
-        destinationFactoryId: destinationFactoryId || null,
-        purpose: purpose || "Delivery",
-        reason:null,
-        status: "ORIGIN",
-        loadStatus: "pending",
-        startedAt: new Date(),
-        completedAt: null,
-        waitingSince:new Date(),
+        vehicleId         : vehicle._id,
+        driverId          : driver._id,
+        type              : "internal_transfer",
+        phase             : "ORIGIN",
+        location          : "inside_factory",
+        currentFactoryId  : user.factory?._id || null,
+        sourceFactoryId   : user.factory?._id || null,
+        destinationFactoryId: isIntraPlant? user.factory?._id : destinationFactoryId || null,
+        isIntraPlant      : isIntraPlant || false,
+        siteId            : siteId || null,
+        blockId           : blockId || null,
+        sourceSiteId      : user.siteId || null,
+        sourceBlockId     : user.blockId || null,
+        destinationSiteId   : isIntraPlant? siteId : null,
+        destinationBlockId  : isIntraPlant? blockId : null,
+        purpose           : purpose || "Delivery",
+        reason            :null,
+        status            : "ORIGIN",
+        loadStatus        : "pending",
+        startedAt         : new Date(),
+        completedAt       : null,
+        waitingSince      :new Date(),
         materials: [
           {
-            name: req.body.materialType,
-            material: req.body.material || req.body.materialType,
-            quantity: req.body.quantity,
-            invoiceNo: req.body.invoiceNo,
-            unit: req.body.unit,
+            name      : req.body.materialType,
+            material  : req.body.material || req.body.materialType,
+            quantity  : req.body.quantity,
+            invoiceNo : req.body.invoiceNo,
+            unit      : req.body.unit,
             invoiceAmount: req.body.invoiceAmount,
-            seal: req.body.seal || "sealed",
-            customer: req.body.customer,
-            supplier: req.body.supplier || null
+            seal      : req.body.seal || "sealed",
+            customer  : req.body.customer,
+            supplier  : req.body.supplier || null
           }
         ],
 
         tripHistory: [
           {
-            status: "ORIGIN",
-            location: "inside_factory",
-            phase: "ORIGIN",
-            actionBy: user?.email || "system",
-            actionLocation: user?.workLocation,
-            factoryId: user.factory?._id || null,
-            action: "begin",
-            timestamp: new Date(),
+            status            : "ORIGIN",
+            location          : "inside_factory",
+            phase             : "ORIGIN",
+            actionBy          : user?.email || "system",
+            actionLocation    : user?.workLocation,
+            factoryId         : user.factory?._id || null,
+            action            : "begin",
+            actionDetails: {
+              siteId          : user?.siteId || null,
+              blockId         : user?.blockId || null
+            },
+            timestamp         : new Date(),
             segment: {
-              movementType: "internal",
-              sourceFactoryId: user.factory?._id || null,
-              destinationFactoryId: destinationFactoryId || null,
-              startedAt: new Date(),
-              completedAt: null
+              movementType    : "internal",
+              sourceFactoryId : user.factory?._id || null,
+              destinationFactoryId: isIntraPlant? user.factory?._id : destinationFactoryId || null,
+              startedAt       : new Date(),
+              completedAt     : null
             }
           }
         ]
@@ -582,6 +607,7 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
   return res.status(201).json(responseData);
 });
 
+// ======================== UPDATE VEHICLE TRIP DETAILS (WITHIN A 15-MINUTE WINDOW) ========================
 export const updateVehicleTrip = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -784,6 +810,7 @@ export const updateVehicleTrip = asyncHandler(async (req, res) => {
   return res.status(200).json(responseData);
 });
 
+// ======================== CHECKIN VEHICLE AT DESTINATION ========================
 export const checkinVehicle = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -813,11 +840,41 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
         throw new AppError("Vehicle already checked in", 400);
       }
       
-
       // ========================
       // UPDATE TRIP
       // ========================
 
+      const history = [
+        {
+          status: trip.status,
+          location: "inside_factory",
+          phase: "DESTINATION",
+          actionBy: user?.email || "system",
+          actionDetails: {
+              siteId: user?.siteId || null,
+              blockId: user?.blockId || null
+            },
+          actionLocation: user?.workLocation,
+          factoryId: trip.destinationFactoryId || null,
+          action: "checkin",
+          timestamp: new Date(),
+          waitingSince: new Date(),
+        }
+      ];
+
+      if (req.body.isIntraPlant || trip.isIntraPlant) {
+        history.push({
+          status: trip.status,
+          location: "inside_factory",
+          phase: "DESTINATION",
+          actionBy: user?.email || "system",
+          actionLocation: user?.workLocation,
+          factoryId: trip.destinationFactoryId || null,
+          action: "intra_plant_checkin",
+          timestamp: new Date(),
+          waitingSince: new Date(),
+        });
+      }
 
       updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
@@ -825,26 +882,12 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
             location: "inside_factory",
             checkedInAt: new Date(),
             tripState: "ACTIVE",
+            isIntraPlant: req.body.isIntraPlant || trip.isIntraPlant || false,
+            siteId: req.body.siteId || trip.siteId || null,
+            blockId: req.body.blockId || trip.blockId || null,
             $push: {
               tripHistory: {
-                status: trip.status,
-                location: "inside_factory",
-                phase: "DESTINATION",
-                actionBy: user?.email || "system",
-                actionLocation: user?.workLocation,
-                factoryId: trip.destinationFactoryId || null,
-                action: "checkin",
-                timestamp: new Date(),
-                waitingSince: new Date(),
-                segment: {
-                  movementType: trip.type === "internal_transfer" ? "internal" : "external",
-                  externalSource: trip.externalSource,
-                  externalDestination: trip.externalDestination,
-                  sourceFactoryId: trip.sourceFactoryId,
-                  destinationFactoryId: trip.destinationFactoryId,
-                  startedAt: trip.startedAt,
-                  completedAt: new Date()
-                }
+                $each: history
               }
             }
           },
@@ -885,6 +928,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
   return res.status(200).json(responseData);
 });
 
+// ======================== UNLOAD VEHICLE ========================
 export const unloadTrip = async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -942,6 +986,10 @@ export const unloadTrip = async (req, res) => {
                 location: trip.location,
                 phase: "DESTINATION",
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 factoryId: trip.destinationFactoryId || user.factory._id || null,
                 action: "unload",
@@ -980,6 +1028,7 @@ export const unloadTrip = async (req, res) => {
  return  res.status(200).json(responseData);
 };
 
+// ======================== COMPLETE LOAD STATUS OF THE TRIP ========================
 export const completeTrip = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let updatedTrip = null;
@@ -1034,6 +1083,10 @@ export const completeTrip = asyncHandler( async (req, res) => {
                 location: trip.location,
                 phase: "DESTINATION",
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 factoryId:trip.destinationFactoryId || null,
                 action: "complete",
@@ -1076,6 +1129,7 @@ export const completeTrip = asyncHandler( async (req, res) => {
   }
 });
 
+// ======================== CLOSE THE TRIP AND RELEASE DRIVER & VEHICLE ========================
 export const checkoutVehicle = asyncHandler( async (req, res) => {
   try {
     const { tripId } = req.params;
@@ -1113,6 +1167,10 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
               location: "enroute",
               phase: "DESTINATION",
               actionBy: user?.email || "system",
+              actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
               actionLocation: user?.workLocation,
               factoryId:trip.sourceFactoryId || null,
               action: "checkout",
@@ -1151,6 +1209,7 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
   }
 });
 
+// ======================== CLOSE THE EXTERNAL TRIP AND RELEASE DRIVER & VEHICLE ========================
 export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let updatedTrip = null;
@@ -1200,6 +1259,10 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
                 location: "outside_factory",
                 phase: "DESTINATION",
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 factoryId:trip.destinationFactoryId || null,
                 action: "closed",
@@ -1283,6 +1346,7 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
 
     });
 
+    
 
 
     // ========================
@@ -1310,6 +1374,7 @@ export const checkoutAndExitVehicle = asyncHandler( async (req, res) => {
   }
 });
 
+// ======================== MARK ARRIVED ========================
 export const markArrived = asyncHandler( async (req, res) => {
   try { 
     const { tripId } = req.params;
@@ -1342,7 +1407,7 @@ export const markArrived = asyncHandler( async (req, res) => {
     const updatedTrip = await Trip.findByIdAndUpdate(
         tripId,
         {
-          location: "outside_factory",
+          location: trip.isIntraPlant ? "inside_factory" : "outside_factory",
           status: "ARRIVED",
           phase: "DESTINATION",
           arrivedAt: new Date(), 
@@ -1350,9 +1415,13 @@ export const markArrived = asyncHandler( async (req, res) => {
           $push: {
             tripHistory: {
               status: "ARRIVED",
-              location: "outside_factory",
+              location: trip.isIntraPlant ? "inside_factory" : "outside_factory",
               phase: "DESTINATION",
               actionBy: user?.email || "system",
+              actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
               actionLocation: user?.workLocation,
               factoryId: trip.destinationFactoryId || null,
               currentFactoryId: trip.destinationFactoryId || null,
@@ -1399,6 +1468,7 @@ export const markArrived = asyncHandler( async (req, res) => {
   }
 });
 
+// ======================== CLOSE THE INTERNAL TRIP AND RELEASE DRIVER & VEHICLE ========================
 export const markInternalTransferComplete = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -1454,6 +1524,10 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
                 status: "DESTINATION",
                 phase: "DESTINATION",
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 location: trip.location,
                 factoryId: trip.destinationFactoryId || null,
@@ -1482,7 +1556,7 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
       // ========================
       const segmentId = updatedTrip.currentSegment
       if (segmentId) {
-        const tripSegment = await TripSegment.findByIdAndUpdate(
+        const updateSegment = await tripSegment.findByIdAndUpdate(
           segmentId,
           {
             status: updatedTrip.tripState,
@@ -1556,6 +1630,7 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
   }
 });
 
+// ======================== MARK LOAD COMPLETE AT DESTINATION ========================
 export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -1621,6 +1696,10 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
                 location: existingTrip.location,
                 phase: "DESTINATION",
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 factoryId: existingTrip.destinationFactoryId || null,
                 action: "load",
@@ -1633,15 +1712,6 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
                   invoiceAmount: tripDetails.invoiceAmount,
                   customer: tripDetails.customer,
                 },
-
-                segment: {
-                  movementType: existingTrip.type === "internal_transfer" ? "internal": "external",
-                  externalSource: existingTrip.externalSource,
-                  externalDestination: existingTrip.externalDestination,
-                  sourceFactoryId: existingTrip.sourceFactoryId,
-                  destinationFactoryId: existingTrip.destinationFactoryId,
-                  startedAt: existingTrip.startedAt
-                }
               }
             }
           },
@@ -1682,6 +1752,7 @@ export const markLoadCompleteAtDestination = asyncHandler( async (req, res) => {
   }
 });
 
+// ======================== CANCEL TRIP ========================
 export const cancelTrip = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -1733,6 +1804,10 @@ export const cancelTrip = asyncHandler( async (req, res) => {
                 location: trip.location,
                 phase: trip.phase,
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 factoryId: user?.factory || null,
                 action: "cancelled",
@@ -1858,6 +1933,7 @@ export const cancelTrip = asyncHandler( async (req, res) => {
  return res.status(201).json(responseData)
 });
 
+// ======================== CHANGE ROUTE ========================
 export const changeRoute = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
   let tripDetails = null;
@@ -1865,16 +1941,16 @@ export const changeRoute = asyncHandler( async (req, res) => {
     let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
-      const {newDestinationFactoryId, customer, type } = req.body;
+      const {newDestinationFactoryId, newSiteId, newBlockId, customer, type } = req.body;
+
+      console.log("REQUEST BODY:", req.body);
 
       const user = await User.findById(req.userId)
         .populate("factory")
         .session(session);
 
       if (!user?.factory) {
-        throw new AppError(
-          "User or factory not found"
-        );
+        throw new AppError("Your session expired. Please login again.", 400);
       }
 
   
@@ -1882,14 +1958,12 @@ export const changeRoute = asyncHandler( async (req, res) => {
       .session(session);
 
       if (!trip) {
-        throw new AppError("Trip not found.");
+        throw new AppError("Trip maybe closed or not available", 404);
       }
 
      
       if (["CLOSED", "CANCELLED"].includes(trip.tripState)) {
-        throw new AppError(
-          "Cannot change route of a closed or cancelled trip", 400
-        );
+        throw new AppError("Cannot change route of a closed or cancelled trip", 400);
       }
 
       if (type === "internal" && !newDestinationFactoryId) {
@@ -1922,14 +1996,24 @@ export const changeRoute = asyncHandler( async (req, res) => {
         type:type === "external"? "external_delivery": "internal_transfer",
         purpose: trip.loadStatus === "loaded" && trip.purpose === "Pickup" ? "Delivery" : trip.purpose,
         loadStatus: trip.loadStatus === "loaded"? "pending" : trip.loadStatus,
+        currentFactoryId: user?.factory._id,
         externalDestination:type === "external"? customer: null,
-        sourceFactoryId:user.factory._id,
-        destinationFactoryId:type === "internal"? newDestinationFactoryId: null,
+        sourceFactoryId:user?.factory._id,
+        destinationFactoryId: type === "intraplant" && trip.isIntraPlant === true ? user?.factory._id : newDestinationFactoryId || null,
         phase: "ORIGIN",
         status: "ROUTE_CHANGED",
         startedAt: now,
         waitingSince: now,
       };
+
+      if(trip.isIntraPlant){
+        updatePayload.siteId = user?.siteId || null
+        updatePayload.blockId = user?.blockId  || null
+        updatePayload.sourceSiteId = user?.siteId || null
+        updatePayload.sourceBlockId = user?.blockId  || null
+        updatePayload.destinationSiteId = newSiteId || null
+        updatePayload.destinationBlockId = newBlockId || null
+      }
 
       // ========================
       // HISTORY SEGMENT
@@ -1938,7 +2022,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
         movementType: type,
         externalDestination:type === "internal"? null : customer,
         sourceFactoryId: trip.destinationFactoryId,
-        destinationFactoryId: type === "internal" ? newDestinationFactoryId : null,
+        destinationFactoryId: type === "intraplant" && trip.isIntraPlant === true ? user?.factory._id : newDestinationFactoryId || null,
         startedAt: trip.startedAt,
         completedAt: now,
       };
@@ -1953,9 +2037,13 @@ export const changeRoute = asyncHandler( async (req, res) => {
                 status: "ROUTE_CHANGED",
                 phase: "ROUTE_UPDATE",
                 actionBy: user?.email || "system",
+                actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
                 actionLocation: user?.workLocation,
                 location: trip.location || null,
-                factoryId: user.factory._id,
+                factoryId: user?.factory._id,
                 action: "route_change",
                 timestamp: now,
                 segment: segmentData
@@ -2025,6 +2113,7 @@ export const changeRoute = asyncHandler( async (req, res) => {
 
 });
 
+// ======================== LOAD MATERIAL AND CREATE NEW TRIP ========================
 export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
   let responseData = null;
@@ -2034,6 +2123,7 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
 
       const { tripId } = req.params;
       const { newTripDetails } = req.body;
+      const isIntra = newTripDetails?.type === "intraplant";
 
       const user = await User.findById(req.userId)
         .populate("factory")
@@ -2043,7 +2133,12 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
         throw new AppError("Please login to continue", 400);
       }
 
-      if(user?.factory?._id?.toString() === newTripDetails?.newDestinationFactoryId?.toString()){
+      // Only applies to internal-factory transfers, not intra-plant or external
+      if (
+        !isIntra &&
+        newTripDetails?.shipmentType === "internal" &&
+        user?.factory?._id?.toString() === newTripDetails?.newDestinationFactoryId?.toString()
+      ) {
         throw new AppError(
           "You cannot select your current factory as Destination",
           400
@@ -2056,7 +2151,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
         throw new AppError("Trip not found", 404);
       }
 
-      // Prevent duplicate operations
       if (currentTrip.tripState === "COMPLETED") {
         throw new AppError("Trip already completed", 400);
       }
@@ -2066,6 +2160,10 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
           "Vehicle must be inside factory to load material",
           400
         );
+      }
+
+      if (isIntra && !newTripDetails?.newSiteId) {
+        throw new AppError("Destination site is required for intra-plant movement", 400);
       }
 
       // CLOSE CURRENT TRIP
@@ -2087,6 +2185,10 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
               location: currentTrip.location,
               phase: "DESTINATION",
               actionBy: user?.email || "system",
+              actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
               actionLocation: user?.workLocation,
               factoryId: user.factory._id,
               action: "closed",
@@ -2101,7 +2203,6 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
                 completedAt: new Date()
               }
             }
-            
           }
         },
         {
@@ -2117,122 +2218,122 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
         );
       }
 
-      
-
       // CREATE NEW TRIP
-      const newTrip = await Trip.create(
-        [
+      const newTripPayload = {
+        purpose: "Delivery",
+        phase: "ORIGIN",
+        location: "inside_factory",
+        status: "ORIGIN",
+        tripState: "ACTIVE",
+        loadStatus: "pending",
+        waitingSince: new Date(),
+
+        vehicleId: currentTrip.vehicleId,
+        driverId: currentTrip.driverId,
+        currentFactoryId: user?.factory._id,
+
+        materials: [
           {
-            ...newTripDetails,
-            type: newTripDetails.shipmentType === "internal" ? "internal_transfer" : "external_delivery",
-            purpose: "Delivery",
-            phase: "ORIGIN",
-            location: "inside_factory",
-            status: "ORIGIN",
-            tripState: "ACTIVE",
-            loadStatus: "pending",
-            waitingSince: new Date(),
-
-            sourceFactoryId: user.factory._id,
-            vehicleId: currentTrip.vehicleId,
-            driverId: currentTrip.driverId,
-            currentFactoryId: user.factory._id,
-            destinationFactoryId: newTripDetails.shipmentType === "internal" ? newTripDetails.newDestinationFactoryId : undefined,
-            externalDestination: newTripDetails.shipmentType === "external" ? newTripDetails.externalDestination : undefined,
-            materials:[
-              {
-                name: newTripDetails.materialType ?? currentTrip.materials[0]?.name ?? "",
-                material: newTripDetails.material ?? "",
-                quantity: newTripDetails.quantity?? 0,
-                invoiceNo: newTripDetails.invoiceNo ?? "",
-                invoiceAmount: newTripDetails.invoiceAmount ?? 0,
-                customer: newTripDetails.customer || "",
-                supplier: newTripDetails.supplier || null,
-                seal: newTripDetails.seal || "sealed",
-              }
-            ],
-
-            tripHistory: [
-              {
-                status: "ORIGIN",
-                location: "inside_factory",
-                phase: "ORIGIN",
-                actionBy: user?.email,
-                actionLocation:user.workLocation,
-                factoryId: user.factory._id,
-                action: "begin",
-                timestamp: new Date(),
-                segment: {
-                  movementType: newTripDetails.shipmentType === "internal" ? "internal" : "external",
-                  externalSource: newTripDetails.shipmentType !== "internal" ? user.factory.name : null,
-                  externalDestination: newTripDetails.shipmentType !== "internal" ? newTripDetails.newDestinationFactoryId : null,
-                  sourceFactoryId: newTripDetails.shipmentType === "internal" ? user.factory._id : null,
-                  destinationFactoryId: newTripDetails.shipmentType === "internal" ? newTripDetails.newDestinationFactoryId : null,
-                  startedAt: new Date() 
-                }
-              }
-            ],
-
-        }
+            name: newTripDetails.materialType ?? currentTrip.materials[0]?.name ?? "",
+            material: newTripDetails.material ?? "",
+            quantity: newTripDetails.quantity ?? 0,
+            invoiceNo: newTripDetails.invoiceNo ?? "",
+            invoiceAmount: newTripDetails.invoiceAmount ?? 0,
+            customer: newTripDetails.customer || "",
+            supplier: newTripDetails.supplier || null,
+            seal: newTripDetails.seal || "sealed",
+          }
         ],
-        { session }
-      );
+
+        tripHistory: [
+          {
+            status: "ORIGIN",
+            location: "inside_factory",
+            phase: "ORIGIN",
+            actionBy: user?.email,
+            actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
+            actionLocation: user.workLocation,
+            factoryId: user.factory._id,
+            action: "begin",
+            timestamp: new Date(),
+          }
+        ],
+      };
+
+      if (isIntra) {
+        // Intra-plant: same factory both ends, site/block define the move
+        Object.assign(newTripPayload, {
+          type: "internal_transfer",
+          isIntraPlant: true,
+          sourceFactoryId: user.factory._id,
+          destinationFactoryId: user.factory._id,
+          sourceSiteId: currentTrip.destinationSiteId || currentTrip.siteId || null,
+          sourceBlockId: currentTrip.destinationBlockId || currentTrip.blockId || null,
+          destinationSiteId: newTripDetails.newSiteId,
+          destinationBlockId: newTripDetails.newBlockId || null,
+        });
+      } else {
+        Object.assign(newTripPayload, {
+          type: newTripDetails.shipmentType === "internal" ? "internal_transfer" : "external_delivery",
+          isIntraPlant: false,
+          sourceFactoryId: user.factory._id,
+          destinationFactoryId: newTripDetails.shipmentType === "internal" ? newTripDetails.newDestinationFactoryId : undefined,
+          externalDestination: newTripDetails.shipmentType === "external" ? newTripDetails.externalDestination : undefined,
+        });
+      }
+
+      const newTrip = await Trip.create([newTripPayload], { session });
 
       const driverUpdate = {};
-
       if (currentTrip.driverId) {
         driverUpdate.activeTripId = newTrip[0]._id;
       }
 
       await Driver.findByIdAndUpdate(
         currentTrip.driverId,
-        {
-          $set: driverUpdate
-        },
-        {
-          session
-        }
+        { $set: driverUpdate },
+        { session }
       );
 
-      await Vehicle.findByIdAndUpdate( currentTrip.vehicleId, {
-        currentTrip: newTrip[0]._id
-        },
-        {
-          session
-        }
+      await Vehicle.findByIdAndUpdate(
+        currentTrip.vehicleId,
+        { currentTrip: newTrip[0]._id },
+        { session }
       );
 
-      const segmentId = updatedTrip.currentSegment
+      const segmentId = updatedTrip.currentSegment;
 
-      if(segmentId){
+      if (segmentId) {
         await tripSegment.findByIdAndUpdate(segmentId, {
-            status: "CLOSED",
-            completedAt: new Date()
-          },{
-            new: true,
-            session
-          })
-
+          status: "CLOSED",
+          completedAt: new Date()
+        }, {
+          new: true,
+          session
+        });
       }
 
-    const newSegment =  await tripSegment.create([{
+      const newSegment = await tripSegment.create([{
         tripId: newTrip[0]._id,
-        triptype: newTrip[0].type === "internal_transfer"? "INTERNAL": "EXTERNAL",
+        triptype: newTrip[0].type === "internal_transfer" ? "INTERNAL" : "EXTERNAL",
         segmentNumber: 1,
         purpose: newTrip[0].purpose,
         materials: newTrip[0].materials[0],
-        externalSource: newTrip[0].externalSource?? null,
-        externalDestination: newTrip[0].externalDestination?? null,
-        sourceFactoryId: newTrip[0].sourceFactoryId?? null,
-        destinationFactoryId: newTrip[0].destinationFactoryId?? null,
+        externalSource: newTrip[0].externalSource ?? null,
+        externalDestination: newTrip[0].externalDestination ?? null,
+        sourceFactoryId: newTrip[0].sourceFactoryId ?? null,
+        destinationFactoryId: newTrip[0].destinationFactoryId ?? null,
         vehicleId: newTrip[0].vehicleId,
         driverId: newTrip[0].driverId,
         startedAt: newTrip[0].startedAt,
         completedAt: null,
       }], { session });
 
-      newTrip[0].currentSegment = newSegment[0]._id
-      await newTrip[0].save({session})
+      newTrip[0].currentSegment = newSegment[0]._id;
+      await newTrip[0].save({ session });
 
       responseData = {
         success: true,
@@ -2244,17 +2345,104 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
     });
 
   } catch (err) {
-    console.error(
-      "Error in loadMaterialAndNewtrip:",
-      err
-    );
-    
+    console.error("Error in loadMaterialAndNewtrip:", err);
     throw new AppError(err.message, 500);
-    
   } finally {
     session.endSession();
   }
   return res.status(200).json(responseData);
+});
+
+// ------------------------ INTRA PLANT TRIPS CONTROLLERS ------------------------
+
+export const dispatchVehicle = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const { tripId } = req.params;
+
+    const user = await User.findById(req.userId)
+      .populate("factory")
+      .session(session);
+
+    if (!user) {
+      throw new AppError("Please login to continue.", 401);
+    }
+
+    const trip = await Trip.findById(tripId).session(session);
+
+    if (!trip) {
+      throw new AppError("Trip not found.", 404);
+    }
+
+    // ---------- Validation ----------
+
+    if (["CLOSED", "CANCELLED"].includes(trip.tripState)) {
+      throw new AppError(
+        `Cannot dispatch a ${trip.tripState.toLowerCase()} trip.`,
+        400
+      );
+    }
+
+    if (trip.location !== "inside_factory") {
+      throw new AppError(
+        "Vehicle must be inside the factory before dispatch.",
+        400
+      );
+    }
+
+    const now = new Date();
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      {
+        $set: {
+          location: "enroute",
+          status: "IN_TRANSIT",
+          phase: "ORIGIN",
+          dispatchedAt: now,
+          waitingSince: null,
+        },
+
+        $push: {
+          tripHistory: {
+            status: "IN_TRANSIT",
+            location: "enroute",
+            phase: "ORIGIN",
+            action: "dispatched",
+            actionBy: user.email,
+            actionDetails: {
+                  siteId: user?.siteId || null,
+                  blockId: user?.blockId || null
+                },
+            actionLocation: user.workLocation,
+            factoryId: trip.sourceFactoryId,
+            timestamp: now,
+          },
+        },
+      },
+      {
+        new: true,
+        session,
+      }
+    );
+
+    await session.commitTransaction();
+
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle dispatched successfully.",
+      trip: updatedTrip,
+    });
+
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
+  }
 });
 
 
@@ -2266,7 +2454,55 @@ export const loadMaterialAndNewtrip = asyncHandler(async (req, res) => {
 
 const lst36hr = new Date(Date.now() - 36 * 60 * 60 * 1000);
 
+function applyTripAccess(matchQuery, user) {
+  const userSiteId  = user.siteId  || null;
+  const userBlockId = user.blockId || null;
 
+  const accessFilter = {
+    $or: [
+      // Non-intra-plant trips: visible to everyone at the factory (factory scope already applied in matchQuery)
+      { isIntraPlant: { $ne: true } },
+    ],
+  };
+
+  // Intra-plant trips: user must be tied to the source OR destination site
+  if (userSiteId) {
+    const intraAnd = [
+      { isIntraPlant: true },
+      {
+        $or: [
+          { sourceSiteId: userSiteId },
+          { destinationSiteId: userSiteId },
+        ],
+      },
+    ];
+
+    // Block is a HARD requirement, but only enforced when the user has a block assigned
+    if (userBlockId) {
+      intraAnd.push({
+        $or: [
+          { sourceBlockId: userBlockId },
+          { destinationBlockId: userBlockId },
+        ],
+      });
+    }
+
+    accessFilter.$or.push({ $and: intraAnd });
+  }
+
+  return {
+    $and: [matchQuery, accessFilter],
+  };
+}
+
+// Decides, for intra-plant trips, whether the trip is "arriving at" or "leaving from" this user's site/block
+const intraSiteBlockMatch = (siteField, blockField, user) => ({
+  isIntraPlant: true,
+  [siteField]: user.siteId,
+  ...(user.blockId ? { [blockField]: user.blockId } : {}),
+});
+
+// ------------- GET SINGLE TRIP CLILCKED ON TRIP CARD IN VEHICLE PAGE ----------
 export const getVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId).populate("factory");
@@ -2284,7 +2520,8 @@ export const getVehicleTrips = async (req, res) => {
         {
           $or: [
             { destinationFactoryId: factoryId },
-            { sourceFactoryId: factoryId }
+            { sourceFactoryId: factoryId },
+            { currentFactoryId: factoryId }
           ]
         },
 
@@ -2301,10 +2538,8 @@ export const getVehicleTrips = async (req, res) => {
       ]
     };
 
-
     const trips = await Trip.aggregate([
       { $match: matchStage },
-
       //  Vehicle
       {
         $lookup: {
@@ -2372,8 +2607,20 @@ export const getVehicleTrips = async (req, res) => {
           preserveNullAndEmptyArrays: true
         }
       },
-
-      
+      {
+        $lookup: {
+          from: "factories",
+          localField: "currentFactoryId",
+          foreignField: "_id",
+          as: "currentFactory"        //  renamed
+        }
+      },
+      {
+        $unwind: {
+          path: "$currentFactory",
+          preserveNullAndEmptyArrays: true
+        }
+      },
       {
         $lookup: {
           from: "factories",
@@ -2398,6 +2645,108 @@ export const getVehicleTrips = async (req, res) => {
           as: "segmentDestinationFactories"
         }
       },
+      {
+        $lookup: {
+          from: "sites",
+          localField: "tripHistory.actionDetails.siteId",
+          foreignField: "_id",
+          as: "tripHistorySites"
+        }
+      },
+      {
+        $lookup: {
+          from: "blocks",
+          localField: "tripHistory.actionDetails.blockId",
+          foreignField: "_id",
+          as: "tripHistoryBlocks"
+        }
+      },
+      {
+        $lookup: {
+          from: "sites",
+          localField:"siteId",
+          foreignField:"_id",
+          as:"site"
+        }
+      },
+      {
+        $unwind:{
+          path: "$site",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+        {
+          $lookup: {
+            from: "blocks",
+            localField:"blockId",
+            foreignField:"_id",
+            as:"block"
+          }
+        },
+        {
+          $unwind:{
+            path: "$block",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        
+        {
+          $lookup: {
+            from: "sites",
+            localField: "sourceSiteId",
+            foreignField: "_id",
+            as: "sourceSite",
+          },
+        },
+        {
+          $lookup: {
+            from: "sites",
+            localField: "destinationSiteId",
+            foreignField: "_id",
+            as: "destinationSite",
+          },
+        },
+        {
+          $lookup: {
+            from: "blocks",
+            localField: "sourceBlockId",
+            foreignField: "_id",
+            as: "sourceBlock",
+          },
+        },
+        {
+          $lookup: {
+            from: "blocks",
+            localField: "destinationBlockId",
+            foreignField: "_id",
+            as: "destinationBlock",
+          },
+        },
+
+        {
+          $unwind: {
+            path: "$sourceSite",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $unwind: {
+            path: "$destinationSite",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $unwind: {
+            path: "$sourceBlock",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $unwind: {
+            path: "$destinationBlock",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
 
       {
         $addFields: {
@@ -2422,6 +2771,56 @@ export const getVehicleTrips = async (req, res) => {
                       ]
                     },
 
+                    actionDetails: {
+                      $cond: [
+                        { $ifNull: ["$$history.actionDetails", false] },
+                        {
+                          $mergeObjects: [
+                            "$$history.actionDetails",
+                            {
+                              site: {
+                                $cond: [
+                                  { $ifNull: ["$$history.actionDetails.siteId", false] },
+                                  {
+                                    $arrayElemAt: [
+                                      {
+                                        $filter: {
+                                          input: "$tripHistorySites",
+                                          as: "s",
+                                          cond: { $eq: ["$$s._id", "$$history.actionDetails.siteId"] }
+                                        }
+                                      },
+                                      0
+                                    ]
+                                  },
+                                  null
+                                ]
+                              },
+                              block: {
+                                $cond: [
+                                  { $ifNull: ["$$history.actionDetails.blockId", false] },
+                                  {
+                                    $arrayElemAt: [
+                                      {
+                                        $filter: {
+                                          input: "$tripHistoryBlocks",
+                                          as: "b",
+                                          cond: { $eq: ["$$b._id", "$$history.actionDetails.blockId"] }
+                                        }
+                                      },
+                                      0
+                                    ]
+                                  },
+                                  null
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "$$history.actionDetails"
+                      ]
+                    },
+
                     segment: {
                       $cond: [
                         { $ifNull: ["$$history.segment", false] },
@@ -2435,12 +2834,7 @@ export const getVehicleTrips = async (req, res) => {
                                     $filter: {
                                       input: "$segmentSourceFactories",
                                       as: "sf",
-                                      cond: {
-                                        $eq: [
-                                          "$$sf._id",
-                                          "$$history.segment.sourceFactoryId"
-                                        ]
-                                      }
+                                      cond: { $eq: ["$$sf._id", "$$history.segment.sourceFactoryId"] }
                                     }
                                   },
                                   0
@@ -2452,12 +2846,7 @@ export const getVehicleTrips = async (req, res) => {
                                     $filter: {
                                       input: "$segmentDestinationFactories",
                                       as: "df",
-                                      cond: {
-                                        $eq: [
-                                          "$$df._id",
-                                          "$$history.segment.destinationFactoryId"
-                                        ]
-                                      }
+                                      cond: { $eq: ["$$df._id", "$$history.segment.destinationFactoryId"] }
                                     }
                                   },
                                   0
@@ -2495,18 +2884,49 @@ export const getVehicleTrips = async (req, res) => {
           externalSource: 1,
           sourceFactory: 1,
           externalDestination: 1,
+          isIntraPlant: 1,  
+          siteId: 1,
+          blockId: 1,
+          sourceSiteId: 1,
+          sourceBlockId: 1,
+          destinationSiteId: 1,
+          destinationBlockId: 1,
+          sourceSite: 1,      
+          destinationSite: 1,  
+          sourceBlock: 1,   
+          destinationBlock: 1,
+          site: 1,
+          block: 1,
+          sourceFactoryId: 1,
           tripHistory: 1,
           materials: 1,
           destinationFactory: 1,
+          currentFactoryId: 1,
+          currentFactory: 1,
+          completedAt:1,
+          waitingSince: 1,
+          currentSegment: 1,
+          destinationFactoryId: 1,
           createdAt: 1,
-          completedAt:1
+          updatedAt: 1,
         }
       },
 
       { $sort: { createdAt: -1 } }
     ]);
 
-   return res.json(trips[0] || null);
+    if (!trips.length) {
+        return res.status(404).json({
+            success: false,
+            message: "Trip not found"
+        });
+    }
+
+    const sites = await Site.find({_id: { $in: user?.factory?.allowedSites }});
+    const currentPhase = getTripPhase(trips[0], user, sites);
+    const workflow = computeWorkflow(trips[0], sites, user, currentPhase);
+
+    return res.json({...trips[0], workflow, success: true, message: "Trip fetched successfully"});
 
   } catch (err) {
     console.error("Error fetching vehicle trips:", err);
@@ -2514,11 +2934,13 @@ export const getVehicleTrips = async (req, res) => {
   }
 };
 
+// ------------- GET ALL LIVE TRIPS FOR VEHICLES IN THIS FACTORY (ACTIVE + COMPLETED) ----------
 export const getLiveVehicleTrips = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
-      .select("factory")
-      .lean();
+    .populate("factory", "isIntraPlant")
+    .select("factory siteId blockId")
+    .lean();  
 
     if (!user || !user.factory) {
       return res.status(404).json({
@@ -2527,12 +2949,12 @@ export const getLiveVehicleTrips = async (req, res) => {
       });
     }
 
-    const factoryId = user.factory;
+    const factoryId = user.factory._id;
     const page      = Number(req.query.page)  || 1;
     const limit     = Number(req.query.limit) || 20;
     const skip      = (page - 1) * limit;
     const filter    = req.query.filter || "all";   // <-- new
-    const search      = req.query.search?.trim() || "";  // new
+    const search    = req.query.search?.trim() || "";  // new
 
 
     // ── Build the filter-specific query ───────────────────────────────────────
@@ -2557,7 +2979,6 @@ export const getLiveVehicleTrips = async (req, res) => {
     }
 
     switch (filter) {
-      
       case "all":
         matchQuery = {
             tripState: { $in: ["ACTIVE", "COMPLETED"] },
@@ -2567,34 +2988,55 @@ export const getLiveVehicleTrips = async (req, res) => {
             ],
           };
         break;
-      // Vehicles waiting outside, heading to this factory
+
       case "waiting":
         matchQuery = {
-          tripState:            { $in: ["ACTIVE", "COMPLETED"] },
-          location:             "outside_factory",
-          phase:                "DESTINATION",
-          destinationFactoryId: factoryId,
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          location:  "outside_factory",
+          phase:     "DESTINATION",
+          $or: [
+            { isIntraPlant: { $ne: true }, destinationFactoryId: factoryId },
+            intraSiteBlockMatch("destinationSiteId", "destinationBlockId", user),
+          ],
         };
         break;
 
-      // Vehicles physically inside this factory (as origin or destination)
       case "inside":
         matchQuery = {
           tripState: { $in: ["ACTIVE", "COMPLETED"] },
           location:  "inside_factory",
           $or: [
-            { phase: "ORIGIN",      sourceFactoryId:      factoryId },
-            { phase: "DESTINATION", destinationFactoryId: factoryId },
+            // non-intra
+            { isIntraPlant: { $ne: true }, phase: "ORIGIN",      sourceFactoryId:      factoryId },
+            { isIntraPlant: { $ne: true }, phase: "DESTINATION", destinationFactoryId: factoryId },
+            // intra
+            { phase: "ORIGIN",      ...intraSiteBlockMatch("sourceSiteId",      "sourceBlockId",      user) },
+            { phase: "DESTINATION", ...intraSiteBlockMatch("destinationSiteId", "destinationBlockId", user) },
           ],
         };
         break;
 
-      // Vehicles en-route, destination is this factory
       case "enroute":
         matchQuery = {
-          tripState:            { $in: ["ACTIVE", "COMPLETED"] },
-          location:             "enroute",
-          destinationFactoryId: factoryId,
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          location:  "enroute",
+          $or: [
+            { isIntraPlant: { $ne: true }, destinationFactoryId: factoryId },
+            intraSiteBlockMatch("destinationSiteId", "destinationBlockId", user),
+          ],
+        };
+        break;
+
+      case "dispatched":
+        matchQuery = {
+          tripState: { $in: ["ACTIVE", "COMPLETED"] },
+          location:  "enroute",
+          status:    "IN_TRANSIT",
+          phase:     "ORIGIN",
+          $or: [
+            { isIntraPlant: { $ne: true }, sourceFactoryId: factoryId },
+            intraSiteBlockMatch("sourceSiteId", "sourceBlockId", user),
+          ],
         };
         break;
 
@@ -2680,6 +3122,8 @@ export const getLiveVehicleTrips = async (req, res) => {
         };
     }
 
+    matchQuery = applyTripAccess(matchQuery, user);
+
     if (vehicleIdFilter) {
       matchQuery = {
         $and: [
@@ -2695,14 +3139,22 @@ export const getLiveVehicleTrips = async (req, res) => {
       Trip.find(matchQuery)
         .select(`
           type phase location status tripState purpose reason loadStatus
-          arrivedAt checkedInAt externalSource externalDestination
-          materials createdAt startedAt completedAt updatedAt
-          vehicleId driverId sourceFactoryId destinationFactoryId
+          arrivedAt   checkedInAt   externalSource   externalDestination
+          materials   createdAt   startedAt   completedAt      updatedAt
+          vehicleId   driverId    sourceFactoryId   destinationFactoryId 
+          isIntraPlant  siteId  blockId   sourceSiteId destinationSiteId 
+          sourceBlockId destinationBlockId currentFactoryId currentSegment
         `)
-        .populate({ path: "vehicleId",            select: "vehicleNumber type typeOfVehicle transporterName" })
+        .populate({ path: "vehicleId",            select: "vehicleNumber type typeOfVehicle transporterName PUCExpiry" })
         .populate({ path: "driverId",             select: "driverName driverContact" })
         .populate({ path: "sourceFactoryId",      select: "name location" })
         .populate({ path: "destinationFactoryId", select: "name location" })
+        .populate({ path: "siteId",               select: "name status allowedBlocks"})
+        .populate({ path: "blockId",              select: "name "})
+        .populate({ path: "sourceSiteId",         select: "name"})
+        .populate({ path: "destinationSiteId",    select: "name"})
+        .populate({ path: "sourceBlockId",        select: "name"})
+        .populate({ path: "destinationBlockId",   select: "name"})
         .sort({ updatedAt: -1, createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
@@ -2711,9 +3163,11 @@ export const getLiveVehicleTrips = async (req, res) => {
       Trip.countDocuments(matchQuery),
     ]);
 
-   
-
+    
+    
     // ── Format ────────────────────────────────────────────────────────────────
+    const sites = await Site.find({_id: { $in: user?.factory?.allowedSites }});
+    const currentPhase = getTripPhase(trips, user, sites);
 
     const formattedTrips = trips.map((trip) => ({
       _id:                 trip._id,
@@ -2729,10 +3183,33 @@ export const getLiveVehicleTrips = async (req, res) => {
       checkedInAt:         trip.checkedInAt,
       externalSource:      trip.externalSource,
       externalDestination: trip.externalDestination,
+      isIntraPlant:         trip.isIntraPlant,
       createdAt:           trip.createdAt,
       startedAt:           trip.startedAt,
       completedAt:         trip.completedAt,
       updatedAt:           trip.updatedAt,
+
+      site: trip.siteId ? {
+      _id:    trip.siteId._id,
+      name:   trip.siteId.name,
+      status: trip.siteId.status,
+      allowedBlocks: trip.siteId.allowedBlocks
+      } : null,
+      
+      block: trip.blockId ? {
+        _id: trip.blockId._id,
+        name: trip.blockId.name
+      } : null,
+
+      sourceSite: trip.sourceSiteId,
+      destinationSite: trip.destinationSiteId,
+      sourceBlock: trip.sourceBlockId,
+      destinationBlock: trip.destinationBlockId,
+
+      sourceSiteId: trip.sourceSiteId?._id,
+      sourceBlockId: trip?.sourceBlockId?._id,
+      destinationSiteId: trip.destinationSiteId?._id,
+      destinationBlockId: trip.destinationBlockId?._id,
 
       vehicle: trip.vehicleId ? {
         _id:             trip.vehicleId._id,
@@ -2740,6 +3217,7 @@ export const getLiveVehicleTrips = async (req, res) => {
         transporterName: trip.vehicleId.transporterName || null,
         vehicleType:     trip.vehicleId.type,
         typeOfVehicle:   trip.vehicleId.typeOfVehicle,
+        PUCExpiry:   trip.vehicleId.PUCExpiry || null,
       } : null,
 
       driver: trip.driverId ? {
@@ -2747,6 +3225,8 @@ export const getLiveVehicleTrips = async (req, res) => {
         name:  trip.driverId.driverName,
         phone: trip.driverId.driverContact,
       } : null,
+
+      currentFactoryId: trip.currentFactoryId,
 
       sourceFactory: trip.sourceFactoryId ? {
         _id:      trip.sourceFactoryId._id,
@@ -2761,10 +3241,15 @@ export const getLiveVehicleTrips = async (req, res) => {
       } : null,
 
       material: Array.isArray(trip.materials) ? trip.materials[0] || null : null,
+      workflow: computeWorkflow(trip, sites, user, currentPhase),
     }));
 
-    // ── Response ──────────────────────────────────────────────────────────────
+    
 
+    // const workflow = computeWorkflow(trips[0], sites, user, currentPhase);
+
+
+    // ── Response ──────────────────────────────────────────────────────────────
     const hasMore = skip + trips.length < totalTrips;
 
     return res.status(200).json({
@@ -2790,10 +3275,53 @@ export const getLiveVehicleTrips = async (req, res) => {
 };
 
 export const getVehiclesLength = async (req, res) => {
-  try{
-    const user = await User.findById(req.userId).select("factory").lean();
-    const factoryId = user?.factory;
-    
+  try {
+    const user = await User.findById(req.userId)
+      .select("factory siteId blockId")
+      .lean();
+
+    const factoryId  = user?.factory;
+    const userSiteId  = user?.siteId  || null;
+    const userBlockId = user?.blockId || null;
+
+    // For intra-plant trips: does source-or-destination site/block match this user?
+    const intraSiteBlockMatch = (siteField, blockField) => ({
+      isIntraPlant: true,
+      ...(userSiteId ? { [siteField]: userSiteId } : { _id: null }), // no siteId → user matches nothing intra
+      ...(userBlockId ? { [blockField]: userBlockId } : {}),
+    });
+
+    // Visibility filter for "all factory" style counts (total, closed):
+    // non-intra trips visible factory-wide; intra trips only if user's site (and block, if set) is on either side
+    const intraVisibility = userSiteId
+      ? {
+          isIntraPlant: true,
+          $or: [
+            { sourceSiteId: userSiteId },
+            { destinationSiteId: userSiteId },
+          ],
+          ...(userBlockId
+            ? {
+                $and: [
+                  {
+                    $or: [
+                      { sourceBlockId: userBlockId },
+                      { destinationBlockId: userBlockId },
+                    ],
+                  },
+                ],
+              }
+            : {}),
+        }
+      : { isIntraPlant: true, _id: null }; // no siteId → no intra trips visible
+
+    const factoryOrIntraVisible = (factoryOrClause) => ({
+      $or: [
+        { isIntraPlant: { $ne: true }, $or: factoryOrClause },
+        intraVisibility,
+      ],
+    });
+
     const [
       totalVehicles,
       totalInsideVehicles,
@@ -2801,32 +3329,123 @@ export const getVehiclesLength = async (req, res) => {
       totalUpcomingVehicles,
       totalDispatchedVehicles,
       totalClosedVehicles,
-      totalPickup,           
-      totalDelivery,         
-      totalFG,               
-      totalRM,              
+      totalPickup,
+      totalDelivery,
+      totalFG,
+      totalRM,
     ] = await Promise.all([
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }], }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "inside_factory",  $or: [{ phase: "ORIGIN", sourceFactoryId: factoryId }, { phase: "DESTINATION", destinationFactoryId: factoryId }] }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "enroute",         phase: "ORIGIN",      destinationFactoryId: factoryId }),
-      // Dispatch -------
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "enroute",         status: "IN_TRANSIT", phase: "ORIGIN", sourceFactoryId: factoryId }),
-      // Closed / Cancelled in last 36hr
-      Trip.countDocuments({ tripState: { $in: ["CLOSED", "CANCELLED"] }, completedAt: { $gte: lst36hr },      $or: [{ sourceFactoryId: factoryId}, {destinationFactoryId: factoryId}] }),
 
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Pickup",   $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, purpose: "Delivery", $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }] }),
-      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "FG" }, { "materials.0.name": "FG" }], $and: [{ $or: [{ phase: "ORIGIN", location: "inside_factory", sourceFactoryId: factoryId }, { phase: "DESTINATION", location: "inside_factory", destinationFactoryId: factoryId }] }] }),
-      Trip.countDocuments({tripState:  { $in: ["ACTIVE", "COMPLETED"] }, $or: [{ "materials.0.material": "RM" }, { "materials.0.name": "RM" }], $and: [{$or:  [{ location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },{ location: "inside_factory", $or: [{ phase: "ORIGIN", sourceFactoryId: factoryId }, { phase: "DESTINATION", destinationFactoryId: factoryId },]},
-        { location: "enroute", destinationFactoryId: factoryId },
+      // All — factory-wide for non-intra, site/block-scoped for intra
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        ...factoryOrIntraVisible([{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }]),
+      }),
+
+      // Inside — direction matters: ORIGIN side or DESTINATION side must match
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        location:  "inside_factory",
+        $or: [
+          { isIntraPlant: { $ne: true }, phase: "ORIGIN",      sourceFactoryId:      factoryId },
+          { isIntraPlant: { $ne: true }, phase: "DESTINATION", destinationFactoryId: factoryId },
+          { phase: "ORIGIN",      ...intraSiteBlockMatch("sourceSiteId",      "sourceBlockId") },
+          { phase: "DESTINATION", ...intraSiteBlockMatch("destinationSiteId", "destinationBlockId") },
+        ],
+      }),
+
+      // Waiting/Outside — destination side only
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        location:  "outside_factory",
+        phase:     "DESTINATION",
+        $or: [
+          { isIntraPlant: { $ne: true }, destinationFactoryId: factoryId },
+          intraSiteBlockMatch("destinationSiteId", "destinationBlockId"),
+        ],
+      }),
+
+      // Upcoming/enroute — destination side only
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        location:  "enroute",
+        phase:     "ORIGIN", // kept as in your original — verify this is intended vs "DESTINATION"
+        $or: [
+          { isIntraPlant: { $ne: true }, destinationFactoryId: factoryId },
+          intraSiteBlockMatch("destinationSiteId", "destinationBlockId"),
+        ],
+      }),
+
+      // Dispatched — source side only
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        location:  "enroute",
+        status:    "IN_TRANSIT",
+        phase:     "ORIGIN",
+        $or: [
+          { isIntraPlant: { $ne: true }, sourceFactoryId: factoryId },
+          intraSiteBlockMatch("sourceSiteId", "sourceBlockId"),
+        ],
+      }),
+
+      // Closed/Cancelled — factory-wide for non-intra, site/block for intra
+      Trip.countDocuments({
+        tripState:   { $in: ["CLOSED", "CANCELLED"] },
+        completedAt: { $gte: lst36hr },
+        ...factoryOrIntraVisible([{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }]),
+      }),
+
+      // Pickup — factory-wide visibility scope, same as "all"
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        purpose:   "Pickup",
+        ...factoryOrIntraVisible([{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }]),
+      }),
+
+      // Delivery
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        purpose:   "Delivery",
+        ...factoryOrIntraVisible([{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }]),
+      }),
+
+      // FG — inside_factory scope, direction-aware
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        $or: [{ "materials.0.material": "FG" }, { "materials.0.name": "FG" }],
+        $and: [
+          {
+            $or: [
+              { isIntraPlant: { $ne: true }, phase: "ORIGIN",      location: "inside_factory", sourceFactoryId:      factoryId },
+              { isIntraPlant: { $ne: true }, phase: "DESTINATION", location: "inside_factory", destinationFactoryId: factoryId },
+              { phase: "ORIGIN",      location: "inside_factory", ...intraSiteBlockMatch("sourceSiteId",      "sourceBlockId") },
+              { phase: "DESTINATION", location: "inside_factory", ...intraSiteBlockMatch("destinationSiteId", "destinationBlockId") },
             ],
           },
         ],
-      })    
+      }),
+
+      // RM — waiting ∪ inside ∪ enroute scope, direction-aware
+      Trip.countDocuments({
+        tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        $or: [{ "materials.0.material": "RM" }, { "materials.0.name": "RM" }],
+        $and: [
+          {
+            $or: [
+              { isIntraPlant: { $ne: true }, location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },
+              { isIntraPlant: { $ne: true }, location: "inside_factory",  phase: "ORIGIN",       sourceFactoryId:      factoryId },
+              { isIntraPlant: { $ne: true }, location: "inside_factory",  phase: "DESTINATION",  destinationFactoryId: factoryId },
+              { isIntraPlant: { $ne: true }, location: "enroute",         destinationFactoryId: factoryId },
+              { location: "outside_factory", phase: "DESTINATION", ...intraSiteBlockMatch("destinationSiteId", "destinationBlockId") },
+              { location: "inside_factory",  phase: "ORIGIN",      ...intraSiteBlockMatch("sourceSiteId",      "sourceBlockId") },
+              { location: "inside_factory",  phase: "DESTINATION", ...intraSiteBlockMatch("destinationSiteId", "destinationBlockId") },
+              { location: "enroute",         ...intraSiteBlockMatch("destinationSiteId", "destinationBlockId") },
+            ],
+          },
+        ],
+      }),
     ]);
 
-     return res.status(200).json({
+    return res.status(200).json({
       success: true,
       totalVehicles,
       totalInsideVehicles,
@@ -2838,14 +3457,13 @@ export const getVehiclesLength = async (req, res) => {
       totalDelivery,
       totalFG,
       totalRM,
-     
     });
 
-  }catch(er) {
-    console.log("something is wrong", er.message)
-    return res.status(500).send(er.message)
+  } catch (er) {
+    console.log("something is wrong", er.message);
+    return res.status(500).send(er.message);
   }
-}
+};
 
 export const closedAndCancelledTrips = async (req, res) => {
   try {
@@ -3451,6 +4069,7 @@ const isRouteChange = (ev) => {
   return a === "route_change" || s === "route_changed";
 };
  
+
 /**
  * @param {Array}  history       - full trip.tripHistory (sorted ascending by timestamp)
  * @param {Date}   windowStart   - TripSegment.startedAt
@@ -3458,6 +4077,8 @@ const isRouteChange = (ev) => {
  * @param {Set}    claimedIds    - _id strings already assigned; mutated in place
  * @returns {Array} history entries that belong to this segment, sorted by timestamp
  */
+
+
 function eventsForWindow(history, windowStart, windowEnd, claimedIds) {
   if (!windowStart) return [];
  

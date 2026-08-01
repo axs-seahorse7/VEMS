@@ -20,6 +20,9 @@ export function DashboardProvider({ children }) {
   const [dashboardRefetch, setDashboardRefetch] = useState(null);
 
 
+  const [settingsActiveSection, setSettingsActiveSection] = useState(null);
+
+
 
   return (
     <DashboardContext.Provider
@@ -47,7 +50,10 @@ export function DashboardProvider({ children }) {
         dates,
         setDates,
         dashboardRefetch,
-        setDashboardRefetch
+        setDashboardRefetch,
+
+        settingsActiveSection,
+        setSettingsActiveSection,
       }}
     >
       {children}

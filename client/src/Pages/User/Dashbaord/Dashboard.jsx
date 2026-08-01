@@ -7,7 +7,7 @@ import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-quer
 import api from "../../../../services/API/Api/api";
 
 // third party components
-import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented, Modal, Spin, Tooltip, Dropdown } from "antd";
+import { Button, message, Table, Tag as AntTag, Avatar, Popover, Segmented, Modal, Spin, Tooltip, Dropdown, Space, Select } from "antd";
 import { CloseCircleOutlined, CloseOutlined} from "@ant-design/icons";
 import { TruckElectric } from "lucide-react";
 
@@ -21,6 +21,7 @@ import VehicleDrawer from "../../../components/Dashboard/VehicleDrawer.jsx";
 import VehicleStatusDrawer from "../../../components/Vehicle-Status/VehicleStatusDrawer.jsx";
 import NetworkStatusBanner from "../../../components/Interne-Status/NetworkStatusBanner.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
+import {useUser} from "../../../Global/User-Context/UserContext.jsx";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isPUCExpired = (d) => new Date(d) < new Date();
@@ -226,7 +227,15 @@ function TypeBadge({ type }) {
 }
 
 // ─── Segment Filter ───────────────────────────────────────────────────────────
-function SegmentFilter({ filter, setFilter, counts }) {
+function SegmentFilter({ filter, setFilter, counts, radius = 9, style = {} }) {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 500);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 500);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
   const opts = [
     { v: "all",        l: "All",        count: counts.all },
     { v: "waiting",    l: "Waiting",    count: counts.waiting },
@@ -234,16 +243,126 @@ function SegmentFilter({ filter, setFilter, counts }) {
     { v: "enroute",    l: "Upcoming",   count: counts.enroute },
     { v: "dispatched", l: "Dispatched", count: counts.dispatched },
   ];
+
+  // ── Mobile: full-width fixed bottom tab bar, Android-nav style ──────────────
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          display: "flex",
+          background: "#fff",
+          borderTop: "1px solid #e5e7eb",
+          boxShadow: "0 -2px 12px rgba(0,0,0,0.06)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+      >
+        {opts.map((o) => {
+          const active = filter === o.v;
+          const activeColor = o.v === "dispatched" ? "#059669" : "#6366f1";
+          return (
+            <button
+              key={o.v}
+              onClick={() => setFilter(o.v)}
+              style={{
+                flex: 1,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                padding: "8px 2px 6px",
+                color: active ? activeColor : "#6b7280",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  minWidth: 18,
+                  height: 18,
+                  lineHeight: "18px",
+                  borderRadius: 9,
+                  background: active ? (o.v === "dispatched" ? "#d1fae5" : "#ede9fe") : "#f3f4f6",
+                  color: active ? activeColor : "#9ca3af",
+                }}
+              >
+                {o.count}
+              </span>
+              <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{o.l}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── Desktop / tablet: floating glass pill, single row, no wrap ──────────────
   return (
-    <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 9, padding: 3, gap: 2, flexWrap: "wrap" }}>
-      {opts.map((o) => (
-        <button key={o.v} onClick={() => setFilter(o.v)} style={{ border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: filter === o.v ? 700 : 500, background: filter === o.v ? "#fff" : "transparent", color: o.v === "dispatched" && filter === o.v ? "#059669" : filter === o.v ? "#6366f1" : "#6b7280", cursor: "pointer", transition: "all .15s" }}>
-          {o.l}{" "}
-          <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 4, background: o.v === "dispatched" && filter === o.v ? "#d1fae5" : filter === o.v ? "#ede9fe" : "#e5e7eb", color: o.v === "dispatched" && filter === o.v ? "#059669" : filter === o.v ? "#6366f1" : "#9ca3af", borderRadius: 4, padding: "0 5px" }}>
-            {o.count}
-          </span>
-        </button>
-      ))}
+    <div
+      style={{
+        position: "fixed",
+        bottom: 60,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 100,
+        display: "flex",
+        flexWrap: "nowrap",
+        alignItems: "center",
+        gap: 2,
+        maxWidth: "calc(100vw - 32px)",
+        overflowX: "auto",
+        background: style.background ?? "#f3f4f6",
+        borderRadius: style.borderRadius ?? radius,
+        padding: style.padding ?? 3,
+        ...style,
+      }}
+    >
+      {opts.map((o) => {
+        const active = filter === o.v;
+        const activeColor = o.v === "dispatched" ? "#059669" : "#6366f1";
+        return (
+          <button
+            key={o.v}
+            onClick={() => setFilter(o.v)}
+            style={{
+              border: "none",
+              borderRadius: radius,
+              padding: style.child?.padding ?? 3,
+              fontSize: 12,
+              fontWeight: active ? 700 : 500,
+              background: active ? "#fff" : "transparent",
+              color: active ? activeColor : "#6b7280",
+              cursor: "pointer",
+              transition: "all .15s",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {o.l}{" "}
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                marginLeft: 4,
+                background: active ? (o.v === "dispatched" ? "#d1fae5" : "#ede9fe") : "#e5e7eb",
+                color: active ? activeColor : "#9ca3af",
+                borderRadius: radius,
+                padding: "0 5px",
+              }}
+            >
+              {o.count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -324,7 +443,7 @@ function Navbar({
   // filter
   filter,
   setFilter,
-  segCounts,          // e.g. { all: 8, waiting: 0, inside: 5, enroute: 0, dispatched: 0 }
+  segCounts,
 
   // search
   searchOpen,
@@ -336,8 +455,15 @@ function Navbar({
   refreshing,
   manualRefetch,
   setEntryOpen,
+
+  // block selection (new)
+  onSelectBlock, // async (blockId) => void — should persist + update `user` upstream
 }) {
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 1040);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [selectedBlockId, setSelectedBlockId] = useState(undefined);
+  const [savingBlock, setSavingBlock] = useState(false);
+  const [pulsing, setPulsing] = useState(false);
 
   useEffect(() => {
     const handler = () => setCollapsed(window.innerWidth <= 1040);
@@ -345,13 +471,59 @@ function Navbar({
     return () => window.removeEventListener("resize", handler);
   }, []);
 
+  // User needs to pick a block if their site supports blocks but none is set yet
+  const needsBlockSelection = !!(user?.siteId?.supportsBlocks && !user?.blockId);
+  const availableBlocks = user?.siteId?.allowedBlocks || [];
+
+  // Periodic non-blocking nudge. Currently 10s for testing — bump to
+  // 10 * 60 * 1000 (10 min) for production.
+  const REMINDER_INTERVAL_MS = 10 * 1000; // TODO: change to 10 * 60 * 1000 in production
+  const PULSE_DURATION_MS = 4000;
+
+  useEffect(() => {
+    if (!needsBlockSelection) return;
+
+    const trigger = () => {
+      setPulsing(true);
+      setTimeout(() => setPulsing(false), PULSE_DURATION_MS);
+    };
+
+    trigger(); // nudge once immediately on mount if needed
+    const id = setInterval(trigger, REMINDER_INTERVAL_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsBlockSelection]);
+
   function clearSearch() {
-    if(searchQuery.length> 0) {
+    if (searchQuery.length > 0) {
       setSearchQuery("");
-    }else {
+    } else {
       setSearchOpen(false);
     }
   }
+
+  const openBlockModal = () => {
+    setPulsing(false);
+    setSelectedBlockId(undefined);
+    setBlockModalOpen(true);
+  };
+
+  const handleConfirmBlock = async () => {
+    if (!selectedBlockId || !onSelectBlock) {
+      setBlockModalOpen(false);
+      return;
+    }
+    setSavingBlock(true);
+    try {
+      await onSelectBlock(selectedBlockId);
+      message.success("Block selected");
+      setBlockModalOpen(false);
+    } catch {
+      message.error("Failed to save block selection");
+    } finally {
+      setSavingBlock(false);
+    }
+  };
 
   return (
     <>
@@ -368,10 +540,10 @@ function Navbar({
           position: sticky;
           top: 0;
           z-index: 100;
-          // overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
         }
         .nav-logo { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-        .nav-logo img { width: 40px; height: 40px; object-fit: contain; }
+        .nav-logo img { width: 60px; height: 60px; object-fit: contain; }
         .nav-logo-divider { border-left: 2px solid #ef4444; padding-left: 8px; }
         .nav-logo-brand { font-weight: 800; font-size: 13px; color: #111; }
         .nav-logo-sub { font-size: 9px; color: #059669; font-weight: 600; letter-spacing: 0.4px; }
@@ -385,11 +557,11 @@ function Navbar({
           display: flex; align-items: center;
           background: #f3f4f6; border: 1.5px solid transparent;
           border: 1.5px solid #e5e7eb;
-          border-radius: 8px; padding: 4px 8px;
+          border-radius: 50%; padding: 4px 8px;
           transition: all .2s; overflow: hidden;
-          width: 30px;
+          width: 30px;  height: 30px; flex-shrink: 0;
         }
-        .nav-search.open { background: #f5f3ff; border-color: #34908B; width: 150px; }
+        .nav-search.open { background: #f5f3ff;  outline: 1.5px solid blue; width: 150px; height: 30px; border-radius: 20px; }
         .nav-search input { border: none; background: transparent; font-size: 12px; color: #111; font-family: inherit; margin-left: 6px; width: 100%; font-weight: 500; outline: none; }
 
         .nav-refresh-label, .nav-entry-label { display: inline; }
@@ -404,6 +576,34 @@ function Navbar({
         @media (max-width: 640px) {
           .nav-logo-divider { display: none; }
         }
+
+        .select-block-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          color: #6366f1;
+          background: #eef2ff;
+          border: 1px solid #c7d2fe;
+          border-radius: 20px;
+          padding: 1px 8px;
+          cursor: pointer;
+          margin-top: 2px;
+          transition: all 0.2s;
+        }
+        .select-block-pill:hover {
+          background: #e0e7ff;
+        }
+        .select-block-pill.pulse {
+          animation: pillPulse 1.1s ease-in-out 3;
+          box-shadow: 0 0 0 rgba(99, 102, 241, 0.5);
+        }
+        @keyframes pillPulse {
+          0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
+          50%  { transform: scale(1.06); box-shadow: 0 0 0 5px rgba(99, 102, 241, 0); }
+          100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
       `}</style>
 
       <nav className="nav-root">
@@ -411,21 +611,28 @@ function Navbar({
         <div className="nav-logo">
           <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="PG" />
           <div className="nav-logo-divider">
-            <div className="nav-logo-brand">VEMS</div>
-            <div className="nav-logo-sub">{user?.factory?.name} ({user?.factory?.location})</div>
-            <div className="nav-logo-role">
-              {user.workLocation === "atGate" ? "Security Gate"
-                : user.workLocation === "storeSite" ? "Store" : "Dispatch"}
-            </div>
-          </div>
-        </div>
+            <div className="nav-logo-brand">VEMS | <span className="text-blue-500" >{user?.factory?.name}, {user?.factory?.location}</span>  </div>
+            {user.siteId && (
+              <div className="font-bold text-xs text-indigo-600" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>
+                  {user?.siteId?.name}
+                  {user?.blockId && `, ${user.blockId.name}`}
+                </span>
 
-        {/* Center: full SegmentFilter OR compact dropdown */}
-        <div className="nav-center">
-          {collapsed
-            ? <NavbarSegmentDropdown filter={filter} setFilter={setFilter} counts={segCounts} />
-            : <SegmentFilter filter={filter} setFilter={setFilter} counts={segCounts} />
-          }
+                {needsBlockSelection && (
+                  <Tooltip title="Choose your work block to see relevant vehicles" placement="bottom">
+                    <span
+                      className={`select-block-pill${pulsing ? " pulse" : ""}`}
+                      onClick={openBlockModal}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#6366f1", display: "inline-block" }} />
+                      Select Block
+                    </span>
+                  </Tooltip>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right actions */}
@@ -435,18 +642,19 @@ function Navbar({
           {/* Search */}
           <div className={`nav-search${searchOpen ? " open" : ""}`}>
             {searchOpen && (
-              <input autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Vehicle no..." />
+              <input autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="MH01AB4321.." />
             )}
+
             <button
               onClick={() => { if(!searchOpen && searchQuery.length === 0) setSearchOpen(o => !o); if(searchOpen && searchQuery.length === 0) setSearchOpen(o => !o); if (searchOpen && searchQuery.length > 0) clearSearch(); }}
               style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0,
-                display: "flex", alignItems: "center",
-                color: searchOpen ? "#6366f1" : "#6b7280", flexShrink: 0, width: 30, height: 24,  }}
+                display: "flex", alignItems: "center", 
+                color: searchOpen ? "#6366f1" : "#6b7280", flexShrink: 0, width: 20, height: 24,  }}
             >
 
               { searchOpen && searchQuery.length === 0 ? <CloseOutlined style={{width: 12, height: 12, color: "gray"}} /> : 
-              searchOpen && searchQuery.length > 0 ? <CloseCircleOutlined style={{ width: 14, height: 14, color: "orange" }} />
-              : <span style={{ width: 14, height: 14, display: "flex" }}>{Icon.search}</span> 
+              searchOpen && searchQuery.length > 0 ? <CloseCircleOutlined style={{ width: 26, height: 26, color: "orange" }} />
+              : <span style={{ width: 14, height: 14, display: "flex",  }}>{Icon.search}</span> 
               }
             </button>
           </div>
@@ -454,9 +662,9 @@ function Navbar({
           {/* Refresh */}
           <Tooltip title="Refresh">
             <Button
-              onClick={manualRefetch} type="primary" shape=""
+             shape="round"
+              onClick={manualRefetch} 
               icon={<span style={{ width: 14, height: 14, display: "flex", ...(refreshing ? { animation: "spin .7s linear infinite" } : {}) }}>{Icon.refresh}</span>}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}
             >
               <span className="nav-refresh-label">Refresh</span>
             </Button>
@@ -465,12 +673,13 @@ function Navbar({
           {/* New Entry */}
           <Tooltip title="New Entry">
             <Button
+              shape="round" type="primary"
               onClick={() => setEntryOpen(true)}
               style={{ display: "flex", alignItems: "center", gap: 5, border: "none",
-                background: "#6366f1", padding: "6px 14px",
-                fontWeight: 700, fontSize: 12.5, cursor: "pointer", color: "#fff", whiteSpace: "nowrap" }}
+                padding: "6px 14px",
+                fontWeight: 700, fontSize: 12.5, cursor: "pointer", color: "#fff", whiteSpace: "nowrap", letterSpacing: 0.6, }}
             >
-              <span style={{ width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{Icon.plus}</span>
+              <span style={{ width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>{Icon.plus}</span>
               <span className="nav-entry-label">New Entry</span>
             </Button>
           </Tooltip>
@@ -490,12 +699,42 @@ function Navbar({
               </div>
             </div>
           }>
-            <Avatar size="small" style={{ backgroundColor: "#6366F1", cursor: "pointer", flexShrink: 0 }}>
+            <Avatar size="medium" style={{ backgroundColor: "#6366F1", cursor: "pointer", flexShrink: 0 }}>
               {user.email?.[0]?.toUpperCase()}
             </Avatar>
           </Popover>
         </div>
       </nav>
+
+      {/* Select Block Modal — fully dismissible, never blocks the app */}
+      <Modal
+        open={blockModalOpen}
+        onCancel={() => setBlockModalOpen(false)}
+        title={
+          <Space>
+            <span style={{ fontWeight: 700 }}>Select Your Block</span>
+          </Space>
+        }
+        okText="Confirm"
+        cancelText="Maybe Later"
+        onOk={handleConfirmBlock}
+        confirmLoading={savingBlock}
+        okButtonProps={{ disabled: !selectedBlockId }}
+        maskClosable
+        centered
+        width={380}
+      >
+        <p style={{ color: "#6b7280", fontSize: 13, margin: "4px 0 16px" }}>
+          Your site "{user?.siteId?.name}" has blocks. Selecting yours helps route entries correctly.
+        </p>
+        <Select
+          style={{ width: "100%" }}
+          placeholder="Choose a block"
+          value={selectedBlockId}
+          onChange={setSelectedBlockId}
+          options={availableBlocks.map(b => ({ value: b._id, label: b.name }))}
+        />
+      </Modal>
     </>
   );
 }
@@ -796,7 +1035,7 @@ export default function VehicleDashboard() {
   }
 
   // ── User ──────────────────────────────────────────────────────────────────
-  const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
+  const {user} = useUser();
   const userFactoryId = user?.factory?._id || user?.factory;
   const userRole      = user?.workLocation || "atGate";
   const factory       = user?.factory?.name;
@@ -821,11 +1060,9 @@ export default function VehicleDashboard() {
       const res = await api.get(`/vehicle/trips/live?page=${pageParam}&limit=20&filter=${filter}&search=${debouncedSearch}`);
       return res.data;
     },
-
     getNextPageParam: (lastPage) => {
       return lastPage.nextPage || undefined;
     },
-
     refetchInterval: 10000,
     refetchOnWindowFocus: true,
     refetchIntervalInBackground: false,
@@ -1009,24 +1246,87 @@ export default function VehicleDashboard() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0" }}>
               <div style={{ color: "#6366f1", fontSize: 14, fontWeight: 600 }}><Spin size="medium" /></div>
             </div>
-          ) : filteredVehicles.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "48px 20px", color: "#9ca3af", background: "#fff", borderRadius: 12, border: "1.5px dashed #e5e7eb", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <TruckElectric color="gray" size={40} />
-              <div style={{ fontSize: 14, fontWeight: 600 }}>No vehicles found</div>
+         ) : filteredVehicles.length === 0 ? (
+            <div
+              style={{
+                borderRadius: 12,
+                padding: 12,
+                backgroundColor: "#fafafa",
+                backgroundImage: "radial-gradient(#d1d5db 1px, transparent 1px)",
+                backgroundSize: "18px 18px",
+                minHeight: "80vh",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              <style>{`
+                @keyframes truckDriveIn {
+                  0%   { transform: translateX(-140px); opacity: 0; }
+                  30%  { opacity: 1; }
+                  60%  { transform: translateX(0px); }
+                  100% { transform: translateX(0px); }
+                }
+                @keyframes truckBounce {
+                  0%, 100% { transform: translateY(0px); }
+                  50%      { transform: translateY(-4px); }
+                }
+                @keyframes roadDash {
+                  0%   { background-position: 0 0; }
+                  100% { background-position: -48px 0; }
+                }
+                .empty-truck-wrap {
+                  animation: truckDriveIn 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+                }
+                .empty-truck-icon {
+                  animation: truckBounce 1.4s ease-in-out infinite;
+                  animation-delay: 1.1s;
+                }
+                .empty-road {
+                  width: 160px;
+                  height: 3px;
+                  border-radius: 2px;
+                  background-image: repeating-linear-gradient(
+                    to right, #cbd5e1 0, #cbd5e1 10px, transparent 10px, transparent 20px
+                  );
+                  animation: roadDash 0.6s linear infinite;
+                }
+              `}</style>
+
+              <div className="empty-truck-wrap" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                <div className="empty-truck-icon">
+                  <TruckElectric color="#94a3b8" size={44} strokeWidth={1.6} />
+                </div>
+                <div className="empty-road" />
+              </div>
+
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#334155" }}>No vehicles available here</div>
+                <div style={{ fontSize: 11.5, fontWeight: 500, color: "#94a3b8", marginTop: 2 }}>
+                  Vehicles matching this filter will show up here
+                </div>
+              </div>
             </div>
           ) : (
-              <div
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  padding: 12,
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fill, minmax(350px, 1fr))",
-                  gap: 12
-                }}
-              > 
-
+            <div
+              style={{
+                borderRadius: 12,
+                padding: 12,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
+                gap: 12,
+                alignItems: "start",
+                 alignContent: "start",
+                backgroundColor: "#fafafa",
+                backgroundImage: "radial-gradient(#d1d5db 1px, transparent 1px)",
+                backgroundSize: "18px 18px",
+                minHeight: "100vh",
+              }}
+            >
               {filteredVehicles.map((v, index) => {
                 const isLast = index === filteredVehicles.length - 1;
                 return (
@@ -1035,14 +1335,12 @@ export default function VehicleDashboard() {
                     key={v._id}
                   >
                     <VehicleCard vehicle={v} onClick={() => setSelectedVehicle(v)} />
-                    
                   </div>
                 );
               })}
-            </div>
-          )
+            </div>)
         ) : (
-          <> 
+          <div style={{ padding: "0 20px" }}> 
             <Table
               columns={vehicleColumns}
               dataSource={filteredVehicles}
@@ -1068,10 +1366,9 @@ export default function VehicleDashboard() {
                 <Spin/>
               </div>
             )}
-          </>      
+          </div>      
 
         )}
-          
 
         {
           hasNextPage && (
@@ -1091,17 +1388,36 @@ export default function VehicleDashboard() {
             </div>
           )
         }
+
       </div>
 
-          <VehicleDetailModal
-            selectedTripLoading={selectedTripLoading}
-            onClose={() => setSelectedVehicle(null)}
-            onRefresh={manualRefetch}
-            userFactoryId={userFactoryId}
-            factory={factory}
-            userRole={userRole}
-            selectedVehicleId={selectedVehicleId}
-          />
+      <SegmentFilter
+        radius={50}
+        filter={filter}
+        setFilter={setFilter}
+        counts={segCounts ?? 0}
+        style={{
+          background: "rgba(255, 255, 255, 0.02)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          border: "1px solid rgba(255, 255, 255, 0.3)",
+          borderTop: "1px solid rgba(255, 255, 255, 0.6)",
+          color: "#1f2937",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.4)",
+          padding: "8px 10px",
+          child: { padding: "5px 10px" },
+        }}
+      />
+
+      <VehicleDetailModal
+        selectedTripLoading={selectedTripLoading}
+        onClose={() => setSelectedVehicle(null)}
+        onRefresh={manualRefetch}
+        userFactoryId={userFactoryId}
+        factory={factory}
+        userRole={userRole}
+        selectedVehicleId={selectedVehicleId}
+      />
 
       <CreateVehicleModal open={entryOpen} onClose={() => setEntryOpen(false)} onRefresh={manualRefetch} />
       <VehicleStatusDrawer open={vehicleDrawer} onClose={() => setVehicleDrawer(false)} />
