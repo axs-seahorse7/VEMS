@@ -162,10 +162,12 @@ export const verifyOtp = async (req, res) => {
     const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
     console.log("IS HTTPS:", req.secure, req.headers["x-forwarded-proto"], isHttps);
 
+    const isProduction = process.env.SERVER_ENV === "production";
+
     res.cookie("token", token, {
       httpOnly: true,
-      secure: isHttps,
-      sameSite: isHttps ? "none" : "lax",
+      secure: isProduction,
+      sameSite: isProduction ? "strict" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
     });
 
