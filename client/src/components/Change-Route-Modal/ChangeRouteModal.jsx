@@ -302,7 +302,6 @@ export default function ChangeRouteModal({
     const fetchSites = async () => {
       try {
         const res = await api.get("/sites");
-        console.log("Fetched sites:", res?.data?.data);
         setSites(res?.data?.data || []);
       } catch (error) {
         message.error("Failed to fetch sites");

@@ -1,10 +1,11 @@
 import e from "express";
 import { loginUser, verifyOtp, resendOtp, createUser, getMe, logoutUser, changePassword, searchUsers, resetUserPassword } from "../controllers/auth.controllers.js";
 import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
+import {authLimiter} from "../services/expressRateLimiter.js";
 
 const router = e.Router()
 
-router.post("/login", loginUser);
+router.post("/login", authLimiter, loginUser);
 router.get("/me", isAuthenticated, getMe);
 router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);

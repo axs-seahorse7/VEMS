@@ -4,11 +4,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 
 import { createAdmin } from "../seed/createAdmin.js";
-import { globalLimiter } from "../services/expressRateLimiter.js";
 import errorMiddleware from "../middleware/Asynct-handler/errorMiddleware.js";
 import { isAuthenticated } from "../middleware/isAuth/isAuthenticated.js";
 import { startDelayCron } from "../services/crone/delayAlertCron.js";
@@ -50,7 +48,6 @@ app.use(cors(corsOptions));
 app.use(e.json());
 
 app.use(helmet());
-app.use(globalLimiter);
 
 
 app.use((req, res, next) => {
@@ -69,16 +66,16 @@ app.get("/api/health", (req, res) => {
 });
 
 
-app.use("/api/auth", authRoutes)
+app.use("/api/auth", authRoutes);
 
-app.use(isAuthenticated)
+app.use(isAuthenticated);
 app.use("/api", versionCheckMiddleware);
-app.use("/api", userRoutes)
-app.use("/api", indexRoutes)
-app.use("/api", vehicleRoutes)
-app.use("/api", tripRoutes)
-app.use("/api/analytics", analyticsRoutes)
-app.use("/api/settings", settingsRoutes)
+app.use("/api", userRoutes);
+app.use("/api", indexRoutes);
+app.use("/api", vehicleRoutes);
+app.use("/api", tripRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/settings", settingsRoutes);
 app.use(errorMiddleware);
 
 app.listen(process.env.PORT, (function () {

@@ -1726,7 +1726,6 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   });
 
   const trip = data || null;
-  console.log("trip data", trip)
 
   const location    = trip?.location;
   const vehicleData = trip?.vehicle;
@@ -1781,8 +1780,6 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
     </div>
   );
 
-
-
   useEffect(() => {
     try {
       const fetchFactories = async () => {
@@ -1796,18 +1793,15 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
 
   }, []);
 
-
-  
-
-    if(selectedTripLoading) {
-      return (
-        <Modal open={!!vehicle} onClose={onClose} title="Your trip is loading..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
-            <Spin size="large" />
-          </div>
-        </Modal>
-      );
-    }
+  if(selectedTripLoading) {
+    return (
+      <Modal open={!!vehicle} onClose={onClose} title="Your trip is loading..." width={640} style={{ maxHeight: "90vh", scrollbarWidth: "none" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
+          <Spin size="large" />
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     

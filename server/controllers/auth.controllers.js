@@ -133,9 +133,16 @@ export const verifyOtp = async (req, res) => {
       .populate("blockId", "name")
       .select("-password");
 
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     // Issue JWT
     const token = jwt.sign(
-      { id: user._id },
+      { id: user?._id },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );

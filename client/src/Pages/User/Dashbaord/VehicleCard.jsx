@@ -586,8 +586,6 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
 
           {/* ── Row 2: Tags ── */}
           <Space size={4} wrap style={{ marginBottom: 7 }}>
-            
-
             <Tag
               color={vehicle.type === "external_delivery" ? "red" : "cyan"}
               style={{ fontSize: 9, fontWeight: 700, margin: 0, padding: "1px 5px" }}
@@ -620,8 +618,6 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
             >
               {isIncoming ? "Incoming" : "Outgoing"}
             </Tag>
-
-
             <style>{`
               @keyframes stagePulseAmber {
                 0%   { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.55); }
@@ -643,50 +639,50 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
             `}</style>
 
 
-        <div className="tags-container" style={{ display: "flex", justifyContent: "end", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
-          {workflow.stage !== null && !isClosed  && (
-            <span
-              className="stage-tag-pulse"
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                margin: 0,
-                padding: "1px 6px",
-                border: "1px solid #d97706",
-                background: "#fffbeb",
-                color: "#d97706",
-                letterSpacing: 0.3,
-                borderRadius: 4,
-              }}
-            >
-              {getStages(workflow.stage) || workflow.stage}
-            </span>
-          )}
-          
-          {workflow?.actionRequiredBy?.actor?.length > 0 && !isClosed && (
-            <span
-              className="action-tag-pulse"
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                margin: 0,
-                marginLeft: 4,
-                padding: "1px 6px",
-                border: "1px solid #2563eb",
-                background: "#eff6ff",
-                color: "#2563eb",
-                letterSpacing: 0.3,
-                borderRadius: 4,
-              }}
-            >
-              {vehicle?.material?.name === "RM" && workflow.actionRequiredBy.actor.includes("storeSite")
-                ? getActionLabel("storeSite")
-                : vehicle?.material?.name === "FG" && workflow.actionRequiredBy.actor.includes("dispatchSite")
-                ? getActionLabel("dispatchSite")
-                : getActionLabel(workflow.actionRequiredBy.actor)}
-            </span>
-          )}
-        </div>
+          <div className="tags-container" style={{ display: "flex", justifyContent: "end", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
+            {workflow.stage !== null && !isClosed  && (
+              <span
+                className="stage-tag-pulse"
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  margin: 0,
+                  padding: "1px 6px",
+                  border: "1px solid #d97706",
+                  background: "#fffbeb",
+                  color: "#d97706",
+                  letterSpacing: 0.3,
+                  borderRadius: 4,
+                }}
+              >
+                {getStages(workflow.stage) || workflow.stage}
+              </span>
+            )}
+            
+            {workflow?.actionRequiredBy?.actor?.length > 0 && !isClosed && (
+              <span
+                className="action-tag-pulse"
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  margin: 0,
+                  marginLeft: 4,
+                  padding: "1px 6px",
+                  border: "1px solid #2563eb",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  letterSpacing: 0.3,
+                  borderRadius: 4,
+                }}
+              >
+                {vehicle?.material?.name === "RM" && workflow.actionRequiredBy.actor.includes("storeSite")
+                  ? getActionLabel("storeSite")
+                  : vehicle?.material?.name === "FG" && workflow.actionRequiredBy.actor.includes("dispatchSite")
+                  ? getActionLabel("dispatchSite")
+                  : getActionLabel(workflow.actionRequiredBy.actor)}
+              </span>
+            )}
+          </div>
 
             
           </Space>

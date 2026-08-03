@@ -27,12 +27,11 @@ export const globalLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 120,
+  max: 50,
 
   message: {
     success: false,
-    message:
-      "Too many login attempts. Try again later."
+    message: "Too many login attempts. Try again later."
   }
 });
 
@@ -41,8 +40,7 @@ export const apiLimiter = rateLimit({
   max: 100,
   message: {
     success: false,
-    message:
-      "Too many API requests"
+    message: "Too many API requests"
   }
 });
 
@@ -52,7 +50,6 @@ export const heavyLimiter = rateLimit({
   max: 100,
   message: {
     success: false,
-    message:
-      "Heavy operation limit exceeded"
+    message: "Heavy operation limit exceeded"
   }
 });
