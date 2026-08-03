@@ -41,7 +41,6 @@ export const alertMailSender = async ({ to, alertType, payload, cc, priority = "
 
     const info = await transporter.sendMail(mailOptions);
 
-    console.info(`[ALERT MAIL] type=${alertType} | to=${to} | msgId=${info.messageId}`);
 
     return {
       success:   true,
@@ -51,7 +50,9 @@ export const alertMailSender = async ({ to, alertType, payload, cc, priority = "
     };
 
   } catch (error) {
-    console.error(`[ALERT MAIL ERROR] type=${alertType} | to=${to} |`, error);
+    if (process.env.NODE_ENV === "development") {
+      console.error(`[ALERT MAIL ERROR] type=${alertType} | to=${to} |`, error);
+    }
     return {
       success:   false,
       alertType,

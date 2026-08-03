@@ -264,7 +264,6 @@ export const getAvailableVehicles = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching available vehicles:", error);
-    console.error(error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch available vehicles.",

@@ -132,22 +132,26 @@ export default function LoginPage() {
     if (!password) return setError("Password is required.");
     setLoading(true);
     try {
-        const response = await api.post("/auth/login", {
-          email,
-          password,
-        });
+      await api.post("/auth/login", {
+        email,
+        password,
+      });
 
-        setMaskedEmail(maskEmail(email));
-        setStep(2);
+      setMaskedEmail(maskEmail(email));
+      setStep(2);
 
-      } catch (error) {
-        const errMsg =
-          error.response?.data?.message ||
-          "Login failed";
+    } catch (error) {
+      console.error(error.response?.data);
 
-        setError(errMsg);
-        message.error(errMsg);
-      } finally {
+      const errMsg =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Login failed. Please try again.";
+
+      setError(errMsg);
+      message.error(errMsg);
+    } finally {
       setLoading(false);
     }
   };
@@ -155,21 +159,46 @@ export default function LoginPage() {
   /* Step 2 → verify OTP */
   const handleVerifyOtp = async () => {
     setError("");
-    if (otp.replace(/\s/g,"").length < 6) return setError("Please enter the full 6-digit code.");
-    setLoading(true);
-    try {
-      const response = await api.post("/auth/verify-otp", { email, otp });
-      if (response.data.success) {
-        localStorage.setItem("user", JSON.stringify(response.data.user));
-        setUser(response.data.user); // Update user context
-        navigate(response.data.user.isSystemAdmin ? "/admin" : "/dashboard");
 
+    if (otp.replace(/\s/g, "").length < 6) {
+      return setError("Please enter the full 6-digit code.");
+    }
+
+    setLoading(true);
+
+    try {
+      const { data } = await api.post("/auth/verify-otp", {
+        email,
+        otp,
+      });
+
+      if (data.success) {
+        // TODO:
+        // Temporary backward compatibility.
+        // Some legacy components still read user data from localStorage.
+        // Remove this after migrating all components to UserContext.
+        localStorage.setItem("user", JSON.stringify(data.user));
+        setUser(data.user);
+
+        navigate(data.user.isSystemAdmin ? "/admin" : "/dashboard");
       } else {
-        setError(response.data.message || "Invalid code. Please try again.");
+        const errMsg = data.message || "Invalid code. Please try again.";
+        setError(errMsg);
+        message.error(errMsg);
       }
+
     } catch (error) {
-      message.error( error.response?.data?.message || "Network error. Please try again.");
-      setError("Network error. Please try again.");
+      console.error(error.response?.data);
+
+      const errMsg =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Something went wrong. Please try again.";
+
+      setError(errMsg);
+      message.error(errMsg);
+
     } finally {
       setLoading(false);
     }
@@ -178,18 +207,40 @@ export default function LoginPage() {
   /* Resend OTP */
   const handleResend = async () => {
     if (!canResend) return;
-    setError(""); setOtp("");
+
+    setError("");
+    setOtp("");
+
     try {
-      await api.post("/auth/resend-otp", { email });
-      setTimer(60); setCanResend(false);
+      const response = await api.post("/auth/resend-otp", { email });
+
+      message.success(response.data.message || "OTP sent successfully.");
+
+      setTimer(60);
+      setCanResend(false);
+
       const id = setInterval(() => {
-        setTimer(t => {
-          if (t <= 1) { clearInterval(id); setCanResend(true); return 0; }
+        setTimer((t) => {
+          if (t <= 1) {
+            clearInterval(id);
+            setCanResend(true);
+            return 0;
+          }
           return t - 1;
         });
       }, 1000);
-    } catch {
-      setError("Could not resend code. Please try again.");
+
+    } catch (error) {
+      console.error(error.response?.data);
+
+      const errMsg =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Could not resend OTP. Please try again.";
+
+      setError(errMsg);
+      message.error(errMsg);
     }
   };
 
@@ -198,7 +249,6 @@ export default function LoginPage() {
     if (step === 2 && otp.length === 6 && !loading) {
       handleVerifyOtp();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otp]);
 
   return (
@@ -384,22 +434,41 @@ export default function LoginPage() {
           .root { grid-template-columns: 1fr; }
           .left { display: none; }
         }
+
+        /* ── Mobile: card becomes a full, borderless screen ── */
+        @media (max-width: 639px) {
+          .right {
+            padding: 36px 22px;
+            min-height: 100vh;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+        }
       `}</style>
 
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="right rounded-2xl shadow-lg border border-gray-200">
+      <div className="flex items-center justify-center min-h-screen bg-white sm:bg-gray-100">
+        <div className="right w-full sm:w-auto sm:rounded-2xl sm:shadow-lg sm:border sm:border-gray-200">
           <div className="form-wrap">
 
             {/* Top row */}
             <motion.div className="top-row" {...fadeUp(0.05)}>
               {step === 1 ? (
-                <div className="flex w-full justify-between items-center" >
-                  <div className="w-30 h-30" >
-                    <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="" />
+                <div className="flex flex-col  w-full" >
+                    <span className="w-25 h-25" >
+                      <img src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png" alt="" />
+                    </span>
+                    
+                  <div className="flex flex-col w-full " >
+                    <span  className="text-gray-800 font-bold text-2xl" >
+                      Welcome to <span className="text-orange-600">VEMS</span>
+                    </span>
+                    <span  className="text-gray-800 font-thin text-sm" >
+                      Vehicle Entry Management System
+                    </span>
                   </div>
-                  <span  className="signup-txt">
-                    Welcome to <p className="text-gray-800">VEMS</p>
-                  </span>
+
+                
                 </div>
               ) : (
                 <button

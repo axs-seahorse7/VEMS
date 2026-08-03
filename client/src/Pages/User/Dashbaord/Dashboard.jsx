@@ -515,11 +515,12 @@ function Navbar({
     }
     setSavingBlock(true);
     try {
-      await onSelectBlock(selectedBlockId);
-      message.success("Block selected");
+      const res = await api.patch("/user/blocks", { blockId: selectedBlockId });
+      onSelectBlock(res.data?.user?.blockId || selectedBlockId);
+      message.success(res.data?.message || "Block selection saved");
       setBlockModalOpen(false);
-    } catch {
-      message.error("Failed to save block selection");
+    } catch (err) {
+      message.error(err.response?.data?.message || "Failed to save block selection");
     } finally {
       setSavingBlock(false);
     }
@@ -1182,6 +1183,7 @@ export default function VehicleDashboard() {
 
       <Navbar
         user={user}
+        onSelectBlock={(blockId) => {setUser((prev) => ({ ...prev, blockId })) }}
         userVersion={userVersion}
         getLocationLabel={getLocationLabel}
         handleSignOut={handleSignOut}

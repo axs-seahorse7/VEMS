@@ -420,7 +420,6 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         purpose
       } = req.body;
 
-      console.log("recived data", req.body);
 
       if (!vehicleNumber || !driverIdNumber) {
         throw new AppError(" Vehicle Number and Driver Id are required", 400);
@@ -1942,8 +1941,6 @@ export const changeRoute = asyncHandler( async (req, res) => {
     await session.withTransaction(async () => {
       const { tripId } = req.params;
       const {newDestinationFactoryId, newSiteId, newBlockId, customer, type } = req.body;
-
-      console.log("REQUEST BODY:", req.body);
 
       const user = await User.findById(req.userId)
         .populate("factory")
@@ -4168,7 +4165,7 @@ function pickEventTime(events, ...targets) {
   );
   return fmtDT(found?.timestamp);
 }
- 
+
 /* ══════════════════════════════════════════════════════════════
    CONTROLLER
 ══════════════════════════════════════════════════════════════ */
@@ -4176,10 +4173,9 @@ function pickEventTime(events, ...targets) {
 export const getDownloadTrips = async (req, res) => {
   try {
     const { from, to, factory } = req.query;
-
-    console.log("Download trips request received with query:", req.query);
  
-    const user = await User.findById(req.userId).select("factory").lean();
+    const user = await User.findById(req.userId).select("factory isSystemAdmin").lean();
+
     if (!user?.factory && !user?.isSystemAdmin) {
       return res.status(404).json({ message: "User or factory not found" });
     }
@@ -4205,6 +4201,7 @@ export const getDownloadTrips = async (req, res) => {
     const dateFilter = {};
     if (fromDate) dateFilter.$gte = fromDate;
     if (toDate)   dateFilter.$lte = toDate;
+
     const trips = await Trip.aggregate([
       {
         $match: {
@@ -4370,6 +4367,7 @@ export const getDownloadTrips = async (req, res) => {
       { col: 22, span: 9,  label: "TIMELINE"         },
       { col: 31, span: 9,  label: "MATERIAL / CARGO" },
     ];
+
     sectionDefs.forEach(({ col, span, label }) => {
       labelRow1.getCell(col).value = label;
       if (span > 1) wsDetail.mergeCells(1, col, 1, col + span - 1);
@@ -4387,6 +4385,7 @@ export const getDownloadTrips = async (req, res) => {
       "Begin", "Arrived", "Check-In", "Check-Out", "Loaded", "Unloaded", "At Destination", "Route Changed", "Closed",
       "Material", "Mat. Type", "Qty", "Unit", "Invoice No.", "Invoice Amt (₹)", "Seal", "Supplier", "Customer",
     ]);
+
     styleHeader(headerRow1, COLORS.colHeaderBg, COLORS.colHeaderFg);
     headerRow1.height = 32;
  
@@ -4415,6 +4414,7 @@ export const getDownloadTrips = async (req, res) => {
       "Status", "Action", "Location", "Phase",
       "Action By", "Action Location", "Factory", "Timestamp",
     ]);
+
     styleHeader(logHeaderRow, COLORS.headerBg, COLORS.headerFg);
     logHeaderRow.height = 24;
  
@@ -4679,13 +4679,18 @@ export const getDownloadTrips = async (req, res) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
+
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
- 
+    
     await wb.xlsx.write(res);
-    res.end();
+    return res.end();
  
   } catch (error) {
     console.error("Error generating trip download:", error);
+    if (res.headersSent) {
+      return res.end();
+    }
+
     return res.status(500).json({
       success: false,
       message: "Failed to generate trip report",

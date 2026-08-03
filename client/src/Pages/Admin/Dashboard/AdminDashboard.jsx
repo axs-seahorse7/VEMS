@@ -119,24 +119,23 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
       return;
     };
     
-  try {
-    setIsDownloading(true);
-    setDownloadModalVisible(true);
-    message.success("Preparing your download...", 1.5);
-    const res = await api.get("/get/trip/downloads", { params: { factory: factory , from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
-    const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `closed-trips-${new Date().toISOString().slice(0,10)}.xlsx` });
-    a.click(); URL.revokeObjectURL(a.href);
-    message.success("Download Completed!", 2);
-  } catch (err) {
-    console.error("Error downloading report:", err?.res?.data?.message || err.message || err);
-    Modal.error({ title: "Download Failed", content: "An error occurred while downloading the report. Please try again." });
-  } finally {
-    setIsDownloading(false);
-    setDownloadModalVisible(false);
+    try {
+      setIsDownloading(true);
+      setDownloadModalVisible(true);
+      message.success("Preparing your download...", 1.5);
+      const res = await api.get("/trip/download", { params: { factory: factory , from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
+      const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `closed-trips-${new Date().toISOString().slice(0,10)}.xlsx` });
+      a.click(); URL.revokeObjectURL(a.href);
+      message.success("Download Completed!", 2);
+    } catch (err) {
+      console.error("Error downloading report:", err?.res?.data?.message || err.message || err);
+      Modal.error({ title: "Download Failed", content: "An error occurred while downloading the report. Please try again." });
+    } finally {
+      setIsDownloading(false);
+      setDownloadModalVisible(false);
     }
   }
-
 
   const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
   const fetchDashboard = ({ vehicleId, period }) => api.get("/analytics/vehicle-dashboard", { params: { vehicleId, period, startDate: dateRange?.[0]?.toISOString() ?? undefined, endDate: dateRange?.[1]?.toISOString() ?? undefined, location, factory } }).then(r => r.data);

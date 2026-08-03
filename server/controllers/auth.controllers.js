@@ -7,13 +7,11 @@ import { emailTemplates } from "../Templates/Emails/emailsTemplates.js";
 
 export const createUser = async (req, res) => {
   const {  email, password, } = req.body;
-  console.log("Creating user:", req.body);
   try {
     const emailInLower = email.toLowerCase();
 
     const existingUser = await User.findOne({ email: emailInLower });
     if (existingUser) {
-      console.warn(`Attempt to register with existing email: ${email}`);
       return res.status(400).json({ message: "User already exists" });
     }
     // Hash the password    
@@ -61,14 +59,10 @@ export const loginUser = async (req, res) => {
       return res.status(403).json({ success: false, message: "Your account is blocked. Please contact support." });
     }
 
-
-    console.log("User found for login:", { email: user.email, id: user._id });
-
     // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
-      console.warn(`Invalid password attempt for email: ${email}`);
       return res.status(401).json({ success: false, message: "Invalid Password" });
     }
 
@@ -146,28 +140,19 @@ export const verifyOtp = async (req, res) => {
       { expiresIn: "1d" }
     );
 
+    const isProduction = process.env.SERVER_ENV === "production";
+
     // Set cookie
     res.clearCookie("token", {
-        httpOnly: true,
-        sameSite: "strict",
-        secure: false,
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
-
-    res.clearCookie("token", {
-        httpOnly: true,
-        sameSite: "none",
-        secure: true,
-    });
-
-    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
-    console.log("IS HTTPS:", req.secure, req.headers["x-forwarded-proto"], isHttps);
-
-    const isProduction = process.env.SERVER_ENV === "production";
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
     });
 
@@ -199,6 +184,8 @@ export const resendOtp = async (req, res) => {
     // User must have attempted login already
     const emailInLower = email.toLowerCase();
     const existing = otpStore.get(emailInLower);
+
+
     if (!existing) {
       return res.status(400).json({ success: false, message: "Session expired. Please login again." });
     }
@@ -239,16 +226,6 @@ export const getMe = async (req, res) => {
   try {
     const userId = req.userId; // from auth middleware
 
-    console.log("AUTH ME HIT");
-    console.log("Host:", req.headers.host);
-    console.log("Origin:", req.headers.origin);
-    console.log("Referer:", req.headers.referer);
-
-
-    console.log("req.userId:", req.userId);
-
-    
-
     const user = await User.findById(userId).select("-password")
     .populate({
       path: "factory",
@@ -263,11 +240,9 @@ export const getMe = async (req, res) => {
     .populate({ path: "blockId", select: "name" })
     .select("-password");
 
-    console.log("User found:", user);
 
     if (!user) {
-      console.log("User NOT found");
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Your session has expired. Please login again." });
     }
 
    return res.status(200).json({ user });

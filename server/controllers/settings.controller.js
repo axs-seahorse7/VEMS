@@ -478,7 +478,6 @@ router.patch("/versions/:id/set-active", wrap(async (req, res) => {
 }));
  
 router.get("/versions/check", wrap(async (req, res) => {
-  console.log("Checking version for client...");
   // read from header (preferred) OR fallback to query param
   const clientVersion = req.headers["x-app-version"] || req.query.v;
   const platform      = req.headers["x-app-platform"] || req.query.platform || "web";

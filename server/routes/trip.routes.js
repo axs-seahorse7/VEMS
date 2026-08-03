@@ -38,7 +38,7 @@ router.post("/trip/change-route/:tripId", changeRoute);
 router.post("/trip/load-material-and-newtrip/:tripId", loadMaterialAndNewtrip);
 
 
-// INTRA PLANT MOVEMENT ROUTES
+//------------------- INTRA PLANT MOVEMENT ROUTES -------------------------
 router.post("/trip/intra-plant-dispatch/:tripId", dispatchVehicle);
 
 
@@ -52,12 +52,8 @@ router.get("/vehicle/trips/:tripId", getVehicleTrips);
 router.get("/trip/closed", getClosedTrips);
 router.get("/vehicle/live-status/:vehicleNumber", getVehicleLiveStatus);
 
+
+//  ----------- Download the Trips ---------------
 router.get("/trip/download", getDownloadTrips);
-
-
-router.get("/get/trip/downloads", (req, res) => {
-   console.log("DOWNLOAD ROUTE REACHED");
-   res.json({ ok: true });
-});
 
 export default router;

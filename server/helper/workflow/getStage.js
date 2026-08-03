@@ -55,7 +55,6 @@ function getStage(trip, user) {
     phase === "ORIGIN" &&
     loadStatus === "pending"
   ) {
-    console.log("READY FOR DISPATCH");
     return STAGES.READY_FOR_DISPATCH;
   }
 
@@ -70,7 +69,6 @@ function getStage(trip, user) {
     phase === "ORIGIN" &&
     isTripInTransit
   ) {
-    console.log("READY FOR ARRIVAL");
     return STAGES.READY_FOR_ARRIVAL;
   }
 

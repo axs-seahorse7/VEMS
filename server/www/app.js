@@ -54,7 +54,9 @@ app.use(globalLimiter);
 
 
 app.use((req, res, next) => {
-  console.log("HIT:", req.method, req.url);
+  if(process.env.NODE_ENV === "development") {
+    console.log("HIT:", req.method, req.url);
+  }
   next();
 });
 
@@ -66,18 +68,6 @@ app.get("/api/health", (req, res) => {
   return res.json({ status: "ok" });
 });
 
-app.use((req, res, next) => {
-  res.on("finish", () => {
-    console.log(
-      req.method,
-      req.originalUrl,
-      "=>",
-      res.statusCode
-    );
-  });
-
-  next();
-});
 
 app.use("/api/auth", authRoutes)
 

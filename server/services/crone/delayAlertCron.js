@@ -55,17 +55,14 @@ function getAlertFactoryId(trip) {
   }
 
   // ── Fallback ────────────────────────────────────────────────────
-  console.warn("Could not determine alert factory for trip:", trip._id);
   return null;
 }
 
 function pushToGroup(group, trip) {
   const factoryId = getAlertFactoryId(trip);
 
-  console.log(`Trip ${trip._id} assigned to factory ${factoryId} for alert grouping.`);
 
   if (!factoryId) {
-    console.warn("No destination factory for trip:", trip._id);
     return;
   }
 
@@ -121,7 +118,6 @@ async function sendAlertsForLevel(level, trips) {
     const factoryRecipients = recipients.filter((r) => r.factoryId?._id.toString() === factoryId.toString());
 
     if (!factoryRecipients.length) {
-      console.warn(`No recipients found for factoryId: ${factoryId}`);
       continue
     };
 
@@ -140,7 +136,6 @@ async function sendAlertsForLevel(level, trips) {
     });
 
     if (result.success) {
-      console.log("sending delay alert email successful for factoryId:", factoryId);
       successfulTripIds.push(...factoryTrips.map(t => t._id));
     }
   }
@@ -162,7 +157,6 @@ let isCronRunning = false;
 
 async function processDelayAlerts() {
     if(isCronRunning) {
-      console.log("Cron is already running. Skipping this run.");
       return;
     }
 
@@ -212,7 +206,6 @@ async function processDelayAlerts() {
     await sendAlertsForLevel(2, groupedAlerts[2]);
     await sendAlertsForLevel(3, groupedAlerts[3]);
 
-    console.log("Delay alert cron completed");
   } catch (err) {
     console.error("Delay cron error:", err);
   } finally {
@@ -222,8 +215,7 @@ async function processDelayAlerts() {
 
 export function startDelayCron() {
   processDelayAlerts(); 
-
-  cron.schedule("0 * * * *", async () => {
+  cron.schedule("0 */4 * * *", async () => {
     await processDelayAlerts();
   });
 }

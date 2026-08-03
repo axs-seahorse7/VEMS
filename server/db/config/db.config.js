@@ -5,7 +5,7 @@ let isConnected = false;
 const connectDB = async () => {
   if (isConnected) return;
 
-  const isProduction = process.env.SERVER_ENV === "production";
+  const isProduction = process.env.DB_ENV === "production";
   console.log(`Connecting to MongoDB... (Production: ${isProduction})`);
   try {
     const MONGO_URI = isProduction 

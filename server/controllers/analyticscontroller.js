@@ -45,6 +45,7 @@ const buildPareto = (arr, labelKey = "vehicleNumber") => {
   });
 };
 
+
 const buildFactoryRollup = async (matchClosed) => {
   return Trip.aggregate([
     { $match: matchClosed },
@@ -1528,10 +1529,10 @@ export const getVehicleDashboard = async (req, res) => {
   }
 };
 
+
 export const getVehiclePerformanceTable = async (req, res) => {
   try {
     const { startDate, endDate, factory } = req.query;
-    console.log("Performance table params:", { startDate, endDate, factory });
 
     if (!factory) return res.status(400).json({ message: "factory is required" });
 
@@ -1743,6 +1744,7 @@ export const getVehiclePerformanceTable = async (req, res) => {
     return res.status(500).json({ message: "Failed", error: err.message });
   }
 };
+
 
 export const driverSearch = async (req, res) => {
   try {
@@ -2304,3 +2306,4 @@ export const getTopVehicleId = async (req, res) => {
     return res.status(500).json({ message: "Could not fetch top vehicle", error: err.message });
   }
 };
+

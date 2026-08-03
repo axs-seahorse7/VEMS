@@ -93,3 +93,34 @@ export const toggleBlockUser = async (req, res) => {
         return res.status(500).json({ error: "Failed to update user block status" });
     }
 };
+
+export const updateUserBlocks = async (req, res) => {
+    try {
+        const userId = req.userId; // set by isAuthenticated middleware
+        const { blockId } = req.body;
+
+        if (!blockId) {
+            return res.status(400).json({ message: "blockId is required" });
+        }
+
+        const updated = await userModel
+            .findByIdAndUpdate(
+                userId,
+                { blockId },
+                { new: true }
+            )
+            .select("-password")
+            .populate("factory")
+            .populate("siteId")
+            .populate("blockId");
+
+        if (!updated) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({ message: "User block updated successfully", user: updated });
+    } catch (err) {
+        console.error("Error updating user block:", err);
+        return res.status(500).json({ error: "Failed to update user block" });
+    }
+};

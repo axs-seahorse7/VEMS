@@ -315,8 +315,8 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
     [STAGES_REGISTRY.WAITING_CHECKIN]: "Waiting Check-in",
     [STAGES_REGISTRY.IN_TRANSIT]: "Waiting for Arrival",
     [STAGES_REGISTRY.ARRIVED]: "Waiting for Check-in",
-    [STAGES_REGISTRY.WAITING_UNLOAD]: "Waiting Unload",
-    [STAGES_REGISTRY.WAITING_LOAD]: "Waiting Load",
+    [STAGES_REGISTRY.WAITING_UNLOAD]: "Waiting for Unload",
+    [STAGES_REGISTRY.WAITING_LOAD]: "Waiting for Load",
     [STAGES_REGISTRY.VEHICLE_UNLOADED]: "Vehicle Unloaded",
     [STAGES_REGISTRY.SELECT_NEXT_LOCATION]: "Select Next Location",
     [STAGES_REGISTRY.READY_FOR_SITE_CONFIRMATION]: "Ready for Site Confirmation",
@@ -643,7 +643,7 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
             `}</style>
 
 
-
+        <div className="tags-container" style={{ display: "flex", justifyContent: "end", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
           {workflow.stage !== null && !isClosed  && (
             <span
               className="stage-tag-pulse"
@@ -686,6 +686,7 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
                 : getActionLabel(workflow.actionRequiredBy.actor)}
             </span>
           )}
+        </div>
 
             
           </Space>
