@@ -26,9 +26,10 @@ const getNavItems = (user) => [
     label: "Dashboard",
     icon: <AppstoreOutlined />,
     children: [
-      { id: "overview", label: "Overview" },
-      { id: "searchDrivers", label: "Search Drivers" },
+      { id: "overview",           label: "Overview" },
+      { id: "searchDrivers",      label: "Search Drivers" },
       { id: "vehiclePerformance", label: "Vehicle Performance" },
+      { id: "executiveDashboard", label: "Executive Dashboard" },
     ],
   },
   { 

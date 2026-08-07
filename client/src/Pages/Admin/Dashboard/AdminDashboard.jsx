@@ -183,7 +183,6 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
 
   
   const visibleVehicles = data?.topVehicles?.[vehicleType] ?? { vehicles: [], maxTrips: 1 };
-  console.log("Dashboard data:", visibleVehicles); // Debug log to inspect the fetched data
 
   const error = isTopError ? "Could not resolve top vehicle." : isDashError ? "Failed to load dashboard data.": null;
   if (loading) return (

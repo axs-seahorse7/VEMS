@@ -3,8 +3,12 @@ import mongoose from "mongoose";
 
 import Trip from "../db/models/Vehicle-Model/trip.model.js";
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
-import TripSegment from "../db/models/Vehicle-Model/tripSegment.model.js";
+import TripSegment from "../db/models/Vehicle-Model/tripSegment.model.js"; // not used directly below — Trip already carries current location/state; reach for this if you need per-leg segment history
 import Driver from "../db/models/Driver-model/driver.model.js";
+import Factory from "../db/models/factory-model/factory.model.js"; // adjust path if this lives elsewhere
+
+import asyncHandler from "../middleware/Asynct-handler/asyncHandler.js";
+import AppError from "../utils/AppError.js";
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 // Max individual vehicles shown in any Pareto / ranked chart.
@@ -2307,3 +2311,341 @@ export const getTopVehicleId = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+// If trips are already scoped by allowedSites/factories elsewhere in your app,
+// wire that helper in here the same way applyTripAccess() is used on other trip routes.
+// import { applyTripAccess } from "../utils/applyTripAccess.js";
+
+/* ------------------------------------------------------------------------ */
+/*  Config — matches TripSchema enums exactly.                              */
+/* ------------------------------------------------------------------------ */
+const ACTIVE_TRIP_STATE = "ACTIVE";
+const INSIDE_LOCATION = "inside_factory";
+
+const FG_MATERIAL = "FG"; // materials[].name is a free string in your schema, "FG"/"RM" assumed by convention
+const RM_MATERIAL = "RM";
+const INTERNAL_TRIP_TYPE = "internal_transfer";
+
+// GUESS: loadStatus enum is ["pending","loaded","unloaded"], no literal "ready" value.
+// Mapped Ready -> "loaded" (loaded and waiting to dispatch). Flip to "unloaded" if
+// "Ready" in your UI means an inbound RM vehicle that's been emptied instead.
+const READY_LOAD_STATUS = "loaded";
+
+// Same thresholds as your delay-alert cron (processDelayAlerts.js), so this
+// dashboard and your alert emails always agree on what counts as "waiting".
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+const FACTORY_COLOR_PALETTE = [
+  "#1677ff",
+  "#52c41a",
+  "#eb2f96",
+  "#faad14",
+  "#13a8a8",
+  "#722ed1",
+  "#262626",
+  "#fa541c",
+];
+
+/* ------------------------------------------------------------------------ */
+/*  Waiting-trip logic — ported directly from the delay-alert cron so the   */
+/*  dashboard's Waiting/Overstay numbers always match who actually gets the */
+/*  alert email. If the cron logic changes, mirror the change here too, or  */
+/*  better: extract isStillWaiting/getAlertFactoryId into a shared util     */
+/*  (e.g. utils/tripWaitingRules.js) and import it in both places.          */
+/* ------------------------------------------------------------------------ */
+
+// A trip only "counts" toward a delay bucket if it matches this — same
+// definition your cron uses before it even looks at how long it's been waiting.
+const WAITING_MATCH = {
+  tripState: ACTIVE_TRIP_STATE,
+  waitingSince: { $ne: null },
+  $or: [
+    // waiting outside the destination gate, arrived but not checked in
+    { location: "outside_factory", status: "ARRIVED", checkedInAt: null },
+    // checked in inside the factory, but load/unload hasn't happened yet
+    { location: "inside_factory", checkedInAt: { $ne: null }, loadStatus: "pending" },
+  ],
+};
+
+function isStillWaiting(trip) {
+  const outsideWaiting = trip.location === "outside_factory" && trip.status === "ARRIVED" && !trip.checkedInAt;
+  const insideWaiting = trip.location === "inside_factory" && trip.checkedInAt && trip.loadStatus === "pending";
+  return outsideWaiting || insideWaiting;
+}
+
+// Same routing rule as the cron: which factory does this trip's delay "belong" to.
+function getAlertFactoryId(trip) {
+  if (trip.checkedInAt) {
+    return (
+      trip.destinationFactoryId?._id?.toString?.() ||
+      trip.destinationFactoryId?.toString?.() ||
+      trip.currentFactoryId?._id?.toString?.() ||
+      trip.currentFactoryId?.toString?.() ||
+      null
+    );
+  }
+
+  if (trip.arrivedAt && !trip.checkedInAt && trip.phase === "DESTINATION" && trip.location === "outside_factory") {
+    return trip.destinationFactoryId?._id?.toString?.() || trip.destinationFactoryId?.toString?.() || null;
+  }
+
+  if (
+    trip.phase === "ORIGIN" &&
+    trip.location === "inside_factory" &&
+    trip.status !== "ROUTE_CHANGED" &&
+    !trip.arrivedAt &&
+    !trip.checkedInAt
+  ) {
+    return trip.sourceFactoryId?._id?.toString?.() || trip.sourceFactoryId?.toString?.() || null;
+  }
+
+  return null;
+}
+
+const startOfMonth = () => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+};
+
+/**
+ * Filters for the columns that ARE just "where is this vehicle right now" —
+ * these can stay as simple DB-side $group aggregations by currentFactoryId.
+ * (Delay/Overstay are handled separately below since factory routing for
+ * those depends on getAlertFactoryId, not currentFactoryId.)
+ */
+const buildLocationMetricFilters = () => ({
+  insideNow: {
+    tripState: ACTIVE_TRIP_STATE,
+    location: INSIDE_LOCATION,
+  },
+  fgVehicles: {
+    tripState: ACTIVE_TRIP_STATE,
+    location: INSIDE_LOCATION,
+    "materials.name": FG_MATERIAL,
+  },
+  rmVehicles: {
+    tripState: ACTIVE_TRIP_STATE,
+    location: INSIDE_LOCATION,
+    "materials.name": RM_MATERIAL,
+  },
+  internalShifts: {
+    tripState: ACTIVE_TRIP_STATE,
+    type: INTERNAL_TRIP_TYPE,
+  },
+  thisMonth: {
+    createdAt: { $gte: startOfMonth() },
+  },
+  ready: {
+    tripState: ACTIVE_TRIP_STATE,
+    loadStatus: READY_LOAD_STATUS,
+  },
+});
+
+const WAITING_FIELDS =
+  "tripState waitingSince location status checkedInAt loadStatus phase arrivedAt sourceFactoryId destinationFactoryId currentFactoryId";
+
+/**
+ * Fetches every currently-waiting trip once, resolves each to its alert
+ * factory, and buckets it into delay4hrs / delay12hrs / overstay counts.
+ * Buckets are cumulative (a 30-hour wait counts in all three), matching how
+ * the original card UI treated these as nested severity tiers.
+ */
+async function computeWaitingMetricsByFactory() {
+  const waitingTrips = await Trip.find(WAITING_MATCH).select(WAITING_FIELDS).lean();
+
+  const now = Date.now();
+  const byFactory = {};
+
+  for (const trip of waitingTrips) {
+    if (!isStillWaiting(trip)) continue;
+
+    const factoryId = getAlertFactoryId(trip);
+    if (!factoryId) continue;
+
+    const waitedMs = now - new Date(trip.waitingSince).getTime();
+
+    byFactory[factoryId] = byFactory[factoryId] || { delay4hrs: 0, delay12hrs: 0, overstay: 0 };
+    if (waitedMs >= FOUR_HOURS_MS) byFactory[factoryId].delay4hrs += 1;
+    if (waitedMs >= TWELVE_HOURS_MS) byFactory[factoryId].delay12hrs += 1;
+    if (waitedMs >= ONE_DAY_MS) byFactory[factoryId].overstay += 1;
+  }
+
+  return byFactory;
+}
+
+/**
+ * Resolves the factory list + display name from the Factory model.
+ * Falls back to deriving factory ids off Vehicle.currentFactoryId only if
+ * the Factory collection is empty (e.g. local/seed environments).
+ */
+async function getFactoryDirectory() {
+  const docs = await Factory.find({ isDeleted: false, status: "active" }).select("name").lean();
+
+  if (docs.length) {
+    return docs.map((d) => ({ _id: d._id, name: d.name }));
+  }
+
+  const ids = await Vehicle.distinct("currentFactoryId", { currentFactoryId: { $ne: null } });
+  return ids.map((id) => ({ _id: id, name: id.toString().slice(-6).toUpperCase() }));
+}
+
+/* ------------------------------------------------------------------------ */
+/*  GET /analytics/executive-dashboard                                      */
+/*  Returns one row per factory with all 9 dashboard columns.               */
+/* ------------------------------------------------------------------------ */
+export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
+  const locationFilters = buildLocationMetricFilters();
+  const metricKeys = Object.keys(locationFilters);
+
+  const [locationResults, waitingMetrics, factories] = await Promise.all([
+    Promise.all(
+      metricKeys.map((key) =>
+        Trip.aggregate([
+          { $match: locationFilters[key] },
+          { $group: { _id: "$currentFactoryId", count: { $sum: 1 } } },
+        ])
+      )
+    ),
+    computeWaitingMetricsByFactory(),
+    getFactoryDirectory(),
+  ]);
+
+  // factoryId(string) -> { metricKey: count }
+  const factoryMetrics = {};
+  metricKeys.forEach((key, i) => {
+    locationResults[i].forEach(({ _id, count }) => {
+      if (!_id) return;
+      const fid = _id.toString();
+      factoryMetrics[fid] = factoryMetrics[fid] || {};
+      factoryMetrics[fid][key] = count;
+    });
+  });
+  Object.entries(waitingMetrics).forEach(([fid, metrics]) => {
+    factoryMetrics[fid] = { ...factoryMetrics[fid], ...metrics };
+  });
+
+  const rows = factories.map((f, idx) => {
+    const fid = f._id.toString();
+    const m = factoryMetrics[fid] || {};
+    return {
+      key: fid,
+      factory: f.name,
+      color: FACTORY_COLOR_PALETTE[idx % FACTORY_COLOR_PALETTE.length],
+      insideNow: m.insideNow || 0,
+      fgVehicles: m.fgVehicles || 0,
+      rmVehicles: m.rmVehicles || 0,
+      internalShifts: m.internalShifts || 0,
+      delay4hrs: m.delay4hrs || 0,
+      delay12hrs: m.delay12hrs || 0,
+      thisMonth: m.thisMonth || 0,
+      overstay: m.overstay || 0,
+      ready: m.ready || 0,
+    };
+  });
+
+  res.status(200).json({ success: true, data: rows });
+});
+
+/* ------------------------------------------------------------------------ */
+/*  GET /analytics/executive-dashboard/:factoryId/:metricKey                */
+/*  Powers the drawer: list of vehicles behind one cell in one factory row. */
+/* ------------------------------------------------------------------------ */
+const WAITING_METRIC_THRESHOLDS_MS = {
+  delay4hrs: FOUR_HOURS_MS,
+  delay12hrs: TWELVE_HOURS_MS,
+  overstay: ONE_DAY_MS,
+};
+
+export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
+  const { factoryId, metricKey } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(factoryId)) {
+    return next(new AppError("Invalid factoryId", 400));
+  }
+
+  const locationFilters = buildLocationMetricFilters();
+  const isWaitingMetric = Object.prototype.hasOwnProperty.call(WAITING_METRIC_THRESHOLDS_MS, metricKey);
+
+  if (!isWaitingMetric && !locationFilters[metricKey]) {
+    return next(
+      new AppError(
+        `Unknown metric '${metricKey}'. Expected one of: ${[...Object.keys(locationFilters), ...Object.keys(WAITING_METRIC_THRESHOLDS_MS)].join(", ")}`,
+        400
+      )
+    );
+  }
+
+  let trips;
+
+  if (isWaitingMetric) {
+    // Delay/Overstay: factory routing depends on getAlertFactoryId, not currentFactoryId,
+    // so fetch all waiting trips and filter in JS the same way the summary endpoint does.
+    const thresholdMs = WAITING_METRIC_THRESHOLDS_MS[metricKey];
+    const now = Date.now();
+
+    const waitingTrips = await Trip.find(WAITING_MATCH)
+      .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
+      .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+      .lean();
+
+    trips = waitingTrips.filter((t) => {
+      if (!isStillWaiting(t)) return false;
+      if (getAlertFactoryId(t) !== factoryId) return false;
+      const waitedMs = now - new Date(t.waitingSince).getTime();
+      return waitedMs >= thresholdMs;
+    });
+  } else {
+    trips = await Trip.find({
+      currentFactoryId: new mongoose.Types.ObjectId(factoryId),
+      ...locationFilters[metricKey],
+    })
+      .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
+      .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+      .lean();
+  }
+
+  trips.sort((a, b) => new Date(a.waitingSince || a.createdAt) - new Date(b.waitingSince || b.createdAt));
+
+  const vehicles = trips.map((t) => {
+    const waitingMs = t.waitingSince ? Date.now() - new Date(t.waitingSince).getTime() : null;
+    const durationMinutes = waitingMs !== null ? Math.round(waitingMs / 60000) : null;
+
+    return {
+      tripId: t._id,
+      vehicleNo: t.vehicleId?.vehicleNumber || "—",
+      type: t.materials?.[0]?.name || t.vehicleId?.typeOfVehicle || "—",
+      driverName: t.driverId?.driverName || "—",
+      driverPhone: t.driverId?.driverContact || "—",
+      entryTime: t.startedAt || t.createdAt,
+      waitingSince: t.waitingSince,
+      durationMinutes,
+      duration: durationMinutes !== null ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : "—",
+      purpose: t.purpose,
+      status: metricKey,
+    };
+  });
+
+  res.status(200).json({
+    success: true,
+    factoryId,
+    metricKey,
+    count: vehicles.length,
+    data: vehicles,
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/*  Example route wiring (adjust to your router style):                     */
+/*                                                                          */
+/*  router.get("/analytics/executive-dashboard", verifyToken,               */
+/*    getExecutiveDashboardSummary);                                       */
+/*  router.get("/analytics/executive-dashboard/:factoryId/:metricKey",      */
+/*    verifyToken, getFactoryVehicleDetails);                              */
+/* ------------------------------------------------------------------------ */

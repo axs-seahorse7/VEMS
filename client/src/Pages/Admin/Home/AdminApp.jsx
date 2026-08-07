@@ -10,6 +10,7 @@ import ManageVehicles from "../Pages/Manage-Vehicles/ManageVehicles";
 import Settings from "../Pages/Settings/Settings";
 import DriverSearchPage from "../components/Cards/DriverSearchPage";
 import VehiclePerformanceTable from "../components/Cards/VehiclePerformanceTable";
+import ExecutiveDashboard from "../Pages/Executive-Dashboard/ExecutiveDashboard.jsx";
 import { useDashboard, DashboardProvider } from "../../../Global/Dashboard-Context/DashboardProvider";
 
 
@@ -33,6 +34,7 @@ function PageContent({ page, ...props }) {
   if (page === "overview")        return <AdminDashboard activePage={page} setDates={setDates} setTableData={setTableData} setIsFetching={setIsFetching} />;
   if (page === "searchDrivers")   return <DriverSearchPage  />;
   if (page === "vehiclePerformance") return <VehiclePerformanceTable activePage={page} dates={dates} tableData={tableData} loading={isFetching} />;
+  if (page === "executiveDashboard") return <ExecutiveDashboard activePage={page} dates={dates} tableData={tableData} loading={isFetching} />;
   if (page === "users")           return <ManageUsers activePage="users" />;
   if (page === "factory")         return <ManageFactory activePage="factory" />;
   if (page === "site")            return <ManageSite activePage="site" />;

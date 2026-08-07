@@ -349,7 +349,7 @@ export const DEFAULT_DATE_RANGE = [dayjs().subtract(6, "day"), dayjs()];
 export const DEFAULT_LOCATION   = "SUPA";
 
 export default function AdminNavbar({
-  vehicleNumber,
+  vehicleNumber = "",
   refetchDashboard,
   onShare,
   onDownload,
@@ -377,9 +377,6 @@ export default function AdminNavbar({
       dashboardRefetch();
     }
   }, [location, dateRange, factory]);
-
-  
-
 
   useEffect(() => {
     const fetchFactories = async () => {
@@ -414,7 +411,6 @@ export default function AdminNavbar({
   }, [location]);
 
 
-
   useEffect(() => {
     const el = navbarRef.current;
     if (!el) return;
@@ -441,9 +437,7 @@ export default function AdminNavbar({
       <div ref={navbarRef} className="db-nav" style={s.topBar}>
         <div style={s.left}>
           
-          <span style={{ fontWeight: 600 }}>VEMS</span>
-          <span style={{ color: C.slate }}>»</span>
-          <span style={{ fontWeight: 700, color: C.text }}>{vehicleNumber}</span>
+          <span style={{ fontWeight: 600, fontSize: 24 }}>VEMS</span>
         </div>
         <NavControls {...sharedProps} />
       </div>
