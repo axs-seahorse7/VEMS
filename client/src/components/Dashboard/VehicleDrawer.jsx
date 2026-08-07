@@ -351,6 +351,7 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
   const [tab, setTab]             = useState("closed");
   const [search, setSearch]       = useState("");
   const [dateRange, setDateRange] = useState([null, null]);
+  const [pickerDates, setPickerDates] = useState([null, null]);
   const [dlFlash, setDlFlash]     = useState(false);
 
   /* ── Available vehicles ── */
@@ -583,17 +584,30 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
 
           {/* Date range — closed only */}
           {tab === "closed" && (
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <RangePicker
-                style={{ flex:1 }}
-                onChange={vals => setDateRange(vals || [null, null])}
+                style={{ flex: 1 }}
+                value={dateRange}
+                onCalendarChange={(vals) => setPickerDates(vals)}
+                onOpenChange={(open) => {
+                  if (open) setPickerDates([null, null]);
+                }}
+                disabledDate={(current) => {
+                  const [start] = pickerDates || [];
+                  if (!start) return false;
+                  const diffDays = current.diff(start, "days");
+                  const tooFar = Math.abs(diffDays) > 14; // start + up to 14 more days = 15 days total
+                  const differentMonth = current.month() !== start.month() || current.year() !== start.year();
+                  return tooFar || differentMonth;
+                }}
+                onChange={(vals) => setDateRange(vals || [null, null])}
                 placeholder={["Start date", "End date"]}
                 format="YYYY-MM-DD"
                 allowClear
                 size="small"
               />
               {isDefaultRange && (
-                <span style={{ fontSize:9.5, fontWeight:600, color:"#2563eb", background:"#eff6ff", padding:"5px 12px", borderRadius:6, whiteSpace:"nowrap" }}>
+                <span style={{ fontSize: 9.5, fontWeight: 600, color: "#2563eb", background: "#eff6ff", padding: "5px 12px", borderRadius: 6, whiteSpace: "nowrap" }}>
                   Last 36h
                 </span>
               )}
@@ -655,7 +669,7 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
         </div>
 
         {/* ══ Content ══ */}
-        <div style={{ padding:"14px 16px 32px", overflowY:"auto", height:"calc(100vh - 240px)" }}>
+        <div style={{ padding:"14px 16px 32px", overflowY:"auto", height:"calc(100vh - 400px)", border: "1px solid #f0f0f0", }}>
 
           {/* Loading skeleton */}
           {isLoading && (
@@ -710,6 +724,7 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
               All {closedTrips.length} trips loaded
             </div>
           )}
+
         </div>
       </Drawer>
 

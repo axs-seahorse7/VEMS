@@ -2314,31 +2314,20 @@ export const getTopVehicleId = async (req, res) => {
 
 
 
-
-
-
-// If trips are already scoped by allowedSites/factories elsewhere in your app,
-// wire that helper in here the same way applyTripAccess() is used on other trip routes.
-// import { applyTripAccess } from "../utils/applyTripAccess.js";
-
 /* ------------------------------------------------------------------------ */
 /*  Config — matches TripSchema enums exactly.                              */
 /* ------------------------------------------------------------------------ */
 const ACTIVE_TRIP_STATE = "ACTIVE";
 const INSIDE_LOCATION = "inside_factory";
 
-const FG_MATERIAL = "FG"; // materials[].name is a free string in your schema, "FG"/"RM" assumed by convention
+const FG_MATERIAL = "FG"; 
 const RM_MATERIAL = "RM";
 const INTERNAL_TRIP_TYPE = "internal_transfer";
-
-// GUESS: loadStatus enum is ["pending","loaded","unloaded"], no literal "ready" value.
-// Mapped Ready -> "loaded" (loaded and waiting to dispatch). Flip to "unloaded" if
-// "Ready" in your UI means an inbound RM vehicle that's been emptied instead.
 const READY_LOAD_STATUS = "loaded";
 
-// Same thresholds as your delay-alert cron (processDelayAlerts.js), so this
-// dashboard and your alert emails always agree on what counts as "waiting".
+
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -2353,16 +2342,7 @@ const FACTORY_COLOR_PALETTE = [
   "#fa541c",
 ];
 
-/* ------------------------------------------------------------------------ */
-/*  Waiting-trip logic — ported directly from the delay-alert cron so the   */
-/*  dashboard's Waiting/Overstay numbers always match who actually gets the */
-/*  alert email. If the cron logic changes, mirror the change here too, or  */
-/*  better: extract isStillWaiting/getAlertFactoryId into a shared util     */
-/*  (e.g. utils/tripWaitingRules.js) and import it in both places.          */
-/* ------------------------------------------------------------------------ */
 
-// A trip only "counts" toward a delay bucket if it matches this — same
-// definition your cron uses before it even looks at how long it's been waiting.
 const WAITING_MATCH = {
   tripState: ACTIVE_TRIP_STATE,
   waitingSince: { $ne: null },
@@ -2414,12 +2394,8 @@ const startOfMonth = () => {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 };
 
-/**
- * Filters for the columns that ARE just "where is this vehicle right now" —
- * these can stay as simple DB-side $group aggregations by currentFactoryId.
- * (Delay/Overstay are handled separately below since factory routing for
- * those depends on getAlertFactoryId, not currentFactoryId.)
- */
+const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const buildLocationMetricFilters = () => ({
   insideNow: {
     tripState: ACTIVE_TRIP_STATE,
@@ -2480,20 +2456,24 @@ async function computeWaitingMetricsByFactory() {
   return byFactory;
 }
 
-/**
- * Resolves the factory list + display name from the Factory model.
- * Falls back to deriving factory ids off Vehicle.currentFactoryId only if
- * the Factory collection is empty (e.g. local/seed environments).
- */
-async function getFactoryDirectory() {
-  const docs = await Factory.find({ isDeleted: false, status: "active" }).select("name").lean();
+async function getFactoryDirectory(locationName) {
+  const query = { isDeleted: false, status: "active" };
+  if (locationName) {
+    query.location = { $regex: `^${escapeRegExp(locationName)}$`, $options: "i" };
+  }
+
+  const docs = await Factory.find(query).select("name location").lean();
 
   if (docs.length) {
     return docs.map((d) => ({ _id: d._id, name: d.name }));
   }
 
-  const ids = await Vehicle.distinct("currentFactoryId", { currentFactoryId: { $ne: null } });
-  return ids.map((id) => ({ _id: id, name: id.toString().slice(-6).toUpperCase() }));
+  if (!locationName) {
+    const ids = await Vehicle.distinct("currentFactoryId", { currentFactoryId: { $ne: null } });
+    return ids.map((id) => ({ _id: id, name: id.toString().slice(-6).toUpperCase() }));
+  }
+
+  return [];
 }
 
 /* ------------------------------------------------------------------------ */
@@ -2501,6 +2481,9 @@ async function getFactoryDirectory() {
 /*  Returns one row per factory with all 9 dashboard columns.               */
 /* ------------------------------------------------------------------------ */
 export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
+  const rawLocation = req.params.location || req.query.location || null;
+  const location = rawLocation && rawLocation.toLowerCase() !== "all" ? rawLocation : null;
+
   const locationFilters = buildLocationMetricFilters();
   const metricKeys = Object.keys(locationFilters);
 
@@ -2514,7 +2497,7 @@ export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
       )
     ),
     computeWaitingMetricsByFactory(),
-    getFactoryDirectory(),
+    getFactoryDirectory(location),
   ]);
 
   // factoryId(string) -> { metricKey: count }
@@ -2593,6 +2576,8 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
     const waitingTrips = await Trip.find(WAITING_MATCH)
       .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
       .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+      .populate({ path: "sourceFactoryId", select: "name location" })
+      .populate({ path: "destinationFactoryId", select: "name location" })
       .lean();
 
     trips = waitingTrips.filter((t) => {
@@ -2608,6 +2593,9 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
     })
       .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
       .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+      .populate({ path: "sourceFactoryId", select: "name location" })
+      .populate({ path: "destinationFactoryId", select: "name location" })
+      .populate({ path: "currentFactoryId", select: "name location" })
       .lean();
   }
 
@@ -2619,20 +2607,30 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
 
     return {
       tripId: t._id,
-      vehicleNo: t.vehicleId?.vehicleNumber || "—",
-      type: t.materials?.[0]?.name || t.vehicleId?.typeOfVehicle || "—",
-      driverName: t.driverId?.driverName || "—",
-      driverPhone: t.driverId?.driverContact || "—",
+      vehicleNo: t.vehicleId?.vehicleNumber || null,
+      type: t.materials?.[0]?.name || null,
+      typeOfVehicle: t.vehicleId?.typeOfVehicle || null,
+      driverName: t.driverId?.driverName || null,
+      driverPhone: t.driverId?.driverContact || null,
       entryTime: t.startedAt || t.createdAt,
       waitingSince: t.waitingSince,
       durationMinutes,
-      duration: durationMinutes !== null ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : "—",
+      duration: durationMinutes !== null ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : null,
       purpose: t.purpose,
       status: metricKey,
+      tripDetails:{
+        purpose: t.purpose,
+        tripType: t.type,
+        sourceFactory: { name: t.sourceFactoryId?.name || t.externalSource || null, location: t.sourceFactoryId?.location || null },
+        destinationFactory: { name: t.destinationFactoryId?.name || t.externalDestination || null, location: t.destinationFactoryId?.location || null },
+        currentFactory: { name: t.currentFactoryId?.name || null, location: t.currentFactoryId?.location || null },
+        tripState: t.tripState,
+        loadStatus: t.loadStatus,
+      }
     };
   });
 
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
     factoryId,
     metricKey,
@@ -2640,12 +2638,3 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
     data: vehicles,
   });
 });
-
-/* ------------------------------------------------------------------------ */
-/*  Example route wiring (adjust to your router style):                     */
-/*                                                                          */
-/*  router.get("/analytics/executive-dashboard", verifyToken,               */
-/*    getExecutiveDashboardSummary);                                       */
-/*  router.get("/analytics/executive-dashboard/:factoryId/:metricKey",      */
-/*    verifyToken, getFactoryVehicleDetails);                              */
-/* ------------------------------------------------------------------------ */

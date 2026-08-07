@@ -520,7 +520,7 @@ function Navbar({
       message.success(res.data?.message || "Block selection saved");
       setBlockModalOpen(false);
     } catch (err) {
-      message.error(err.response?.data?.message || "Failed to save block selection");
+      message.error(err?.response?.data?.message || "Failed to save block selection");
     } finally {
       setSavingBlock(false);
     }
@@ -1036,7 +1036,7 @@ export default function VehicleDashboard() {
   }
 
   // ── User ──────────────────────────────────────────────────────────────────
-  const {user} = useUser();
+  const {user, setUser} = useUser();
   const userFactoryId = user?.factory?._id || user?.factory;
   const userRole      = user?.workLocation || "atGate";
   const factory       = user?.factory?.name;

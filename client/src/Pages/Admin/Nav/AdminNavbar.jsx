@@ -39,7 +39,7 @@ const PRESETS = [
   { label: "This Week",     value: [dayjs().startOf("week"), dayjs()] },
   { label: "This Month",    value: [dayjs().startOf("month"), dayjs()] },
   { label: "Last 3 Months", value: [dayjs().subtract(3, "month"), dayjs()] },
-  { label: "This Year",     value: [dayjs().startOf("year"), dayjs()] },
+  // { label: "This Year",     value: [dayjs().startOf("year"), dayjs()] },
 ];
 
 const ANT_OVERRIDE_ID = "dashboard-navbar-ant-override";
@@ -201,12 +201,31 @@ const s = {
 
 function NavControls({ dateRange, onDateRangeChange, location, onLocationChange, user,
   factory, onFactoryChange, factories, factoriesLoading, onShare, onDownload, compact }) {
+    const currentPage = localStorage.getItem("activePage") || "overview";
+
+    const disabledDate = (current, info) => {
+      const from = info?.from;
+
+      // Before first date is selected, allow all dates
+      if (!from) return false;
+
+      // Disable dates more than 30 days apart
+      return (
+        current.isBefore(from.subtract(30, "day"), "day") ||
+        current.isAfter(from.add(30, "day"), "day")
+      );
+    };
+
+    
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: compact ? "nowrap" : "wrap" }}>
+    {currentPage !== "executiveDashboard" && (
+      <>
       <span style={s.label}>Period</span>
       <RangePicker
         value={dateRange}
         onChange={onDateRangeChange}
+        disabledDate={disabledDate}
         size="small"
         allowClear
         format="DD MMM YYYY"
@@ -214,7 +233,8 @@ function NavControls({ dateRange, onDateRangeChange, location, onLocationChange,
         style={{ width: compact ? 210 : 240 }}
         getPopupContainer={() => document.body}
       />
-
+      </>
+    )}
       <div style={s.divider} />
 
       {user?.isSystemAdmin? (
@@ -230,18 +250,19 @@ function NavControls({ dateRange, onDateRangeChange, location, onLocationChange,
           <Input value={location} readOnly style={{ width: 130 }} />
       )}
 
-      <Select
-        placeholder={<span style={{ display: "flex", alignItems: "center", gap: 4 }}><BankOutlined /> Factory</span>}
-        options={factories}
-        value={factory ?? undefined}
-        onChange={onFactoryChange}
-        loading={factoriesLoading}
+      {currentPage !== "executiveDashboard" && (
+        <Select
+          placeholder={<span style={{ display: "flex", alignItems: "center", gap: 4 }}><BankOutlined /> Factory</span>}
+          options={factories}
+          value={factory ?? undefined}
+          onChange={onFactoryChange}
+          loading={factoriesLoading}
         allowClear ={user?.isSystemAdmin} 
         showSearch
         optionFilterProp="label"
         style={{ width: 150 }}
         getPopupContainer={() => document.body}
-      />
+      />)}
 
       <div style={s.divider} />
 
@@ -268,10 +289,10 @@ function FloatingPill({ vehicleNumber, dateRange, onDateRangeChange, location, o
   const popoverContent = (
     <div className="db-nav db-nav-popover" style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 540 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.muted, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
-        <ArrowLeftOutlined style={{ cursor: "pointer", fontSize: 11 }} onClick={() => window.history.back()} />
+        {/* <ArrowLeftOutlined style={{ cursor: "pointer", fontSize: 11 }} onClick={() => window.history.back()} />
         <span style={{ fontWeight: 600 }}>VEMS</span>
         <span style={{ color: C.slate }}>»</span>
-        <span style={{ fontWeight: 700, color: C.text }}>{vehicleNumber}</span>
+        <span style={{ fontWeight: 700, color: C.text }}>{vehicleNumber}</span> */}
       </div>
       <NavControls
         dateRange={dateRange} onDateRangeChange={onDateRangeChange}
@@ -348,14 +369,7 @@ function FloatingPill({ vehicleNumber, dateRange, onDateRangeChange, location, o
 export const DEFAULT_DATE_RANGE = [dayjs().subtract(6, "day"), dayjs()];
 export const DEFAULT_LOCATION   = "SUPA";
 
-export default function AdminNavbar({
-  vehicleNumber = "",
-  refetchDashboard,
-  onShare,
-  onDownload,
-}) {
-
-  // const [factories, setFactories]               = useState([]);
+export default function AdminNavbar({vehicleNumber = "", refetchDashboard, onShare, onDownload}) {
   const [factoriesLoading, setFactoriesLoading] = useState(false);
   const [navbarHidden, setNavbarHidden]         = useState(false);
   const navbarRef = useRef(null);
@@ -423,22 +437,19 @@ export default function AdminNavbar({
   }, []);
 
   const sharedProps = {
-  user,
-  dateRange,        onDateRangeChange: (val) => setDateRange(val),
-  location,         onLocationChange: (val) => setLocation(val),
-  factory,          onFactoryChange: (val) => setFactory(val),
-  factories,        factoriesLoading,
-  onShare,          onDownload,
-  vehicleNumber,
-};
+    user,
+    dateRange,        onDateRangeChange: (val) => setDateRange(val),
+    location,         onLocationChange: (val) => setLocation(val),
+    factory,          onFactoryChange: (val) => setFactory(val),
+    factories,        factoriesLoading,
+    onShare,          onDownload,
+    vehicleNumber,
+  };
 
   return (
     <>
       <div ref={navbarRef} className="db-nav" style={s.topBar}>
-        <div style={s.left}>
-          
-          <span style={{ fontWeight: 600, fontSize: 24 }}>VEMS</span>
-        </div>
+        <div></div>
         <NavControls {...sharedProps} />
       </div>
 

@@ -3,6 +3,7 @@ import { AlertEmailUsers } from "../db/models/Alert-Users/alertEmailUsers.model.
 import factoryModel from "../db/models/factory-model/factory.model.js";
 import User from "../db/models/User-Model/user.model.js"; // adjust path as needed
 import Version from "../db/models/Version-Model/version.model.js"; // adjust path as needed
+import AppError from "../utils/AppError.js"; // adjust path as needed
 
 
 
@@ -20,14 +21,15 @@ const fail = (res, message, code = 400) => res.status(code).json({ success: fals
 //  ALERT EMAIL USERS
 //  Base route: /api/settings/alert-users
 // ════════════════════════════════════════════════════════════════════════════
+
 const ALERT_TYPES = [
-            "tripCancelled",
-            "delay4h",
-            "delay12h",
-            "delay24h",
-            "vehicleEntry",
-            "vehicleExit"
-          ];
+        "tripCancelled",
+        "delay4h",
+        "delay12h",
+        "delay24h",
+        "vehicleEntry",
+        "vehicleExit"
+      ];
 
 router.get("/alert-users", wrap(async (req, res) => {
   const filter = {};
@@ -320,6 +322,7 @@ router.get("/notifications/mine", wrap(async (req, res) => {
   return res.json({ success: true, sorted, total: sorted.length });
 }));
 
+
 router.get("/notifications/unread-count", wrap(async (req, res) => {
 try {
   const user = await User
@@ -337,7 +340,7 @@ try {
 }
 }));
 
-
+  
 router.patch("/notifications/mark-read", wrap(async (req, res) => {
   await User.updateOne(
     { _id: req.userId },

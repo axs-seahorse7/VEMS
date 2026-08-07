@@ -27,7 +27,7 @@ router.get("/vehicle-dashboard/top",        getTopVehicleId);
 router.get("/vehicle-dashboard",            getVehicleDashboard);
 router.get("/driver-search",                driverSearch);
 router.get("/vehicle-search",               vehicleSearch);
-router.get("/executive-dashboard",          getExecutiveDashboardSummary);
+router.get("/executive-dashboard/:location",          getExecutiveDashboardSummary);
 router.get("/executive-dashboard/:factoryId/:metricKey", getFactoryVehicleDetails);
 
 export default router;

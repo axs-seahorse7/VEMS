@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Layout, Menu, Avatar, Dropdown, Badge, Button, Typography } from "antd";
+import { Layout, Menu, Avatar, Dropdown, Badge, Button, Typography, Breadcrumb, Space, Divider } from "antd";
 import {
   AppstoreOutlined,
   TeamOutlined,
@@ -11,6 +11,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  DownOutlined,
 } from "@ant-design/icons";
 import api from "../../../services/API/Api/api";
 import { useDashboard } from "../../Global/Dashboard-Context/DashboardProvider";
@@ -167,11 +168,11 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
         collapsedWidth={64}
         style={{ position: "fixed", left: 0, top: 0, bottom: 0, zIndex: 200, boxShadow: "0 1px 6px rgba(0,0,0,0.05)" }}
       >
-        <div style={{ height: 60, display: "flex", alignItems: "center", padding: collapsed ? "0 13px" : "0 16px", gap: 10 }}>
+        <div style={{ height:60, display: "flex", alignItems: "center", padding: collapsed ? "0 13px" : "0 16px", gap: 10 }}>
           <img
             src="https://cms-complaint-avidence.s3.eu-north-1.amazonaws.com/pg-logo-Photoroom.png"
             alt="VEMS"
-            style={{ width: 36, height: 36, objectFit: "contain" }}
+            style={{ width: collapsed ? 35 : 40, height: collapsed ? 35 : 40, objectFit: "contain" }}
           />
           {!collapsed && (
             <div>
@@ -193,34 +194,88 @@ export default function AdminLayout({ activePage, onNavigate, children }) {
       </Sider>
 
       <Layout style={{ marginLeft: collapsed ? 64 : 230, transition: "margin-left .22s" }}>
-        <Header
+       <Header
           style={{
             height: 60,
             background: "#fff",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 26px",
+            padding: "0 24px",
             position: "sticky",
             top: 0,
             zIndex: 100,
-            boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
+            borderBottom: "1px solid #f0f0f0",
           }}
         >
-          <Text strong style={{ fontSize: 15 }}>{`admin/${findLabel(NAV, activePage).toLowerCase()}`}{`${findLabel(NAV, activePage).toLowerCase() === "settings" ? `/${settingsActiveSection || "Settings"}` : ""}`}</Text>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div
+              style={{
+                padding: "4px 20px",
+                borderRadius: 30,
+                background: "#077A7D",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text strong style={{ fontSize: 12, color: "#fff", letterSpacing: 0.5 }}>
+                VEMS
+              </Text>
+            </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Badge dot offset={[-4, 4]}>
-              <Button shape="circle" icon={<BellOutlined />} />
+            <Divider type="vertical" style={{ height: 22, margin: 0 }} />
+
+            <Breadcrumb
+              items={[
+                { title: "Admin" },
+                { title: findLabel(NAV, activePage) },
+                ...(findLabel(NAV, activePage).toLowerCase() === "settings"
+                  ? [{ title: settingsActiveSection || "Settings" }]
+                  : []),
+              ]}
+              style={{ fontSize: 13.5 }}
+            />
+          </div>
+
+          <Space size={18} align="center" style={{ hover: {background: "#f5f5f5", borderRadius: 8, padding: "4px 8px" } }}>
+            <Badge dot offset={[-2, 2]}>
+              <Button
+                shape="circle"
+                icon={<BellOutlined style={{ fontSize: 15 }} />}
+                style={{ border: "1px solid #f0f0f0", color: "#595959" }}
+              />
             </Badge>
 
+            <Divider type="vertical" style={{ height: 22, margin: 0 }} />
+
             <Dropdown menu={{ items: profileMenuItems }} trigger={["click"]} placement="bottomRight">
-              <Button style={{ display: "flex", alignItems: "center", gap: 8, height: 40 }}>
-                <Avatar size={28} icon={<UserOutlined />} style={{ backgroundColor: "#077A7D" }} />
-                <Text strong style={{ fontSize: 12.5 }}>{user?.name}</Text>
-              </Button>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "4px 10px 4px 4px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  "&:hover": {
+                    background: "#f5f5f5",
+                  }
+                }}
+              >
+                <Avatar size={30} icon={<UserOutlined />} style={{ backgroundColor: "#077A7D" }} />
+                <div style={{ lineHeight: 1.2 }}>
+                  <Text strong style={{ fontSize: 13, display: "block" }}>
+                    {user?.name}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    Administrator
+                  </Text>
+                </div>
+                <DownOutlined style={{ fontSize: 14, marginLeft: 8, color: "#8c8c8c" }} />
+              </div>
             </Dropdown>
-          </div>
+          </Space>
         </Header>
 
         <Content style={{ padding: "0 0 40px", }}>

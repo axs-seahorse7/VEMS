@@ -9,6 +9,11 @@ import {
   UserOutlined,
   PhoneOutlined,
   ClockCircleOutlined,
+  EnvironmentOutlined,
+  ArrowRightOutlined,
+  InboxOutlined,
+  FileTextOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 
 import api  from "../../../../../services/API/Api/api"; // adjust to your real path
@@ -21,31 +26,6 @@ import {DEFAULT_DATE_RANGE, DEFAULT_LOCATION } from "../../Nav/AdminNavbar.jsx";
 
 const { Title, Text } = Typography;
 
-/**
- * Backed by:
- *   GET /analytics/executive-dashboard                     -> summary rows (one per factory)
- *   GET /analytics/executive-dashboard/:factoryId/:metricKey -> vehicle list for one cell
- * (see controllers/analyticsController.js)
- *
- * Summary row shape returned by the API:
- * {
- *   key: '64f...',              // factory _id (string) — also used as :factoryId in the drill-down call
- *   factory: 'PGTL',
- *   color: '#1677ff',
- *   insideNow, fgVehicles, rmVehicles, internalShifts,
- *   delay4hrs, delay12hrs, thisMonth, overstay, ready
- * }
- *
- * Vehicle detail row shape (drawer):
- * {
- *   tripId, vehicleNo, type, driverName, driverPhone,
- *   entryTime, waitingSince, durationMinutes, duration, purpose,
- *   status   // == the metricKey that was requested, e.g. "overstay"
- * }
- */
-
-// Human-readable labels + tag colors, keyed by the same metricKey the backend
-// uses for both the column and the vehicle-detail "status" field.
 const METRIC_LABELS = {
   insideNow: "Inside Now",
   fgVehicles: "FG Vehicles",
@@ -64,6 +44,19 @@ const statusColor = (metricKey) => {
   if (metricKey === "ready") return "gold";
   if (metricKey === "internalShifts") return "purple";
   return "green";
+};
+
+const loadStatusColor = (loadStatus) => {
+  if (loadStatus === "loaded") return "blue";
+  if (loadStatus === "unloaded") return "green";
+  return "orange"; // pending
+};
+
+const tripStateColor = (tripState) => {
+  if (tripState === "ACTIVE") return "green";
+  if (tripState === "COMPLETED") return "blue";
+  if (tripState === "CANCELLED") return "red";
+  return "default"; // CLOSED
 };
 
 const formatDateTime = (iso) => {
@@ -97,7 +90,7 @@ const CardCell = ({ children, bg = "#fff", border, onClick, clickable }) => (
   </div>
 );
 
-export default function ExecutiveDashboardTable({onDownloadAll, userName = "", stickyOffset = 0, }) {
+export default function ExecutiveDashboardTable({onDownloadAll, userName = "", stickyOffset = 70, }) {
   const [rows, setRows] = useState([]);
   const [tableLoading, setTableLoading] = useState(false);
 
@@ -117,22 +110,32 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
       }
     }, [dateRange, setDateRange]);
     
-  // GET /analytics/executive-dashboard
   const loadSummary = useCallback(async () => {
     setTableLoading(true);
+
     try {
-      const res = await api.get("/analytics/executive-dashboard");
-      setRows(res?.data?.data || []);
-    } catch (err) {
-      message.error("Failed to load the executive dashboard");
+      const { data } = await api.get(
+        `/analytics/executive-dashboard/${location || "all"}`
+      );
+
+      setRows(data?.data || []);
+    } catch (error) {
+      console.error(error);
+      message.error("Cannot sync executive dashboard data.");
     } finally {
       setTableLoading(false);
     }
-  }, []);
+  }, [location]);
 
   useEffect(() => {
     loadSummary();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(loadSummary, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [loadSummary]);
+
 
   // GET /analytics/executive-dashboard/:factoryId/:metricKey
   const openDrawer = async (record, metricKey) => {
@@ -146,8 +149,9 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
     });
 
     try {
-      const res = await api.get(`/analytics/executive-dashboard/${record.key}/${metricKey}`);
+      const res = await api.get(`/analytics/executive-dashboard/${record.key}/${metricKey}${location ? `?location=${location}` : ""}`);
       const vehicles = res?.data?.data || [];
+      console.log(`Loaded Vehicle : ${vehicles.length} for ${record.factory} — ${label}`, vehicles);
       setDrawer({
         open: true,
         loading: false,
@@ -255,7 +259,7 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
   return (
     // overflowX hidden here only — this is the page-level container, not an ancestor that
     // wraps the Table's own scroll region, so it won't break the sticky header (see note below).
-    <div style={{ padding: 24, background: "#f5f5f5", minHeight: "100vh", overflowX: "hidden" }}>
+    <div style={{ padding: 10, background: "#f5f5f5", minHeight: "calc(100vh - 200px)", overflowX: "hidden" }}>
       <style>{`
         .exec-table .ant-table {
           background: transparent;
@@ -323,21 +327,11 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
             onDownload={() => {handleDownload()}}
             // refetchDashboard={refetch}
         />
-
-
-        <div>
-          <Title level={3} style={{ margin: 0 }}>
-            Executive Dashboard
-          </Title>
-          <Text type="secondary">Real-time Multi-Plant Operations Overview</Text>
-        </div>
-          <Button icon={<ReloadOutlined />} onClick={loadSummary} loading={tableLoading}>
-            Refresh Data
-          </Button>
       </div>
 
       {/* Table — scroll.x is handled internally by antd (its own overflow-x: auto region),
           so it stays contained under the viewport without any extra wrapping div. */}
+    <div style={{ overflowX: "auto", height: "calc(100vh - 200px)" }}>
       <Table
         className="exec-table"
         columns={columns}
@@ -345,7 +339,7 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
         loading={tableLoading}
         bordered={false}
         pagination={false}
-        sticky={{ offsetHeader: stickyOffset }}
+        sticky={{ offsetHeader: 0 }}
         scroll={{ x: 1400 }}
         size="middle"
         summary={() => (
@@ -375,7 +369,8 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
           </Table.Summary>
         )}
       />
-
+    
+    </div>
       {/* Vehicle drill-down drawer */}
       <Drawer
         title={
@@ -393,48 +388,129 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
         open={drawer.open}
         onClose={() => setDrawer((d) => ({ ...d, open: false }))}
       >
-        {drawer.loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-            <Spin />
-          </div>
-        ) : drawer.vehicles.length === 0 ? (
-          <Empty description="No vehicles in this category" />
-        ) : (
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            {drawer.vehicles.map((v) => (
+        {drawer.vehicles.map((v, i) => {
+          const trip = v.tripDetails || {};
+          const source = trip.sourceFactory;
+          const current = trip.currentFactory;
+          const destination = trip.destinationFactory;
+
+          // Small labeled field — icon chip + uppercase caption + value.
+          // `color` ties each field to a category so the eye can group
+          // "vehicle" fields vs "driver" fields vs "route" fields at a glance.
+          const InfoRow = ({ icon, label, value, color = "#595959" }) => (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "5px 0" }}>
               <div
-                key={v.tripId}
                 style={{
-                  border: "1px solid #f0f0f0",
-                  borderRadius: 12,
-                  padding: 14,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                  width: 24,
+                  height: 24,
+                  borderRadius: 7,
+                  background: `${color}14`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  marginTop: 1,
                 }}
               >
-                <Space align="center" style={{ marginBottom: 8 }}>
-                  <Avatar icon={<CarOutlined />} size="small" style={{ background: "#1677ff" }} />
-                  <Text strong>{v.vehicleNo}</Text>
-                  <Tag color={statusColor(v.status)}>{METRIC_LABELS[v.status] || v.status}</Tag>
-                  <Tag>{v.type}</Tag>
-                </Space>
-                <div style={{ fontSize: 13, color: "#595959", lineHeight: 1.9 }}>
-                  <div>
-                    <UserOutlined style={{ marginRight: 6 }} />
-                    {v.driverName}
-                  </div>
-                  <div>
-                    <PhoneOutlined style={{ marginRight: 6 }} />
-                    {v.driverPhone}
-                  </div>
-                  <div>
-                    <ClockCircleOutlined style={{ marginRight: 6 }} />
-                    Entry {formatDateTime(v.entryTime)} &middot; {v.duration}
-                  </div>
-                </div>
+                {React.cloneElement(icon, { style: { fontSize: 12, color } })}
               </div>
-            ))}
-          </Space>
-        )}
+              <div style={{ minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: "#8c8c8c",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.4,
+                    display: "block",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {label}
+                </Text>
+                <Text style={{ fontSize: 13, color: "#262626", fontWeight: 500 }}>{value}</Text>
+              </div>
+            </div>
+          );
+
+          return (
+            <div
+              key={v.tripId || i}
+              style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 14, marginTop: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
+            >
+              <Space align="center" style={{ marginBottom: 10 }} wrap>
+                <Avatar icon={<CarOutlined />} size="small" style={{ background: "#1677ff" }} />
+                <Text strong style={{ fontSize: 14 }}>{v.vehicleNo}</Text>
+                <Tag color={statusColor(v.status)}>{METRIC_LABELS[v.status] || v.status}</Tag>
+                <Tag>{v.typeOfVehicle ? v.typeOfVehicle.charAt(0).toUpperCase() + v.typeOfVehicle.slice(1) : "—"}</Tag>
+                {v.type && v.type !== "—" && <Tag color="cyan">{v.type}</Tag>}
+              </Space>
+
+              <div style={{ borderTop: "1px dashed #f0f0f0", paddingTop: 4 }}>
+                {/* Driver info — teal */}
+                <InfoRow icon={<UserOutlined />} label="Driver" value={v.driverName || "—"} color="#0d9488" />
+                <InfoRow icon={<PhoneOutlined />} label="Contact" value={v.driverPhone || "—"} color="#0d9488" />
+
+                {/* Timing — blue */}
+                <InfoRow
+                  icon={<ClockCircleOutlined />}
+                  label="Entry / Waiting"
+                  value={`${formatDateTime(v.entryTime)} ${v.duration ? ` · ${v.duration}` : ""}`}
+                  color="#1677ff"
+                />
+
+                {/* Route — purple */}
+                {(source || destination) && (
+                  <InfoRow
+                    icon={<ArrowRightOutlined />}
+                    label="Route"
+                    value={
+                      <>
+                        {source?.name || "—"}
+                        {source?.location ? ` (${source.location})` : ""}
+                        {" → "}
+                        {destination?.name || ""}
+                        {destination?.location ? ` (${destination.location})` : ""}
+                      </>
+                    }
+                    color="#722ed1"
+                  />
+                )}
+                {current && (
+                  <InfoRow
+                    icon={<EnvironmentOutlined />}
+                    label="Currently At"
+                    value={`${current.name || "—"}${current.location ? ` (${current.location})` : ""}`}
+                    color="#722ed1"
+                  />
+                )}
+
+                {/* Purpose — amber */}
+                {v.purpose && (
+                  <InfoRow icon={<FileTextOutlined />} label="Purpose" value={v.purpose} color="#fa8c16" />
+                )}
+              </div>
+
+              {(trip.loadStatus || trip.tripState || trip.tripType) && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #f0f0f0" }}>
+                  {trip.loadStatus && (
+                    <Tag icon={<InboxOutlined />} color={loadStatusColor(trip.loadStatus)} style={{ marginBottom: 4 }}>
+                      {trip.loadStatus}
+                    </Tag>
+                  )}
+                  {trip.tripState && (
+                    <Tag icon={<SyncOutlined />} color={tripStateColor(trip.tripState)} style={{ marginBottom: 4 }}>
+                      {trip.tripState}
+                    </Tag>
+                  )}
+                  {trip.tripType && (
+                    <Tag style={{ marginBottom: 4 }}>{trip.tripType.replace(/_/g, " ")}</Tag>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </Drawer>
     </div>
   );
