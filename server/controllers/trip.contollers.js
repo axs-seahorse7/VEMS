@@ -881,6 +881,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
             location: "inside_factory",
             checkedInAt: new Date(),
             tripState: "ACTIVE",
+            currentFactoryId: trip.destinationFactoryId || null,
             isIntraPlant: req.body.isIntraPlant || trip.isIntraPlant || false,
             siteId: req.body.siteId || trip.siteId || null,
             blockId: req.body.blockId || trip.blockId || null,
@@ -1411,6 +1412,7 @@ export const markArrived = asyncHandler( async (req, res) => {
           phase: "DESTINATION",
           arrivedAt: new Date(), 
           waitingSince: new Date(),
+          currentFactoryId: trip.destinationFactoryId || null,
           $push: {
             tripHistory: {
               status: "ARRIVED",
@@ -1510,8 +1512,7 @@ export const markInternalTransferComplete = asyncHandler( async (req, res) => {
       // ========================
       // CLOSE TRIP
       // ========================
-      updatedTrip =
-        await Trip.findByIdAndUpdate(
+      updatedTrip = await Trip.findByIdAndUpdate(
           tripId,
           {
             tripState: "CLOSED",
@@ -2979,6 +2980,7 @@ export const getLiveVehicleTrips = async (req, res) => {
       case "all":
         matchQuery = {
             tripState: { $in: ["ACTIVE", "COMPLETED"] },
+            currentFactoryId: factoryId,
             $or: [
               { sourceFactoryId:      factoryId },
               { destinationFactoryId: factoryId },
@@ -4071,19 +4073,6 @@ const resolveFactoryLabel = (isExternal, externalVal, factoryDoc) =>
   isExternal ? (externalVal || "") : (factoryDoc?.name || "");
 
 /**
- * Splits a trip's full, chronologically-sorted history into one array of
- * events per segment — purely by walking the array in order, with no
- * dependence on DB timestamps, TripSegment snapshots, or tolerance windows.
- *
- * Rule (as clarified by the domain owner): a ROUTE_CHANGE event closes out
- * the current segment, and the single event immediately after it (whatever
- * it is — checkout in practice, but that's incidental) closes with it. The
- * next segment then starts fresh right after that. If a trip never has a
- * ROUTE_CHANGE at all, the whole history is one segment (this covers the
- * plain external flow: checkin → load/unload → ready → checkout → closed,
- * where a checkout happens with no route change involved — which is exactly
- * why we don't key off "checkout" as the split signal, only ROUTE_CHANGE).
- *
  * @param {Array} history - trip.tripHistory sorted ascending by timestamp
  * @returns {Array<Array>} one events-array per segment, in order
  */

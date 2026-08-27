@@ -1,3 +1,5 @@
+import {Tag} from "antd";
+
 const C = {
   teal:     "#0d9488",
   blue:     "#24B1B1",
@@ -57,11 +59,11 @@ function BottleneckBar({ label, pct, count, total, color, description }) {
       </div>
 
       {/* count detail */}
-      <div style={{ fontSize: 10, color: C.muted }}>
-        <span style={{ fontWeight: 700, color: barColor }}>{count}</span>
-        {" waiting "}
-        <span style={{ fontWeight: 600, color: C.text }}>{total}</span>
-        {" total "}
+      <div style={{ fontSize: 12, color: "black",}}>
+        <Tag style={{ fontWeight: 700, color: barColor, background: barColor + "18" }}>{count}</Tag>
+        {" Waiting "}
+        <Tag style={{ fontWeight: 700, color: "blue", background: "lightblue" }}>{total}</Tag>
+        {" Total "} {label.toLowerCase()}s
       </div>
     </div>
   );

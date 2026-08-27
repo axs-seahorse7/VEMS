@@ -579,8 +579,6 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
               </div>
 
              
-
-
             </div>
           </div>
 

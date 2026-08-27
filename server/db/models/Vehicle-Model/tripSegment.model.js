@@ -68,7 +68,6 @@ const tripSegmentSchema = new mongoose.Schema({
          "CANCELLED",
          "ROUTE_CHANGED",
          "CLOSED",
-         "CANCELLED"
       ],
       default: "ACTIVE"
    },

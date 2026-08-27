@@ -7,8 +7,10 @@ import TripSegment from "../db/models/Vehicle-Model/tripSegment.model.js"; // no
 import Driver from "../db/models/Driver-model/driver.model.js";
 import Factory from "../db/models/factory-model/factory.model.js"; // adjust path if this lives elsewhere
 
+
+import { loadVehicleContext, buildFactoryFilter, buildAllDates, getTripHours,  resolveDateRange} from "./utils/vehicleDashboardHelpers.js";
 import asyncHandler from "../middleware/Asynct-handler/asyncHandler.js";
-import AppError from "../utils/AppError.js";
+
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 // Max individual vehicles shown in any Pareto / ranked chart.
@@ -521,1017 +523,1027 @@ function bucketDailySeries(dailyArr, days, countKey = "count") {
 }
 
 
-export const getVehicleDashboard = async (req, res) => {
-  try {
-    const { vehicleId, period = "week", vehicleType = "all", startDate, endDate, location, factory } = req.query;
-    if (!vehicleId) return res.status(400).json({ message: "vehicleId is required" });
+// export const getVehicleDashboard = async (req, res) => {
+//   try {
+//     const { vehicleId, period = "week", vehicleType = "all", startDate, endDate, location, factory } = req.query;
+//     if (!vehicleId) return res.status(400).json({ message: "vehicleId is required" });
 
  
-    const now   = startDate && endDate 
-      ? new Date(new Date(endDate).setHours(23, 59, 59, 999))   
-      : new Date();
+//     const now   = startDate && endDate 
+//       ? new Date(new Date(endDate).setHours(23, 59, 59, 999))   
+//       : new Date();
 
-    const since = startDate && endDate 
-      ? new Date(new Date(startDate).setHours(0, 0, 0, 0))      
-      : (() => {
-          const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0); return d;
-        })();
+//     const since = startDate && endDate 
+//       ? new Date(new Date(startDate).setHours(0, 0, 0, 0))      
+//       : (() => {
+//           const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0); return d;
+//         })();
 
-    const vid = new mongoose.Types.ObjectId(vehicleId);
+//     const vid = new mongoose.Types.ObjectId(vehicleId);
 
-    let factoryFilter = {};
-    if (factory) {
-      factoryFilter = {
-        $or: [
-          { destinationFactoryId: new mongoose.Types.ObjectId(factory) },
-          { sourceFactoryId:      new mongoose.Types.ObjectId(factory) }, 
-        ],
-      };
+//     let factoryFilter = {};
+//     if (factory) {
+//       factoryFilter = {
+//         $or: [
+//           { destinationFactoryId: new mongoose.Types.ObjectId(factory) },
+//           { sourceFactoryId:      new mongoose.Types.ObjectId(factory) }, 
+//         ],
+//       };
     
-    }
+//     }
  
-    // ── 1. Vehicle info ───────────────────────────────────────────────────
-    const vehicle = await Vehicle.findById(vid).lean();
-    if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
+//     // ── 1. Vehicle info ───────────────────────────────────────────────────
+//     const vehicle = await Vehicle.findById(vid).lean();
+//     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
  
-    // ── 2. Trips in period ────────────────────────────────────────────────
-    const [periodTrips, allClosedTrips, firstTrip] = await Promise.all([
-      Trip.find({ vehicleId: vid, createdAt: { $gte: since, $lte: now }, ...factoryFilter }).lean(),
-      Trip.countDocuments({ vehicleId: vid, tripState: "CLOSED", ...factoryFilter }),
-      Trip.findOne({ vehicleId: vid, ...factoryFilter }).sort({ createdAt: 1 }).lean(),
-    ]);
+//     // ── 2. Trips in period ────────────────────────────────────────────────
+//     const [periodTrips, allClosedTrips, firstTrip] = await Promise.all([
+//       Trip.find({ vehicleId: vid, createdAt: { $gte: since, $lte: now }, ...factoryFilter }).lean(),
+//       Trip.countDocuments({ vehicleId: vid, tripState: "CLOSED", ...factoryFilter }),
+//       Trip.findOne({ vehicleId: vid, ...factoryFilter }).sort({ createdAt: 1 }).lean(),
+//     ]);
 
-    const closed    = periodTrips.filter(t => t.tripState === "CLOSED");
-    const open      = periodTrips.filter(t => t.tripState === "ACTIVE" || t.tripState === "COMPLETED");
-    const cancelled = periodTrips.filter(t => t.tripState === "CANCELLED");
-    const total     = periodTrips.length;
+//     const closed    = periodTrips.filter(t => t.tripState === "CLOSED");
+//     const total     = periodTrips.length;
 
-    const [totalTrips, totalClosedTrips,  totalActiveTrips, totalCancelledTrips,  totalInternalTrips, totalExternalTrips] = await Promise.all([
-      Trip.countDocuments({createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
-      Trip.countDocuments({tripState: "CLOSED", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
-      Trip.countDocuments({tripState: {$in: ["ACTIVE", "COMPLETED"]}, createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
-      Trip.countDocuments({tripState: "CANCELLED", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
-      Trip.countDocuments({type: "internal_transfer", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
-      Trip.countDocuments({type: "external_delivery", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
-    ]);
+//     const [totalTrips, totalClosedTrips,  totalActiveTrips, totalCancelledTrips,  totalInternalTrips, totalExternalTrips] = await Promise.all([
+//       Trip.countDocuments({createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+//       Trip.countDocuments({tripState: "CLOSED", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+//       Trip.countDocuments({tripState: {$in: ["ACTIVE", "COMPLETED"]}, ...factoryFilter }),
+//       Trip.countDocuments({tripState: "CANCELLED", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+//       Trip.countDocuments({type: "internal_transfer", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+//       Trip.countDocuments({type: "external_delivery", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+//     ]);
 
-    // ── 3. weeklyStats ────────────────────────────────────────────────────
-    const daysSinceFirst  = firstTrip ? Math.max(1, Math.ceil((now - new Date(firstTrip.createdAt)) / 86400000)) : 1;
-    const monthsActive    = +(daysSinceFirst / 30).toFixed(1);
-    const years           = Math.floor(monthsActive / 12);
-    const months          = Math.round(monthsActive % 12);
-    const activeSince     = years > 0
-      ? `${years} Year${years > 1 ? "s" : ""} & ${months} Month${months !== 1 ? "s" : ""}`
-      : `${months} Month${months !== 1 ? "s" : ""}`;
+//     // ── 3. weeklyStats ────────────────────────────────────────────────────
+//     const daysSinceFirst  = firstTrip ? Math.max(1, Math.ceil((now - new Date(firstTrip.createdAt)) / 86400000)) : 1;
+//     const monthsActive    = +(daysSinceFirst / 30).toFixed(1);
+//     const years           = Math.floor(monthsActive / 12);
+//     const months          = Math.round(monthsActive % 12);
+//     const activeSince     = years > 0
+//       ? `${years} Year${years > 1 ? "s" : ""} & ${months} Month${months !== 1 ? "s" : ""}`
+//       : `${months} Month${months !== 1 ? "s" : ""}`;
 
-    // ── 4. State of Health (donut) ────────────────────────────────────────
-    const closedPct    =  ((totalClosedTrips   / totalTrips) * 100).toFixed(1) ;
-    const activePct    =  ((totalActiveTrips   / totalTrips) * 100).toFixed(1) ;
-    const cancelledPct =  ((totalCancelledTrips / totalTrips) * 100).toFixed(1) ;
-    // SOH = % of trips that closed successfully
-    const sohPct = closedPct;
+//     // ── 4. State of Health (donut) ────────────────────────────────────────
+//     const closedPct    =  ((totalClosedTrips   / totalTrips) * 100).toFixed(1) ;
+//     const activePct    =  ((totalActiveTrips   / totalTrips) * 100).toFixed(1) ;
+//     const cancelledPct =  ((totalCancelledTrips / totalTrips) * 100).toFixed(1) ;
+//     // SOH = % of trips that closed successfully
+//     const sohPct = closedPct;
     
 
-    const allClosedInPeriod = await Trip.find({ tripState: { $in: ["CLOSED", "CANCELLED"]}, completedAt: { $gte: since, $lte: now }, ...factoryFilter }, { completedAt: 1 }).lean();
-    const totalTripsInPeriod = await Trip.countDocuments({ tripState: { $in: ["CLOSED", "CANCELLED"]}, updatedAt: { $gte: since, $lte: now }, ...factoryFilter });
+//     const allClosedInPeriod = await Trip.find({ tripState: { $in: ["CLOSED", "CANCELLED"]}, completedAt: { $gte: since, $lte: now }, ...factoryFilter }, { completedAt: 1 }).lean();
+//     const totalTripsInPeriod = await Trip.countDocuments({ tripState: { $in: ["CLOSED", "CANCELLED"]}, updatedAt: { $gte: since, $lte: now }, ...factoryFilter });
     
-    const dailyMap = {};
-    allClosedInPeriod.forEach(t => {
-      const key = getISTDateKey(t.completedAt);
-      dailyMap[key] = (dailyMap[key] || 0) + 1;
-    });
+//     const dailyMap = {};
+//     allClosedInPeriod.forEach(t => {
+//       const key = getISTDateKey(t.completedAt);
+//       dailyMap[key] = (dailyMap[key] || 0) + 1;
+//     });
     
-    const mapTotal = Object.values(dailyMap).reduce((a, b) => a + b, 0);
+//     const mapTotal = Object.values(dailyMap).reduce((a, b) => a + b, 0);
 
-    const start = new Date(since);
-    const end = new Date(now);
-    const days = Math.floor((end - start) / 86400000) + 1;
+//     const start = new Date(since);
+//     const end = new Date(now);
+//     const days = Math.floor((end - start) / 86400000) + 1;
 
-    const dailyArr = [];
+//     const dailyArr = [];
 
-    for (let i = 0; i < days; i++) {
-      const d = new Date(since);
-      d.setDate(d.getDate() + i);
-      const key = getISTDateKey(d);
+//     for (let i = 0; i < days; i++) {
+//       const d = new Date(since);
+//       d.setDate(d.getDate() + i);
+//       const key = getISTDateKey(d);
 
-      dailyArr.push({
-        date: key,
-        count: dailyMap[key] || 0,
-      });
-    }
+//       dailyArr.push({
+//         date: key,
+//         count: dailyMap[key] || 0,
+//       });
+//     }
 
-    const getTripHours = (trip) => {
-      if (trip.startedAt && trip.completedAt) {
-        const start = new Date(trip.startedAt);
-        const end = new Date(trip.completedAt);
+//     const getTripHours = (trip) => {
+//       if (trip.startedAt && trip.completedAt) {
+//         const start = new Date(trip.startedAt);
+//         const end = new Date(trip.completedAt);
 
-        const diffMs = end - start;
+//         const diffMs = end - start;
 
-        return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
-      }
+//         return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
+//       }
 
-      return 0;
-    };
+//       return 0;
+//     };
 
-    const totalTripHours = +closed.reduce((sum, trip) => sum + getTripHours(trip), 0).toFixed(2);
-    const avgTripsPerDay    = +(closed.length / days).toFixed(1);
+//     const totalTripHours = +closed.reduce((sum, trip) => sum + getTripHours(trip), 0).toFixed(2);
+//     const avgTripsPerDay    = +(closed.length / days).toFixed(1);
 
-    const internalPct = totalTrips ? +((totalInternalTrips / totalTrips) * 100).toFixed(1) : 0;
-    const externalPct = totalTrips ? +((totalExternalTrips / totalTrips) * 100).toFixed(1) : 0;
+//     const internalPct = totalTrips ? +((totalInternalTrips / totalTrips) * 100).toFixed(1) : 0;
+//     const externalPct = totalTrips ? +((totalExternalTrips / totalTrips) * 100).toFixed(1) : 0;
 
-    const [factoryClosedTrips, factoryCancelledTrips, factoryActiveTrips] = await Promise.all([
-      Trip.aggregate([
-        {
-          $match: {
-            tripState: "CLOSED",
-            createdAt: { $gte: since, $lte: now },
-            ...factoryFilter
-          }
-        },
-        {
-          $addFields: {
-            reportingFactoryId: {
-              $ifNull: [
-                "$destinationFactoryId",
-                "$sourceFactoryId"
-              ]
-            }
-          }
-        },
-        {
-          $lookup: {
-            from: "factories",
-            localField: "reportingFactoryId",
-            foreignField: "_id",
-            as: "f"
-          }
-        },
-        {
-          $group: {
-            _id: "$reportingFactoryId",
-            factoryName: {
-              $first: {
-                $ifNull: [
-                  { $arrayElemAt: ["$f.name", 0] },
-                  "Unknown"
-                ]
-              }
-            },
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $sort: { count: -1 }
-        }
-      ]),
+//     const [factoryClosedTrips, factoryCancelledTrips, factoryActiveTrips] = await Promise.all([
+//       Trip.aggregate([
+//         {
+//           $match: {
+//             tripState: "CLOSED",
+//             createdAt: { $gte: since, $lte: now },
+//             ...factoryFilter
+//           }
+//         },
+//         {
+//           $addFields: {
+//             reportingFactoryId: {
+//               $ifNull: [
+//                 "$destinationFactoryId",
+//                 "$sourceFactoryId"
+//               ]
+//             }
+//           }
+//         },
+//         {
+//           $lookup: {
+//             from: "factories",
+//             localField: "reportingFactoryId",
+//             foreignField: "_id",
+//             as: "f"
+//           }
+//         },
+//         {
+//           $group: {
+//             _id: "$reportingFactoryId",
+//             factoryName: {
+//               $first: {
+//                 $ifNull: [
+//                   { $arrayElemAt: ["$f.name", 0] },
+//                   "Unknown"
+//                 ]
+//               }
+//             },
+//             count: { $sum: 1 }
+//           }
+//         },
+//         {
+//           $sort: { count: -1 }
+//         }
+//       ]),
 
-      Trip.aggregate([
-        {
-          $match: {
-            tripState: "CANCELLED",
-            createdAt: { $gte: since, $lte: now },
-            ...factoryFilter
-          },
-        },
-        {
-          $addFields: {
-            reportingFactoryId: {
-              $ifNull: [
-                "$destinationFactoryId",
-                "$sourceFactoryId",
-              ],
-            },
-          },
-        },
-        {
-          $lookup: {
-            from:         "factories",
-            localField:   "reportingFactoryId",
-            foreignField: "_id",
-            as:           "f",
-          },
-        },
-        {
-          $group: {
-            _id:         "$reportingFactoryId",
-            factoryName: { $first: { $ifNull: [{ $arrayElemAt: ["$f.name", 0] }, "Unknown"] } },
-            count:       { $sum: 1 },
-          },
-        },
-        { $sort: { count: -1 } },
-      ]),
+//       Trip.aggregate([
+//         {
+//           $match: {
+//             tripState: "CANCELLED",
+//             createdAt: { $gte: since, $lte: now },
+//             ...factoryFilter
+//           },
+//         },
+//         {
+//           $addFields: {
+//             reportingFactoryId: {
+//               $ifNull: [
+//                 "$destinationFactoryId",
+//                 "$sourceFactoryId",
+//               ],
+//             },
+//           },
+//         },
+//         {
+//           $lookup: {
+//             from:         "factories",
+//             localField:   "reportingFactoryId",
+//             foreignField: "_id",
+//             as:           "f",
+//           },
+//         },
+//         {
+//           $group: {
+//             _id:         "$reportingFactoryId",
+//             factoryName: { $first: { $ifNull: [{ $arrayElemAt: ["$f.name", 0] }, "Unknown"] } },
+//             count:       { $sum: 1 },
+//           },
+//         },
+//         { $sort: { count: -1 } },
+//       ]),
 
-      Trip.aggregate([
-        {
-          $match: {
-            tripState:{$in : [ "ACTIVE", "COMPLETED" ]},
-            createdAt: { $gte: since, $lte: now },
-            destinationFactoryId: { $ne: null },
-            ...factoryFilter
-          },
-        },
-        { $lookup: {
-            from:         "factories",
-            localField:   "destinationFactoryId",
-            foreignField: "_id",
-            as:           "f",
-          }
-        },
-        {
-          $group: {
-            _id:         "$destinationFactoryId",
-            factoryName: { $first: { $ifNull: [{ $arrayElemAt: ["$f.name", 0] }, "Unknown"] } },
-            count:       { $sum: 1 },
-          },
-        },
-        { $sort: { count: -1 } },
-      ])
+//       Trip.aggregate([
+//       {
+//         $match: {
+//           tripState: { $in: ["ACTIVE", "COMPLETED"] },
+//           ...factoryFilter,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "factories",
+//           localField: "destinationFactoryId",
+//           foreignField: "_id",
+//           as: "f",
+//         },
+//       },
+//       {
+//         $addFields: {
+//           // Group by the real factory _id when there is one; otherwise by the
+//           // external destination string (prefixed so it can never collide with
+//           // a real ObjectId), and finally "Unknown" if neither is set.
+//           groupKey: {
+//             $ifNull: [
+//               "$destinationFactoryId",
+//               { $concat: ["external:", { $ifNull: ["$externalDestination", "Unknown"] }] },
+//             ],
+//           },
+//           resolvedName: {
+//             $ifNull: [
+//               { $arrayElemAt: ["$f.name", 0] },
+//               { $ifNull: ["$externalDestination", "Unknown"] },
+//             ],
+//           },
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: "$groupKey",
+//           factoryName: { $first: "$resolvedName" },
+//           count: { $sum: 1 },
+//         },
+//       },
+//       { $sort: { count: -1 } },
+//     ])
 
-    ]);
+//   ]);
 
-    // Merge into dailyArr so every date slot exists (fills zero-days too)
-    const factoryFlowMap = {};
-
-    const factoryDailyArr = dailyArr.map(day => ({
-      date:       day.date,
-      count:      factoryFlowMap[day.date]?.totalOnDay ?? 0,
-      factories:  factoryFlowMap[day.date]?.factories  ?? [],
-    }));
+//     // Merge into dailyArr so every date slot exists (fills zero-days too)
+//     const factoryFlowMap = {};
  
-    // ── 7. Idle analysis (FC Idle Time equivalent) ────────────────────────
-    const activeDays = Object.keys(dailyMap).length;
-    const idleDays   = Math.max(0, days - activeDays);
-    const idleDayPct = +((idleDays / days) * 100).toFixed(1);
+//     // ── 7. Idle analysis (FC Idle Time equivalent) ────────────────────────
+//     const activeDays = Object.keys(dailyMap).length;
+//     const idleDays   = Math.max(0, days - activeDays);
+//     const idleDayPct = +((idleDays / days) * 100).toFixed(1);
  
-    // ── 8. Trip-type split (3 donuts — internal / external / both) ────────
-    const internalTrips = closed.filter(t => t.type === "internal_transfer").length;
-    const externalTrips = closed.filter(t => t.type === "external_delivery").length;
-    const otherTrips    = closed.length - internalTrips - externalTrips;
+//     // ── 8. Trip-type split (3 donuts — internal / external / both) ────────
+//     const internalTrips = closed.filter(t => t.type === "internal_transfer").length;
+//     const externalTrips = closed.filter(t => t.type === "external_delivery").length;
+//     const otherTrips    = closed.length - internalTrips - externalTrips;
  
-    // ── 9. Availability tiers ─────────────────────────────────────────────
-    let goodDays = 0, mediumDays = 0, lowDays = 0;
+//     // ── 9. Availability tiers ─────────────────────────────────────────────
+//     let goodDays = 0, mediumDays = 0, lowDays = 0;
 
-    for (let i = 0; i < days; i++) {
-      const d   = new Date(since); 
-      d.setDate(d.getDate() + i);
-      const key = d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-      const cnt = dailyMap[key] ?? 0;
-      if (cnt >= 3) goodDays++;
-      else if (cnt >= 1) mediumDays++;
-      else lowDays++;
-    }
+//     for (let i = 0; i < days; i++) {
+//       const d   = new Date(since); 
+//       d.setDate(d.getDate() + i);
+//       const key = d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+//       const cnt = dailyMap[key] ?? 0;
+//       if (cnt >= 3) goodDays++;
+//       else if (cnt >= 1) mediumDays++;
+//       else lowDays++;
+//     }
 
-    const currentDate = new Date();
-    const waitCutoffUTC = new Date(currentDate.getTime() - 4 * 60 * 60 * 1000);
+//     const currentDate = new Date();
 
-    // ── 10. Waiting Analysis ─────────────────────────────────────────────────────
-    const WAIT_THRESHOLD_MS = 4 * 60 * 60 * 1000; // 4 hours in ms
-    const waitCutoff = new Date(currentDate - WAIT_THRESHOLD_MS);
-    const outsideFactoryFilter = {
-      destinationFactoryId: new mongoose.Types.ObjectId(factory),
-      phase: "DESTINATION",
-    };
+//     // ── 10. Waiting Analysis ─────────────────────────────────────────────────────
+//     const WAIT_THRESHOLD_MS = 4 * 60 * 60 * 1000; // 4 hours in ms
+//     const waitCutoff = new Date(currentDate - WAIT_THRESHOLD_MS);
+//     const outsideFactoryFilter = {
+//       destinationFactoryId: new mongoose.Types.ObjectId(factory),
+//       phase: "DESTINATION",
+//     };
 
-    const insideFactoryFilter = {
-      $or: [
-        { phase: "ORIGIN", sourceFactoryId: new mongoose.Types.ObjectId(factory) },
-        { phase: "DESTINATION", destinationFactoryId: new mongoose.Types.ObjectId(factory) }
-      ]
-    };
+//     const insideFactoryFilter = {
+//       $or: [
+//         { phase: "ORIGIN", sourceFactoryId: new mongoose.Types.ObjectId(factory) },
+//         { phase: "DESTINATION", destinationFactoryId: new mongoose.Types.ObjectId(factory) }
+//       ]
+//     };
 
-   const [outsideWaiting, insideWaiting, totalOutside, totalInside] = await Promise.all([
-    Trip.countDocuments({
-      tripState: { $nin: ["CLOSED", "CANCELLED"] },
-      location: "outside_factory",
-      arrivedAt: { $lte: waitCutoff },
-      checkedInAt: null,
-      ...outsideFactoryFilter
-    }),
+//    const [outsideWaiting, insideWaiting, totalOutside, totalInside] = await Promise.all([
+//     Trip.countDocuments({
+//       tripState: { $nin: ["CLOSED", "CANCELLED"] },
+//       location: "outside_factory",
+//       arrivedAt: { $lte: waitCutoff },
+//       checkedInAt: null,
+//       ...outsideFactoryFilter
+//     }),
 
-    Trip.countDocuments({
-      tripState: { $nin: ["CLOSED", "CANCELLED"] },
-      location: "inside_factory",
-      checkedInAt: { $lte: waitCutoff },
-      loadStatus: "pending",
-      completedAt: null,
-      ...insideFactoryFilter
-    }),
+//     Trip.countDocuments({
+//       tripState: { $nin: ["CLOSED", "CANCELLED"] },
+//       location: "inside_factory",
+//       checkedInAt: { $lte: waitCutoff },
+//       loadStatus: "pending",
+//       completedAt: null,
+//       ...insideFactoryFilter
+//     }),
 
-    Trip.countDocuments({
-      tripState: { $nin: ["CLOSED", "CANCELLED"] },
-      location: "outside_factory",
-      ...outsideFactoryFilter
-    }),
+//     Trip.countDocuments({
+//       tripState: { $nin: ["CLOSED", "CANCELLED"] },
+//       location: "outside_factory",
+//       ...outsideFactoryFilter
+//     }),
 
-    Trip.countDocuments({
-      tripState: { $nin: ["CLOSED", "CANCELLED"] },
-      location: "inside_factory",
-      ...insideFactoryFilter
-    }),
-  ]);
+//     Trip.countDocuments({
+//       tripState: { $nin: ["CLOSED", "CANCELLED"] },
+//       location: "inside_factory",
+//       ...insideFactoryFilter
+//     }),
 
-    const outsideWaitPct     = totalOutside    ? +((outsideWaiting / totalOutside)    * 100).toFixed(1) : 0;
-    const insideWaitPct      = totalInside  ? +((insideWaiting  / totalInside)  * 100).toFixed(1) : 0;
-    const totalWaiting       = outsideWaiting + insideWaiting;
-    const congestionRatioPct = totalActiveTrips ? +((totalWaiting / totalActiveTrips) * 100).toFixed(1) : 0;
+//   ]);
 
-    // health zone: green < 10, yellow 10-20, red > 20
-    const congestionZone = congestionRatioPct < 10 ? "green" : congestionRatioPct <= 20 ? "yellow" : "red";
+//     const outsideWaitPct     = totalOutside    ? +((outsideWaiting / totalOutside)    * 100).toFixed(1) : 0;
+//     const insideWaitPct      = totalInside  ? +((insideWaiting  / totalInside)  * 100).toFixed(1) : 0;
+//     const totalWaiting       = outsideWaiting + insideWaiting;
+//     const congestionRatioPct = totalActiveTrips ? +((totalWaiting / totalActiveTrips) * 100).toFixed(1) : 0;
 
-
-   // Build vehicle ID set when a type filter is active
-    const baseMatch = {
-      createdAt: { $gte: since, $lte: now },
-      vehicleId: { $ne: null },
-      ...factoryFilter,
-    };
-
-  // const vehicleFactoryFilter = factory ? { factoryId: new mongoose.Types.ObjectId(factory) } : {};
-
-  const [internalIds, externalIds] = await Promise.all([
-    Vehicle.find({ type: "internal"}, { _id: 1 }).lean().then(r => r.map(v => v._id)),
-    Vehicle.find({ type: "external",}, { _id: 1 }).lean().then(r => r.map(v => v._id)),
-  ]);
-
-   const allTopVehicles = await TripSegment.aggregate([
-    { $match: baseMatch },
-    { $group: { _id: { vehicleId: "$vehicleId", tripId: "$tripId" } } },
-    { $group: { _id: "$_id.vehicleId", tripCount: { $sum: 1 } } },
-    { $sort: { tripCount: -1 } },
-    // fetch more than 10 so each filtered slice still has up to 10
-    { $limit: 30 },
-    {
-      $lookup: {
-        from: "vehicles",
-        localField: "_id",
-        foreignField: "_id",
-        as: "v",
-      },
-    },
-    {
-      $project: {
-        _id: 0,
-        vehicleId: "$_id",
-        vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
-        vehicleType:   { $ifNull: [{ $arrayElemAt: ["$v.type", 0] },          "unknown"] },
-        tripCount: 1,
-      },
-    },
-  ]);
-
-  // Slice per type on the server, send all three
-  const slice = (list) => {
-    const maxTrips = list[0]?.tripCount ?? 1;
-    return {
-      vehicles: list.slice(0, 10).map(v => ({
-        ...v,
-        pct: +((v.tripCount / maxTrips) * 100).toFixed(1),
-      })),
-      maxTrips,
-    };
-  };
-
-  const internalSet = new Set(internalIds.map(String));
-  const externalSet = new Set(externalIds.map(String));
+//     // health zone: green < 10, yellow 10-20, red > 20
+//     const congestionZone = congestionRatioPct < 10 ? "green" : congestionRatioPct <= 20 ? "yellow" : "red";
 
 
-    // ── 11. Driver-wise Trip Analytics ──────────────────────────────────────────
-    const driverStats = await TripSegment.aggregate([
-        // ── 1. Only segments in the period with a driver assigned ─────────────────
-        {
-          $match: {
-            driverId:  { $ne: null },
-            createdAt: { $gte: since, $lte: now },
-            ...factoryFilter
-          },
-        },
-        {
-          $group: {
-            _id: { driverId: "$driverId", tripId: "$tripId" },
-          },
-        },
+//    // Build vehicle ID set when a type filter is active
+//     const baseMatch = {
+//       createdAt: { $gte: since, $lte: now },
+//       vehicleId: { $ne: null },
+//       ...factoryFilter,
+//     };
 
-        // ── 3. Populate the Trip to read its authoritative tripState ──────────────
-        {
-          $lookup: {
-            from:         "trips",          // MongoDB collection name
-            localField:   "_id.tripId",
-            foreignField: "_id",
-            as:           "trip",
-          },
-        },
-        { $unwind: { path: "$trip", preserveNullAndEmptyArrays: true } },
+//   // const vehicleFactoryFilter = factory ? { factoryId: new mongoose.Types.ObjectId(factory) } : {};
 
-        // ── 4. Roll up to driver level using Trip.tripState ───────────────────────
-        {
-          $group: {
-            _id:       "$_id.driverId",
-            total:     { $sum: 1 },
-            completed: {
-              $sum: {
-                $cond: [{ $eq: ["$trip.tripState", "CLOSED"] }, 1, 0],
-              },
-            },
-            cancelled: {
-              $sum: {
-                $cond: [{ $eq: ["$trip.tripState", "CANCELLED"] }, 1, 0],
-              },
-            },
-            active: {
-              $sum: {
-                $cond: [
-                  { $in: ["$trip.tripState", ["ACTIVE", "COMPLETED"]] }, // COMPLETED = arrived, not closed yet
-                  1, 0,
-                ],
-              },
-            },
-          },
-        },
+//   const [internalIds, externalIds] = await Promise.all([
+//     Vehicle.find({ type: "internal"}, { _id: 1 }).lean().then(r => r.map(v => v._id)),
+//     Vehicle.find({ type: "external",}, { _id: 1 }).lean().then(r => r.map(v => v._id)),
+//   ]);
 
-        // ── 5. Join driver info ───────────────────────────────────────────────────
-        {
-          $lookup: {
-            from:         "drivers",
-            localField:   "_id",
-            foreignField: "_id",
-            as:           "d",
-          },
-        },
+//    const allTopVehicles = await TripSegment.aggregate([
+//     { $match: baseMatch },
+//     { $group: { _id: { vehicleId: "$vehicleId", tripId: "$tripId" } } },
+//     { $group: { _id: "$_id.vehicleId", tripCount: { $sum: 1 } } },
+//     { $sort: { tripCount: -1 } },
+//     // fetch more than 10 so each filtered slice still has up to 10
+//     { $limit: 30 },
+//     {
+//       $lookup: {
+//         from: "vehicles",
+//         localField: "_id",
+//         foreignField: "_id",
+//         as: "v",
+//       },
+//     },
+//     {
+//       $project: {
+//         _id: 0,
+//         vehicleId: "$_id",
+//         vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
+//         vehicleType:   { $ifNull: [{ $arrayElemAt: ["$v.type", 0] },          "unknown"] },
+//         tripCount: 1,
+//       },
+//     },
+//   ]);
 
-        // ── 6. Shape the output ───────────────────────────────────────────────────
-        {
-          $project: {
-            _id:        0,
-            driverId:   "$_id",
-            driverName: {
-              $ifNull: [{ $arrayElemAt: ["$d.driverName", 0] }, "Unknown Driver"],
-            },
-            driverContact: {
-              $ifNull: [{ $arrayElemAt: ["$d.driverContact", 0] }, "N/A"],
-            },
-            total:     1,
-            completed: 1,
-            cancelled: 1,
-            active:    1,
-            completionRate: {
-              $cond: [
-                { $gt: ["$total", 0] },
-                {
-                  $round: [
-                    { $multiply: [{ $divide: ["$completed", "$total"] }, 100] },
-                    1,
-                  ],
-                },
-                0,
-              ],
-            },
-          },
-        },
+//   // Slice per type on the server, send all three
+//   const slice = (list) => {
+//     const maxTrips = list[0]?.tripCount ?? 1;
+//     return {
+//       vehicles: list.slice(0, 10).map(v => ({
+//         ...v,
+//         pct: +((v.tripCount / maxTrips) * 100).toFixed(1),
+//       })),
+//       maxTrips,
+//     };
+//   };
 
-        { $sort: { completed: -1 } },
-        { $limit: 20 },
-      ]);
-
-      // In your analytics controller — runs in parallel with the rest of dashboard
-    const breakdown = await TripSegment.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: since, $lte: now },
-          status: "COMPLETED",
-          ...factoryFilter
-        },
-      },
-      {
-        $lookup: {
-          from: "trips",
-          localField: "tripId",
-          foreignField: "_id",
-          as: "trip",
-        },
-      },
-      { $unwind: "$trip" },
-
-      // Only Delivery or Pickup purposes
-      {
-        $match: {
-          "trip.purpose": { $in: ["Delivery", "Pickup"] },
-        },
-      },
-
-      {
-        $addFields: {
-          purposeKey: { $toLower: "$trip.purpose" },   // "delivery" | "pickup"
-          kind: {
-            $cond: {
-              if: {
-                $and: [
-                  { $ifNull: ["$destinationFactoryId", false] },
-                  { $ifNull: ["$sourceFactoryId",      false] },
-                ],
-              },
-              then: "p2p",
-              else: "other",
-            },
-          },
-        },
-      },
-
-      // Dedup per trip segment
-      {
-        $group: {
-          _id: {
-            tripId:        "$tripId",
-            segmentNumber: "$segmentNumber",
-            purposeKey:    "$purposeKey",
-            kind:          "$kind",
-          },
-        },
-      },
-
-      // Count per [purpose, kind]
-      {
-        $group: {
-          _id:   { purposeKey: "$_id.purposeKey", kind: "$_id.kind" },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Shape into nested object
-    const result = {
-      delivery: { p2p: { count: 0 }, customerDelivery: { count: 0 } },
-      pickup:   { p2p: { count: 0 }, external:         { count: 0 } },
-    };
-
-    for (const row of breakdown) {
-      const { purposeKey, kind } = row._id;
-      if (purposeKey === "delivery") {
-        if (kind === "p2p") result.delivery.p2p.count = row.count;
-        else                result.delivery.customerDelivery.count = row.count;
-      }
-      if (purposeKey === "pickup") {
-        if (kind === "p2p") result.pickup.p2p.count = row.count;
-        else                result.pickup.external.count = row.count;
-      }
-    }
-
-    const regex = new RegExp(vehicleType === "all" ? "^(internal|external)$" : vehicleType, "i");
-    // Expand date range to full months so partial selections still capture the whole month
-    const monthSince = new Date(since.getFullYear(), since.getMonth(), 1);
-    const monthNow   = new Date(now.getFullYear(),   now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-    const [top5Vehicles, top5Transporters, dailyTripsTrend, top25Vehicles, monthlyTrends] = await Promise.all([
-      // Top 5 vehicles by trip count in the period, with type info for filtering on frontend
-      Trip.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: since, $lte: now },
-            vehicleId: { $ne: null },
-            ...factoryFilter  
-          },
-        },
-        {
-          $group: {
-            _id: "$vehicleId",
-            tripCount: { $sum: 1 },
-          },
-        },
-        { $sort: { tripCount: -1 } },
-        { $limit: 5 },
-        {
-          $lookup: {
-            from: "vehicles",
-            localField: "_id",
-            foreignField: "_id",
-            as: "v",
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            vehicleId: "$_id",
-            tripCount: 1,
-            vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
-            type:          { $ifNull: [{ $arrayElemAt: ["$v.type", 0] },          "unknown"] },
-          },
-        },
-      ]),
-
-      Vehicle.aggregate([
-      {
-        $match: {
-          type: "external",
-          transporterName: { $nin: [null, "", " "] },
-        }
-      },
-      {
-        $lookup: {
-          from: "trips",
-          localField: "_id",
-          foreignField: "vehicleId",
-          as: "trips"
-        }
-      },
-      {
-        $addFields: {
-          tripCount: {
-            $size: {
-              $filter: {
-                input: "$trips",
-                as: "trip",
-                cond: {
-                  $and: [
-                    { $gte: ["$$trip.createdAt", since] },
-                    { $lte: ["$$trip.createdAt", now] },
-                    ...(factory ? [{
-                    $or: [
-                      { $eq: ["$$trip.destinationFactoryId", new mongoose.Types.ObjectId(factory)] },
-                      { $eq: ["$$trip.sourceFactoryId",      new mongoose.Types.ObjectId(factory)] },
-                    ]
-                  }] : [])
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: "$transporterName",
-          tripCount: { $sum: "$tripCount" },
-          vehicleCount: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { tripCount: -1 }
-      },
-      {
-        $limit: 5
-      },
-      {
-        $project: {
-          _id: 0,
-          transporterName: "$_id",
-          tripCount: 1,
-          vehicleCount: 1
-        }
-      }
-      ]),
-
-      Trip.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: since, $lte: now },
-            vehicleId: { $ne: null },
-            ...factoryFilter
-          }
-        },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Asia/Kolkata" } },
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $sort: { _id: 1 }
-        }
-      ]),
-
-      TripSegment.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: since, $lte: now },
-            vehicleId: { $ne: null },
-            ...factoryFilter,
-          },
-        },
-
-        // ✅ Dedup by (vehicleId, tripId, date) first — same as allTopVehicles logic
-        {
-          $group: {
-            _id: {
-              vehicleId: "$vehicleId",
-              tripId:    "$tripId",
-              date: {
-                $dateToString: {
-                  format: "%Y-%m-%d",
-                  date:   "$createdAt",
-                  timezone: "Asia/Kolkata",
-                },
-              },
-            },
-          },
-        },
-
-        // Now count unique trips per (vehicle, date)
-        {
-          $group: {
-            _id: {
-              vehicleId: "$_id.vehicleId",
-              date:      "$_id.date",
-            },
-            tripCount: { $sum: 1 },
-          },
-        },
-
-        { $sort: { "_id.vehicleId": 1, "_id.date": 1 } },
-
-        // Roll up to vehicle level
-        {
-          $group: {
-            _id:        "$_id.vehicleId",
-            totalTrips: { $sum: "$tripCount" },
-            dailyTrips: {
-              $push: {
-                date:      "$_id.date",
-                tripCount: "$tripCount",
-              },
-            },
-          },
-        },
-
-        {
-          $lookup: {
-            from:         "vehicles",
-            localField:   "_id",
-            foreignField: "_id",
-            as:           "vehicle",
-          },
-        },
-
-        {
-          $project: {
-            _id: 0,
-            vehicleId:     "$_id",
-            vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$vehicle.vehicleNumber", 0] }, "Unknown"] },
-            type:          { $ifNull: [{ $arrayElemAt: ["$vehicle.type", 0] },          "unknown"] },
-            totalTrips:    1,
-            dailyTrips:    1,
-          },
-        },
-
-        { $match: { type: regex } },
-
-        { $sort: { totalTrips: -1 } },
-
-        { $limit: 25 },
-      ]),
-
-      // Monthly trips trend
-      Trip.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: monthSince, $lte: monthNow },
-            vehicleId: { $ne: null },
-            ...factoryFilter,
-          },
-        },
-        {
-          $group: {
-            _id: {
-              year:  { $year:  {date: "$createdAt", timezone: "Asia/Kolkata" }},
-              month: { $month:{ date: "$createdAt", timezone: "Asia/Kolkata" }},
-            },
-            closed:    { $sum: { $cond: [{ $eq: ["$tripState", "CLOSED"]    }, 1, 0] } },
-            cancelled: { $sum: { $cond: [{ $eq: ["$tripState", "CANCELLED"] }, 1, 0] } },
-            active:    { $sum: { $cond: [{ $in: ["$tripState", ["ACTIVE", "COMPLETED"]] }, 1, 0] } },
-            total:     { $sum: 1 },
-          },
-        },
-        { $sort: { "_id.year": 1, "_id.month": 1 } },
-        {
-          $project: {
-            _id:   0,
-            label: {
-              $let: {
-                vars: {
-                  months: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-                },
-                in: {
-                  $concat: [
-                    { $arrayElemAt: ["$$months", { $subtract: ["$_id.month", 1] }] },
-                    " ",
-                    { $toString: "$_id.year" },
-                  ],
-                },
-              },
-            },
-            closed:    1,
-            cancelled: 1,
-            active:    1,
-            total:     1,
-          },
-        },
-      ]),
-
-    ]);
-
-    // After Promise.all resolves, before return res.json(...)
-
-    const allDates = [];
-    for (let i = 0; i < days; i++) {
-      const d = new Date(since);
-      d.setDate(d.getDate() + i);
-      allDates.push(d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }));
-    }
-
-    // Reshape aggregation output to { date, count } and fill missing days with 0
-    const tripsTrendMap = {};
-    dailyTripsTrend.forEach(r => { tripsTrendMap[r._id] = r.count; });
-
-    const dailyTripsTrendFilled = allDates.map(date => ({
-      date,
-      count: tripsTrendMap[date] || 0,
-    }));
-
-    const { data: bucketedTripsTrend } = bucketDailySeries(dailyTripsTrendFilled, days, "count");
-
-    const top25WithFullDates = top25Vehicles.map(vehicle => {
-      const dayMap = {};
-      vehicle.dailyTrips.forEach(d => { dayMap[d.date] = d.tripCount; });
-      return {
-        ...vehicle,
-        dailyTrips: allDates.map(date => ({
-          date,
-          tripCount: dayMap[date] ?? 0,
-        })),
-      };
-    });
+//   const internalSet = new Set(internalIds.map(String));
+//   const externalSet = new Set(externalIds.map(String));
 
 
-    const top5AvgPerDay = top25WithFullDates.slice(0, 5).map(v => ({
-      vehicleNumber: v.vehicleNumber,
-      type:          v.type,
-      totalTrips:    v.totalTrips,
-      activeDays:    v.dailyTrips.filter(d => d.tripCount > 0).length,
-      avgTripsPerDay: +(
-        v.totalTrips / Math.max(1, v.dailyTrips.filter(d => d.tripCount > 0).length)
-      ).toFixed(1),
-    }))
-    .sort((a, b) => b.avgTripsPerDay - a.avgTripsPerDay);
+//     // ── 11. Driver-wise Trip Analytics ──────────────────────────────────────────
+//     const driverStats = await TripSegment.aggregate([
+//         // ── 1. Only segments in the period with a driver assigned ─────────────────
+//         {
+//           $match: {
+//             driverId:  { $ne: null },
+//             createdAt: { $gte: since, $lte: now },
+//             ...factoryFilter
+//           },
+//         },
+//         {
+//           $group: {
+//             _id: { driverId: "$driverId", tripId: "$tripId" },
+//           },
+//         },
 
-    const top25Bucketed = top25WithFullDates.map(v => {
-      const { data } = bucketDailySeries(v.dailyTrips, days, "tripCount");
-      return { ...v, dailyTrips: data };
-    });
+//         // ── 3. Populate the Trip to read its authoritative tripState ──────────────
+//         {
+//           $lookup: {
+//             from:         "trips",          // MongoDB collection name
+//             localField:   "_id.tripId",
+//             foreignField: "_id",
+//             as:           "trip",
+//           },
+//         },
+//         { $unwind: { path: "$trip", preserveNullAndEmptyArrays: true } },
 
-    const { granularity, data: bucketedDailyArr } = bucketDailySeries(dailyArr, days, "count");
+//         // ── 4. Roll up to driver level using Trip.tripState ───────────────────────
+//         {
+//           $group: {
+//             _id:       "$_id.driverId",
+//             total:     { $sum: 1 },
+//             completed: {
+//               $sum: {
+//                 $cond: [{ $eq: ["$trip.tripState", "CLOSED"] }, 1, 0],
+//               },
+//             },
+//             cancelled: {
+//               $sum: {
+//                 $cond: [{ $eq: ["$trip.tripState", "CANCELLED"] }, 1, 0],
+//               },
+//             },
+//             active: {
+//               $sum: {
+//                 $cond: [
+//                   { $in: ["$trip.tripState", ["ACTIVE", "COMPLETED"]] }, // COMPLETED = arrived, not closed yet
+//                   1, 0,
+//                 ],
+//               },
+//             },
+//           },
+//         },
 
-    return res.json({
-      period,
-      since,
-      now,
-      granularity,
+//         // ── 5. Join driver info ───────────────────────────────────────────────────
+//         {
+//           $lookup: {
+//             from:         "drivers",
+//             localField:   "_id",
+//             foreignField: "_id",
+//             as:           "d",
+//           },
+//         },
+
+//         // ── 6. Shape the output ───────────────────────────────────────────────────
+//         {
+//           $project: {
+//             _id:        0,
+//             driverId:   "$_id",
+//             driverName: {
+//               $ifNull: [{ $arrayElemAt: ["$d.driverName", 0] }, "Unknown Driver"],
+//             },
+//             driverContact: {
+//               $ifNull: [{ $arrayElemAt: ["$d.driverContact", 0] }, "N/A"],
+//             },
+//             total:     1,
+//             completed: 1,
+//             cancelled: 1,
+//             active:    1,
+//             completionRate: {
+//               $cond: [
+//                 { $gt: ["$total", 0] },
+//                 {
+//                   $round: [
+//                     { $multiply: [{ $divide: ["$completed", "$total"] }, 100] },
+//                     1,
+//                   ],
+//                 },
+//                 0,
+//               ],
+//             },
+//           },
+//         },
+
+//         { $sort: { completed: -1 } },
+//         { $limit: 20 },
+//       ]);
+
+//       // In your analytics controller — runs in parallel with the rest of dashboard
+//     const breakdown = await TripSegment.aggregate([
+//       {
+//         $match: {
+//           createdAt: { $gte: since, $lte: now },
+//           status: "COMPLETED",
+//           ...factoryFilter
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "trips",
+//           localField: "tripId",
+//           foreignField: "_id",
+//           as: "trip",
+//         },
+//       },
+//       { $unwind: "$trip" },
+
+//       // Only Delivery or Pickup purposes
+//       {
+//         $match: {
+//           "trip.purpose": { $in: ["Delivery", "Pickup"] },
+//         },
+//       },
+
+//       {
+//         $addFields: {
+//           purposeKey: { $toLower: "$trip.purpose" },   // "delivery" | "pickup"
+//           kind: {
+//             $cond: {
+//               if: {
+//                 $and: [
+//                   { $ifNull: ["$destinationFactoryId", false] },
+//                   { $ifNull: ["$sourceFactoryId",      false] },
+//                 ],
+//               },
+//               then: "p2p",
+//               else: "other",
+//             },
+//           },
+//         },
+//       },
+
+//       // Dedup per trip segment
+//       {
+//         $group: {
+//           _id: {
+//             tripId:        "$tripId",
+//             segmentNumber: "$segmentNumber",
+//             purposeKey:    "$purposeKey",
+//             kind:          "$kind",
+//           },
+//         },
+//       },
+
+//       // Count per [purpose, kind]
+//       {
+//         $group: {
+//           _id:   { purposeKey: "$_id.purposeKey", kind: "$_id.kind" },
+//           count: { $sum: 1 },
+//         },
+//       },
+//     ]);
+
+//     // Shape into nested object
+//     const result = {
+//       delivery: { p2p: { count: 0 }, customerDelivery: { count: 0 } },
+//       pickup:   { p2p: { count: 0 }, external:         { count: 0 } },
+//     };
+
+//     for (const row of breakdown) {
+//       const { purposeKey, kind } = row._id;
+//       if (purposeKey === "delivery") {
+//         if (kind === "p2p") result.delivery.p2p.count = row.count;
+//         else                result.delivery.customerDelivery.count = row.count;
+//       }
+//       if (purposeKey === "pickup") {
+//         if (kind === "p2p") result.pickup.p2p.count = row.count;
+//         else                result.pickup.external.count = row.count;
+//       }
+//     }
+
+//     const regex = new RegExp(vehicleType === "all" ? "^(internal|external)$" : vehicleType, "i");
+//     // Expand date range to full months so partial selections still capture the whole month
+//     const monthSince = new Date(since.getFullYear(), since.getMonth(), 1);
+//     const monthNow   = new Date(now.getFullYear(),   now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+//     const [top5Vehicles, top5Transporters, dailyTripsTrend, top25Vehicles, monthlyTrends] = await Promise.all([
+//       // Top 5 vehicles by trip count in the period, with type info for filtering on frontend
+//       Trip.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: since, $lte: now },
+//             vehicleId: { $ne: null },
+//             ...factoryFilter  
+//           },
+//         },
+//         {
+//           $group: {
+//             _id: "$vehicleId",
+//             tripCount: { $sum: 1 },
+//           },
+//         },
+//         { $sort: { tripCount: -1 } },
+//         { $limit: 5 },
+//         {
+//           $lookup: {
+//             from: "vehicles",
+//             localField: "_id",
+//             foreignField: "_id",
+//             as: "v",
+//           },
+//         },
+//         {
+//           $project: {
+//             _id: 0,
+//             vehicleId: "$_id",
+//             tripCount: 1,
+//             vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
+//             type:          { $ifNull: [{ $arrayElemAt: ["$v.type", 0] },          "unknown"] },
+//           },
+//         },
+//       ]),
+
+//       Vehicle.aggregate([
+//       {
+//         $match: {
+//           type: "external",
+//           transporterName: { $nin: [null, "", " "] },
+//         }
+//       },
+//       {
+//         $lookup: {
+//           from: "trips",
+//           localField: "_id",
+//           foreignField: "vehicleId",
+//           as: "trips"
+//         }
+//       },
+//       {
+//         $addFields: {
+//           tripCount: {
+//             $size: {
+//               $filter: {
+//                 input: "$trips",
+//                 as: "trip",
+//                 cond: {
+//                   $and: [
+//                     { $gte: ["$$trip.createdAt", since] },
+//                     { $lte: ["$$trip.createdAt", now] },
+//                     ...(factory ? [{
+//                     $or: [
+//                       { $eq: ["$$trip.destinationFactoryId", new mongoose.Types.ObjectId(factory)] },
+//                       { $eq: ["$$trip.sourceFactoryId",      new mongoose.Types.ObjectId(factory)] },
+//                     ]
+//                   }] : [])
+//                   ]
+//                 }
+//               }
+//             }
+//           }
+//         }
+//       },
+//       {
+//         $group: {
+//           _id: "$transporterName",
+//           tripCount: { $sum: "$tripCount" },
+//           vehicleCount: { $sum: 1 }
+//         }
+//       },
+//       {
+//         $sort: { tripCount: -1 }
+//       },
+//       {
+//         $limit: 5
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           transporterName: "$_id",
+//           tripCount: 1,
+//           vehicleCount: 1
+//         }
+//       }
+//       ]),
+
+//       Trip.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: since, $lte: now },
+//             vehicleId: { $ne: null },
+//             ...factoryFilter
+//           }
+//         },
+//         {
+//           $group: {
+//             _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Asia/Kolkata" } },
+//             count: { $sum: 1 }
+//           }
+//         },
+//         {
+//           $sort: { _id: 1 }
+//         }
+//       ]),
+
+//       TripSegment.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: since, $lte: now },
+//             vehicleId: { $ne: null },
+//             ...factoryFilter,
+//           },
+//         },
+
+//         // ✅ Dedup by (vehicleId, tripId, date) first — same as allTopVehicles logic
+//         {
+//           $group: {
+//             _id: {
+//               vehicleId: "$vehicleId",
+//               tripId:    "$tripId",
+//               date: {
+//                 $dateToString: {
+//                   format: "%Y-%m-%d",
+//                   date:   "$createdAt",
+//                   timezone: "Asia/Kolkata",
+//                 },
+//               },
+//             },
+//           },
+//         },
+
+//         // Now count unique trips per (vehicle, date)
+//         {
+//           $group: {
+//             _id: {
+//               vehicleId: "$_id.vehicleId",
+//               date:      "$_id.date",
+//             },
+//             tripCount: { $sum: 1 },
+//           },
+//         },
+
+//         { $sort: { "_id.vehicleId": 1, "_id.date": 1 } },
+
+//         // Roll up to vehicle level
+//         {
+//           $group: {
+//             _id:        "$_id.vehicleId",
+//             totalTrips: { $sum: "$tripCount" },
+//             dailyTrips: {
+//               $push: {
+//                 date:      "$_id.date",
+//                 tripCount: "$tripCount",
+//               },
+//             },
+//           },
+//         },
+
+//         {
+//           $lookup: {
+//             from:         "vehicles",
+//             localField:   "_id",
+//             foreignField: "_id",
+//             as:           "vehicle",
+//           },
+//         },
+
+//         {
+//           $project: {
+//             _id: 0,
+//             vehicleId:     "$_id",
+//             vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$vehicle.vehicleNumber", 0] }, "Unknown"] },
+//             type:          { $ifNull: [{ $arrayElemAt: ["$vehicle.type", 0] },          "unknown"] },
+//             totalTrips:    1,
+//             dailyTrips:    1,
+//           },
+//         },
+
+//         { $match: { type: regex } },
+
+//         { $sort: { totalTrips: -1 } },
+
+//         { $limit: 25 },
+//       ]),
+
+//       // Monthly trips trend
+//       Trip.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: monthSince, $lte: monthNow },
+//             vehicleId: { $ne: null },
+//             ...factoryFilter,
+//           },
+//         },
+//         {
+//           $group: {
+//             _id: {
+//               year:  { $year:  {date: "$createdAt", timezone: "Asia/Kolkata" }},
+//               month: { $month:{ date: "$createdAt", timezone: "Asia/Kolkata" }},
+//             },
+//             closed:    { $sum: { $cond: [{ $eq: ["$tripState", "CLOSED"]    }, 1, 0] } },
+//             cancelled: { $sum: { $cond: [{ $eq: ["$tripState", "CANCELLED"] }, 1, 0] } },
+//             active:    { $sum: { $cond: [{ $in: ["$tripState", ["ACTIVE", "COMPLETED"]] }, 1, 0] } },
+//             total:     { $sum: 1 },
+//           },
+//         },
+//         { $sort: { "_id.year": 1, "_id.month": 1 } },
+//         {
+//           $project: {
+//             _id:   0,
+//             label: {
+//               $let: {
+//                 vars: {
+//                   months: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+//                 },
+//                 in: {
+//                   $concat: [
+//                     { $arrayElemAt: ["$$months", { $subtract: ["$_id.month", 1] }] },
+//                     " ",
+//                     { $toString: "$_id.year" },
+//                   ],
+//                 },
+//               },
+//             },
+//             closed:    1,
+//             cancelled: 1,
+//             active:    1,
+//             total:     1,
+//           },
+//         },
+//       ]),
+
+//     ]);
+
+//     // After Promise.all resolves, before return res.json(...)
+
+//     const allDates = [];
+//     for (let i = 0; i < days; i++) {
+//       const d = new Date(since);
+//       d.setDate(d.getDate() + i);
+//       allDates.push(d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }));
+//     }
+
+//     // Reshape aggregation output to { date, count } and fill missing days with 0
+//     const tripsTrendMap = {};
+//     dailyTripsTrend.forEach(r => { tripsTrendMap[r._id] = r.count; });
+
+//     const dailyTripsTrendFilled = allDates.map(date => ({
+//       date,
+//       count: tripsTrendMap[date] || 0,
+//     }));
+
+//     const { data: bucketedTripsTrend } = bucketDailySeries(dailyTripsTrendFilled, days, "count");
+
+//     const top25WithFullDates = top25Vehicles.map(vehicle => {
+//       const dayMap = {};
+//       vehicle.dailyTrips.forEach(d => { dayMap[d.date] = d.tripCount; });
+//       return {
+//         ...vehicle,
+//         dailyTrips: allDates.map(date => ({
+//           date,
+//           tripCount: dayMap[date] ?? 0,
+//         })),
+//       };
+//     });
+
+
+//     const top5AvgPerDay = top25WithFullDates.slice(0, 5).map(v => ({
+//       vehicleNumber: v.vehicleNumber,
+//       type:          v.type,
+//       totalTrips:    v.totalTrips,
+//       activeDays:    v.dailyTrips.filter(d => d.tripCount > 0).length,
+//       avgTripsPerDay: +(
+//         v.totalTrips / Math.max(1, v.dailyTrips.filter(d => d.tripCount > 0).length)
+//       ).toFixed(1),
+//     }))
+//     .sort((a, b) => b.avgTripsPerDay - a.avgTripsPerDay);
+
+//     const top25Bucketed = top25WithFullDates.map(v => {
+//       const { data } = bucketDailySeries(v.dailyTrips, days, "tripCount");
+//       return { ...v, dailyTrips: data };
+//     });
+
+//     const { granularity, data: bucketedDailyArr } = bucketDailySeries(dailyArr, days, "count");
+
+//     return res.json({
+//       period,
+//       since,
+//       now,
+//       granularity,
  
-      vehicle: {
-        id:            vehicle._id,
-        vehicleNumber: vehicle.vehicleNumber,
-        typeOfVehicle: vehicle.typeOfVehicle,
-        type:          vehicle.type,           // internal | external
-        isActive:      vehicle.isActive,
-        model:         vehicle.model ?? vehicle.vehicleNumber,
-      },
+//       vehicle: {
+//         id:            vehicle._id,
+//         vehicleNumber: vehicle.vehicleNumber,
+//         typeOfVehicle: vehicle.typeOfVehicle,
+//         type:          vehicle.type,           // internal | external
+//         isActive:      vehicle.isActive,
+//         model:         vehicle.model ?? vehicle.vehicleNumber,
+//       },
  
-      weeklyStats: {
-        activeSince,
-        totalClosedTrips: allClosedTrips,
-        periodTrips:      total,
-        periodClosed:     closed.length,
-        avgTripsPerDay,
-        totalTripHours,
-      },
+//       weeklyStats: {
+//         activeSince,
+//         totalClosedTrips: allClosedTrips,
+//         periodTrips:      total,
+//         periodClosed:     closed.length,
+//         avgTripsPerDay,
+//         totalTripHours,
+//       },
 
-      vehicleUsage: {
-        totalHours:     totalTripHours,
-        avgTripsPerDay,
-        dailyTrend:     bucketedDailyArr,   // [{date, count}] — UI draws area chart
-      },
+//       vehicleUsage: {
+//         totalHours:     totalTripHours,
+//         avgTripsPerDay,
+//         dailyTrend:     bucketedDailyArr,   // [{date, count}] — UI draws area chart
+//       },
  
-      sameDayColouser: {
-        sohPct, 
-        total: totalTrips,         // big number shown in donut centre
-        segments: [
-          { label: "Completed",  value: totalClosedTrips,    pct: closedPct,      color: "#0d9488" },
-          { label: "Active",     value: totalActiveTrips,    pct: activePct,      color: "#94a3b8" },
-          { label: "Cancelled",  value: totalCancelledTrips, pct: cancelledPct,   color: "#fca5a5" },
-        ],
-        totalIssues: totalCancelledTrips,   // "issues detected" headline
-      },
+//       sameDayColouser: {
+//         sohPct, 
+//         total: totalTrips,         // big number shown in donut centre
+//         segments: [
+//           { label: "Completed",  value: totalClosedTrips,    pct: closedPct,      color: "#0d9488" },
+//           { label: "Active",     value: totalActiveTrips,    pct: activePct,      color: "#94a3b8" },
+//           { label: "Cancelled",  value: totalCancelledTrips, pct: cancelledPct,   color: "#fca5a5" },
+//         ],
+//         totalIssues: totalCancelledTrips,   // "issues detected" headline
+//       },
  
-      tripExecution: {
-        internalPct, 
-        externalPct,
-        bars: [
-          { label: "Internal",  value: internalPct,    color: "#0d9488" },
-          { label: "External",  value: externalPct, color: "#FF9D23" },
-        ],
-      },
+//       tripExecution: {
+//         internalPct, 
+//         externalPct,
+//         bars: [
+//           { label: "Internal",  value: internalPct,    color: "#0d9488" },
+//           { label: "External",  value: externalPct, color: "#FF9D23" },
+//         ],
+//       },
 
-      vehicleUsage: {
-        totalHours:     totalTripHours,
-        avgTripsPerDay,
-        dailyTrend:     bucketedDailyArr,
-        factoryChart: {
-          closed:    factoryClosedTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
-          cancelled: factoryCancelledTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
-          active:    factoryActiveTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
-        },
-      },
+//       vehicleUsage: {
+//         totalHours:     totalTripHours,
+//         avgTripsPerDay,
+//         dailyTrend:     bucketedDailyArr,
+//         factoryChart: {
+//           closed:    factoryClosedTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+//           cancelled: factoryCancelledTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+//           active:    factoryActiveTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+//         },
+//       },
  
-      idleAnalysis: {
-        idleDayPct,
-        activeDays,
-        idleDays,
-        dailyTrend: bucketedDailyArr, // ← add this, already computed above
-        bars: [
-          { label: "Active Days", value: activeDays, max: days, color: "#0d9488" },
-          { label: "Idle Days",   value: idleDays,   max: days, color: "#e2e8f0" },
-        ],
-      },
+//       idleAnalysis: {
+//         idleDayPct,
+//         activeDays,
+//         idleDays,
+//         dailyTrend: bucketedDailyArr, // ← add this, already computed above
+//         bars: [
+//           { label: "Active Days", value: activeDays, max: days, color: "#0d9488" },
+//           { label: "Idle Days",   value: idleDays,   max: days, color: "#e2e8f0" },
+//         ],
+//       },
  
-      tripTypeSplit: {
-        donuts: [
-          {
-            label: "Internal",
-            value: totalInternalTrips,
-            pct:   totalTrips ? +((totalInternalTrips / totalTrips) * 100).toFixed(1) : 0,
-            color: "#0d9488",
-          },
-          {
-            label: "External",
-            value: totalExternalTrips,
-            pct:   totalTrips ? +((totalExternalTrips / totalTrips) * 100).toFixed(1) : 0,
-            color: "#FF9D23",
-          },
-          {
-            label: "Internal vs External",
-            value: otherTrips,
-            pct:   totalTrips ? +((otherTrips / totalTrips) * 100).toFixed(1) : 0,
-            color: "#cbd5e1",
-          },
-        ],
-      },
+//       tripTypeSplit: {
+//         donuts: [
+//           {
+//             label: "Internal",
+//             value: totalInternalTrips,
+//             pct:   totalTrips ? +((totalInternalTrips / totalTrips) * 100).toFixed(1) : 0,
+//             color: "#0d9488",
+//           },
+//           {
+//             label: "External",
+//             value: totalExternalTrips,
+//             pct:   totalTrips ? +((totalExternalTrips / totalTrips) * 100).toFixed(1) : 0,
+//             color: "#FF9D23",
+//           },
+//           {
+//             label: "Internal vs External",
+//             value: otherTrips,
+//             pct:   totalTrips ? +((otherTrips / totalTrips) * 100).toFixed(1) : 0,
+//             color: "#cbd5e1",
+//           },
+//         ],
+//       },
 
-      topVehiclesAndTransporters: {
-        top5Vehicles,
-        top5Transporters,
-        dailyTripsTrend : bucketedTripsTrend,  
-        top25Vehicles: top25Bucketed,
-        monthlyTrends,
-        busiestDays: [...dailyArr].sort((a, b) => b.count - a.count).slice(0, 15), 
-        top5AvgPerDay,
-      },
+//       topVehiclesAndTransporters: {
+//         top5Vehicles,
+//         top5Transporters,
+//         dailyTripsTrend : bucketedTripsTrend,  
+//         top25Vehicles: top25Bucketed,
+//         monthlyTrends,
+//         busiestDays: [...dailyArr].sort((a, b) => b.count - a.count).slice(0, 15), 
+//         top5AvgPerDay,
+//       },
 
-      topVehicles: {
-        all:      slice(allTopVehicles),
-        internal: slice(allTopVehicles.filter(v => internalSet.has(String(v.vehicleId)))),
-        external: slice(allTopVehicles.filter(v => externalSet.has(String(v.vehicleId)))),
-      },
+//       topVehicles: {
+//         all:      slice(allTopVehicles),
+//         internal: slice(allTopVehicles.filter(v => internalSet.has(String(v.vehicleId)))),
+//         external: slice(allTopVehicles.filter(v => externalSet.has(String(v.vehicleId)))),
+//       },
 
-      waitingAnalysis: {
-        outsideWaiting: {
-          count:       outsideWaiting,
-          total:       totalOutside,
-          pct:         outsideWaitPct,
-          label:       "Outside Gate",
-          description: "Arrived but not checked-in > 4hrs",
-        },
+//       waitingAnalysis: {
+//         outsideWaiting: {
+//           count:       outsideWaiting,
+//           total:       totalOutside,
+//           pct:         outsideWaitPct,
+//           label:       "Outside Gate",
+//           description: "Arrived but not checked-in > 4hrs",
+//         },
 
-        insideWaiting: {
-          count:      insideWaiting,
-          total:      totalInside,
-          pct:        insideWaitPct,
-          label:      "Inside Plant",
-          description:"Checked-in but operations not performed by 4hrs",
-        },
+//         insideWaiting: {
+//           count:      insideWaiting,
+//           total:      totalInside,
+//           pct:        insideWaitPct,
+//           label:      "Inside Plant",
+//           description:"Checked-in but operations not performed by 4hrs",
+//         },
 
-        congestion: {
-          totalWaiting,
-          totalActiveTrips,
-          pct:  congestionRatioPct,
-          zone: congestionZone,
-        },
-      },
+//         congestion: {
+//           totalWaiting,
+//           totalActiveTrips,
+//           pct:  congestionRatioPct,
+//           zone: congestionZone,
+//         },
+//       },
 
-      driverAnalytics: {
-        drivers: driverStats,
-        totals: {
-          totalDrivers:    driverStats.length,
-          totalCompleted:  driverStats.reduce((s, d) => s + d.completed, 0),
-          totalCancelled:  driverStats.reduce((s, d) => s + d.cancelled, 0),
-          totalActive:     driverStats.reduce((s, d) => s + d.active,    0),
-        },
-      },
+//       driverAnalytics: {
+//         drivers: driverStats,
+//         totals: {
+//           totalDrivers:    driverStats.length,
+//           totalCompleted:  driverStats.reduce((s, d) => s + d.completed, 0),
+//           totalCancelled:  driverStats.reduce((s, d) => s + d.cancelled, 0),
+//           totalActive:     driverStats.reduce((s, d) => s + d.active,    0),
+//         },
+//       },
 
-      pgToPg: result,
+//       pgToPg: result,
 
-    });
-  } catch (err) {
-    console.error("Vehicle dashboard error:", err);
-    return res.status(500).json({ message: "Vehicle dashboard failed", error: err.message });
-  }
-};
+//     });
+//   } catch (err) {
+//     console.error("Vehicle dashboard error:", err);
+//     return res.status(500).json({ message: "Vehicle dashboard failed", error: err.message });
+//   }
+// };
 
 
 export const getVehiclePerformanceTable = async (req, res) => {
@@ -2314,10 +2326,661 @@ export const getTopVehicleId = async (req, res) => {
 
 
 
+// Get Vehicle Dashboard Metrics in chunked and let create a new endpoints for getVehicleDashboard 
+
+// controllers/vehicleDashboard/getVehicleSummary.js
+export const getVehicleSummary = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { vehicle, vid, since, now, factoryFilter } = ctx;
+
+    const [periodTrips, allClosedTrips, firstTrip] = await Promise.all([
+      Trip.find({ vehicleId: vid, createdAt: { $gte: since, $lte: now }, ...factoryFilter }).lean(),
+      Trip.countDocuments({ vehicleId: vid, tripState: "CLOSED", ...factoryFilter }),
+      Trip.findOne({ vehicleId: vid, ...factoryFilter }).sort({ createdAt: 1 }).lean(),
+    ]);
+
+    const closed = periodTrips.filter(t => t.tripState === "CLOSED");
+    const total = periodTrips.length;
+
+    const [totalTrips, totalClosedTrips, totalActiveTrips, totalCancelledTrips, totalInternalTrips, totalExternalTrips] = await Promise.all([
+      Trip.countDocuments({ createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+      Trip.countDocuments({ tripState: "CLOSED", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, ...factoryFilter }),
+      Trip.countDocuments({ tripState: "CANCELLED", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+      Trip.countDocuments({ type: "internal_transfer", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+      Trip.countDocuments({ type: "external_delivery", createdAt: { $gte: since, $lte: now }, ...factoryFilter }),
+    ]);
+
+    const daysSinceFirst = firstTrip ? Math.max(1, Math.ceil((now - new Date(firstTrip.createdAt)) / 86400000)) : 1;
+    const monthsActive = +(daysSinceFirst / 30).toFixed(1);
+    const years = Math.floor(monthsActive / 12);
+    const months = Math.round(monthsActive % 12);
+    const activeSince = years > 0
+      ? `${years} Year${years > 1 ? "s" : ""} & ${months} Month${months !== 1 ? "s" : ""}`
+      : `${months} Month${months !== 1 ? "s" : ""}`;
+
+    const closedPct = ((totalClosedTrips / totalTrips) * 100).toFixed(1);
+    const activePct = ((totalActiveTrips / totalTrips) * 100).toFixed(1);
+    const cancelledPct = ((totalCancelledTrips / totalTrips) * 100).toFixed(1);
+    const internalPct = totalTrips ? +((totalInternalTrips / totalTrips) * 100).toFixed(1) : 0;
+    const externalPct = totalTrips ? +((totalExternalTrips / totalTrips) * 100).toFixed(1) : 0;
+
+    const totalTripHours = +closed.reduce((sum, t) => sum + getTripHours(t), 0).toFixed(2);
+    const avgTripsPerDay = +(closed.length / ctx.days).toFixed(1);
+
+    return res.json({
+      vehicle: {
+        id: vehicle._id,
+        vehicleNumber: vehicle.vehicleNumber,
+        typeOfVehicle: vehicle.typeOfVehicle,
+        type: vehicle.type,
+        isActive: vehicle.isActive,
+        model: vehicle.model ?? vehicle.vehicleNumber,
+      },
+      weeklyStats: {
+        activeSince,
+        totalClosedTrips: allClosedTrips,
+        periodTrips: total,
+        periodClosed: closed.length,
+        avgTripsPerDay,
+        totalTripHours,
+      },
+      sameDayColouser: {
+        sohPct: closedPct,
+        total: totalTrips,
+        segments: [
+          { label: "Completed", value: totalClosedTrips, pct: closedPct, color: "#0d9488" },
+          { label: "Active", value: totalActiveTrips, pct: activePct, color: "#94a3b8" },
+          { label: "Cancelled", value: totalCancelledTrips, pct: cancelledPct, color: "#fca5a5" },
+        ],
+        totalIssues: totalCancelledTrips,
+      },
+      tripExecution: {
+        internalPct,
+        externalPct,
+        bars: [
+          { label: "Internal", value: internalPct, color: "#0d9488" },
+          { label: "External", value: externalPct, color: "#FF9D23" },
+        ],
+      },
+      // handy for other controllers on the frontend that need these raw counts
+      counts: { totalTrips, totalActiveTrips, totalInternalTrips, totalExternalTrips },
+    });
+  } catch (err) {
+    console.error("Vehicle summary error:", err);
+    return res.status(500).json({ message: "Vehicle summary failed", error: err.message });
+  }
+};
+
+export const getVehicleUsage = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { vid, since, now, factory, factoryFilter, days } = ctx;
+
+    const allClosedInPeriod = await Trip.find(
+      { tripState: { $in: ["CLOSED", "CANCELLED"] }, completedAt: { $gte: since, $lte: now }, ...factoryFilter },
+      { completedAt: 1 }
+    ).lean();
+
+    const dailyMap = {};
+    allClosedInPeriod.forEach(t => {
+      const key = getISTDateKey(t.completedAt);
+      dailyMap[key] = (dailyMap[key] || 0) + 1;
+    });
+
+    const dailyArr = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setDate(d.getDate() + i);
+      const key = getISTDateKey(d);
+      dailyArr.push({ date: key, count: dailyMap[key] || 0 });
+    }
+
+    const { granularity, data: bucketedDailyArr } = bucketDailySeries(dailyArr, days, "count");
+
+    const activeDays = Object.keys(dailyMap).length;
+    const idleDays = Math.max(0, days - activeDays);
+    const idleDayPct = +((idleDays / days) * 100).toFixed(1);
+
+    const closed = await Trip.find({ vid, ...factoryFilter, createdAt: { $gte: since, $lte: now }, tripState: "CLOSED" }).lean();
+    const totalTripHours = +closed.reduce((sum, t) => sum + getTripHours(t), 0).toFixed(2);
+    const avgTripsPerDay = +(closed.length / days).toFixed(1);
+
+    const factoryFlowStage = (matchExtra, groupOnActiveTrips = false) => [
+      { $match: { ...matchExtra, ...factoryFilter } },
+      ...(groupOnActiveTrips
+        ? [
+            { $lookup: { from: "factories", localField: "destinationFactoryId", foreignField: "_id", as: "f" } },
+            {
+              $addFields: {
+                groupKey: {
+                  $ifNull: ["$destinationFactoryId", { $concat: ["external:", { $ifNull: ["$externalDestination", "Unknown"] }] }],
+                },
+                resolvedName: {
+                  $ifNull: [{ $arrayElemAt: ["$f.name", 0] }, { $ifNull: ["$externalDestination", "Unknown"] }],
+                },
+              },
+            },
+            { $group: { _id: "$groupKey", factoryName: { $first: "$resolvedName" }, count: { $sum: 1 } } },
+          ]
+        : [
+            { $addFields: { reportingFactoryId: { $ifNull: ["$destinationFactoryId", "$sourceFactoryId"] } } },
+            { $lookup: { from: "factories", localField: "reportingFactoryId", foreignField: "_id", as: "f" } },
+            {
+              $group: {
+                _id: "$reportingFactoryId",
+                factoryName: { $first: { $ifNull: [{ $arrayElemAt: ["$f.name", 0] }, "Unknown"] } },
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+      { $sort: { count: -1 } },
+    ];
+
+    const [factoryClosedTrips, factoryCancelledTrips, factoryActiveTrips] = await Promise.all([
+      Trip.aggregate(factoryFlowStage({ tripState: "CLOSED", createdAt: { $gte: since, $lte: now } })),
+      Trip.aggregate(factoryFlowStage({ tripState: "CANCELLED", createdAt: { $gte: since, $lte: now } })),
+      Trip.aggregate(factoryFlowStage({ tripState: { $in: ["ACTIVE", "COMPLETED"] } }, true)),
+    ]);
+
+    return res.json({
+      vehicleUsage: {
+        totalHours: totalTripHours,
+        avgTripsPerDay,
+        dailyTrend: bucketedDailyArr,
+        factoryChart: {
+          closed: factoryClosedTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+          cancelled: factoryCancelledTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+          active: factoryActiveTrips.map(r => ({ factoryName: r.factoryName, count: r.count })),
+        },
+      },
+      idleAnalysis: {
+        idleDayPct,
+        activeDays,
+        idleDays,
+        dailyTrend: bucketedDailyArr,
+        bars: [
+          { label: "Active Days", value: activeDays, max: days, color: "#0d9488" },
+          { label: "Idle Days", value: idleDays, max: days, color: "#e2e8f0" },
+        ],
+      },
+    });
+  } catch (err) {
+    console.error("Vehicle usage error:", err);
+    return res.status(500).json({ message: "Vehicle usage failed", error: err.message });
+  }
+};
+
+
+export const getVehicleTripTypeSplit = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { vid, since, now, factoryFilter } = ctx;
+
+    const periodTrips = await Trip.find({ vehicleId: vid, createdAt: { $gte: since, $lte: now }, ...factoryFilter }).lean();
+    const closed = periodTrips.filter(t => t.tripState === "CLOSED");
+
+    const internalTrips = closed.filter(t => t.type === "internal_transfer").length;
+    const externalTrips = closed.filter(t => t.type === "external_delivery").length;
+    const otherTrips = closed.length - internalTrips - externalTrips;
+    const totalTrips = periodTrips.length;
+
+    return res.json({
+      tripTypeSplit: {
+        donuts: [
+          { label: "Internal", value: internalTrips, pct: totalTrips ? +((internalTrips / totalTrips) * 100).toFixed(1) : 0, color: "#0d9488" },
+          { label: "External", value: externalTrips, pct: totalTrips ? +((externalTrips / totalTrips) * 100).toFixed(1) : 0, color: "#FF9D23" },
+          { label: "Internal vs External", value: otherTrips, pct: totalTrips ? +((otherTrips / totalTrips) * 100).toFixed(1) : 0, color: "#cbd5e1" },
+        ],
+      },
+    });
+  } catch (err) {
+    console.error("Trip type split error:", err);
+    return res.status(500).json({ message: "Trip type split failed", error: err.message });
+  }
+};
+
+
+export const getVehicleWaitingAnalysis = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { factory } = ctx;
+    if (!factory) return res.status(400).json({ message: "factory is required for waiting analysis" });
+
+    const WAIT_THRESHOLD_MS = 4 * 60 * 60 * 1000;
+    const waitCutoff = new Date(Date.now() - WAIT_THRESHOLD_MS);
+    const fid = new mongoose.Types.ObjectId(factory);
+
+    const outsideFactoryFilter = { destinationFactoryId: fid, phase: "DESTINATION" };
+    const insideFactoryFilter = {
+      $or: [
+        { phase: "ORIGIN", sourceFactoryId: fid },
+        { phase: "DESTINATION", destinationFactoryId: fid },
+      ],
+    };
+
+    const [outsideWaiting, insideWaiting, totalOutside, totalInside, totalActiveTrips] = await Promise.all([
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "outside_factory", arrivedAt: { $lte: waitCutoff }, checkedInAt: null, ...outsideFactoryFilter }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "inside_factory", checkedInAt: { $lte: waitCutoff }, loadStatus: "pending", completedAt: null, ...insideFactoryFilter }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "outside_factory", ...outsideFactoryFilter }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, location: "inside_factory", ...insideFactoryFilter }),
+      Trip.countDocuments({ tripState: { $in: ["ACTIVE", "COMPLETED"] }, ...buildFactoryFilter(factory) }),
+    ]);
+
+    const outsideWaitPct = totalOutside ? +((outsideWaiting / totalOutside) * 100).toFixed(1) : 0;
+    const insideWaitPct = totalInside ? +((insideWaiting / totalInside) * 100).toFixed(1) : 0;
+    const totalWaiting = outsideWaiting + insideWaiting;
+    const congestionRatioPct = totalActiveTrips ? +((totalWaiting / totalActiveTrips) * 100).toFixed(1) : 0;
+    const congestionZone = congestionRatioPct < 10 ? "green" : congestionRatioPct <= 20 ? "yellow" : "red";
+
+    return res.json({
+      waitingAnalysis: {
+        outsideWaiting: { count: outsideWaiting, total: totalOutside, pct: outsideWaitPct, label: "Outside Gate", description: "Arrived but not checked-in > 4hrs" },
+        insideWaiting: { count: insideWaiting, total: totalInside, pct: insideWaitPct, label: "Inside Plant", description: "Checked-in but operations not performed by 4hrs" },
+        congestion: { totalWaiting, totalActiveTrips, pct: congestionRatioPct, zone: congestionZone },
+      },
+    });
+  } catch (err) {
+    console.error("Waiting analysis error:", err);
+    return res.status(500).json({ message: "Waiting analysis failed", error: err.message });
+  }
+};
+
+
+export const getVehicleDriverAnalytics = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { since, now, factoryFilter } = ctx;
+
+    const driverStats = await TripSegment.aggregate([
+      { $match: { driverId: { $ne: null }, createdAt: { $gte: since, $lte: now }, ...factoryFilter } },
+      { $group: { _id: { driverId: "$driverId", tripId: "$tripId" } } },
+      { $lookup: { from: "trips", localField: "_id.tripId", foreignField: "_id", as: "trip" } },
+      { $unwind: { path: "$trip", preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: "$_id.driverId",
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ["$trip.tripState", "CLOSED"] }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ["$trip.tripState", "CANCELLED"] }, 1, 0] } },
+          active: { $sum: { $cond: [{ $in: ["$trip.tripState", ["ACTIVE", "COMPLETED"]] }, 1, 0] } },
+        },
+      },
+      { $lookup: { from: "drivers", localField: "_id", foreignField: "_id", as: "d" } },
+      {
+        $project: {
+          _id: 0,
+          driverId: "$_id",
+          driverName: { $ifNull: [{ $arrayElemAt: ["$d.driverName", 0] }, "Unknown Driver"] },
+          driverContact: { $ifNull: [{ $arrayElemAt: ["$d.driverContact", 0] }, "N/A"] },
+          total: 1, completed: 1, cancelled: 1, active: 1,
+          completionRate: {
+            $cond: [{ $gt: ["$total", 0] }, { $round: [{ $multiply: [{ $divide: ["$completed", "$total"] }, 100] }, 1] }, 0],
+          },
+        },
+      },
+      { $sort: { completed: -1 } },
+      { $limit: 20 },
+    ]);
+
+    return res.json({
+      driverAnalytics: {
+        drivers: driverStats,
+        totals: {
+          totalDrivers: driverStats.length,
+          totalCompleted: driverStats.reduce((s, d) => s + d.completed, 0),
+          totalCancelled: driverStats.reduce((s, d) => s + d.cancelled, 0),
+          totalActive: driverStats.reduce((s, d) => s + d.active, 0),
+        },
+      },
+    });
+  } catch (err) {
+    console.error("Driver analytics error:", err);
+    return res.status(500).json({ message: "Driver analytics failed", error: err.message });
+  }
+};
+
+
+export const getVehiclePgToPg = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { since, now, factory } = ctx;
+
+    const breakdown = await TripSegment.aggregate([
+      // Only filter on fields TripSegment definitely owns at this stage.
+      { $match: { createdAt: { $gte: since, $lte: now }, status: {$in: ["CLOSED", "CANCELLED"]} } },
+      { $lookup: { from: "trips", localField: "tripId", foreignField: "_id", as: "trip" } },
+      { $unwind: "$trip" },
+      {
+        $match: {
+          "trip.purpose": { $in: ["Delivery", "Pickup"] },
+          ...(factory
+            ? {
+                $or: [
+                  { "trip.destinationFactoryId": new mongoose.Types.ObjectId(factory) },
+                  { "trip.sourceFactoryId": new mongoose.Types.ObjectId(factory) },
+                ],
+              }
+            : {}),
+        },
+      },
+      {
+        $addFields: {
+          purposeKey: { $toLower: "$trip.purpose" },
+          kind: {
+            $cond: {
+              if: {
+                $and: [
+                  { $ifNull: ["$trip.destinationFactoryId", false] },
+                  { $ifNull: ["$trip.sourceFactoryId", false] },
+                ],
+              },
+              then: "p2p",
+              else: "other",
+            },
+          },
+        },
+      },
+      { $group: { _id: { tripId: "$tripId", segmentNumber: "$segmentNumber", purposeKey: "$purposeKey", kind: "$kind" } } },
+      { $group: { _id: { purposeKey: "$_id.purposeKey", kind: "$_id.kind" }, count: { $sum: 1 } } },
+    ]);
+
+    const result = {
+      delivery: { p2p: { count: 0 }, customerDelivery: { count: 0 } },
+      pickup: { p2p: { count: 0 }, external: { count: 0 } },
+    };
+
+    for (const row of breakdown) {
+      const { purposeKey, kind } = row._id;
+      if (purposeKey === "delivery") {
+        if (kind === "p2p") result.delivery.p2p.count = row.count;
+        else result.delivery.customerDelivery.count = row.count;
+      }
+      if (purposeKey === "pickup") {
+        if (kind === "p2p") result.pickup.p2p.count = row.count;
+        else result.pickup.external.count = row.count;
+      }
+    }
+
+    return res.json({ pgToPg: result });
+  } catch (err) {
+    console.error("PG-to-PG breakdown error:", err);
+    return res.status(500).json({ message: "PG-to-PG breakdown failed", error: err.message });
+  }
+};
+
+
+export const getTopVehiclesAndTransporters = async (req, res) => {
+  try {
+    const ctx = await loadVehicleContext(req, res, Vehicle);
+    if (!ctx) return;
+    const { since, now, factory, factoryFilter, vehicleType, days } = ctx;
+
+    const allDates = buildAllDates(since, days);
+    const regex = new RegExp(vehicleType === "all" ? "^(internal|external)$" : vehicleType, "i");
+
+    // Expand date range to full months so partial selections still capture the whole month
+    const monthSince = new Date(since.getFullYear(), since.getMonth(), 1);
+    const monthNow = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const baseMatch = {
+      createdAt: { $gte: since, $lte: now },
+      vehicleId: { $ne: null },
+      ...factoryFilter,
+    };
+
+    const [internalIds, externalIds] = await Promise.all([
+      Vehicle.find({ type: "internal" }, { _id: 1 }).lean().then(r => r.map(v => v._id)),
+      Vehicle.find({ type: "external" }, { _id: 1 }).lean().then(r => r.map(v => v._id)),
+    ]);
+    const internalSet = new Set(internalIds.map(String));
+    const externalSet = new Set(externalIds.map(String));
+
+    // ── allTopVehicles: dedup by (vehicleId, tripId) then rank by trip count ──
+    const allTopVehicles = await TripSegment.aggregate([
+      { $match: baseMatch },
+      { $group: { _id: { vehicleId: "$vehicleId", tripId: "$tripId" } } },
+      { $group: { _id: "$_id.vehicleId", tripCount: { $sum: 1 } } },
+      { $sort: { tripCount: -1 } },
+      { $limit: 30 }, // fetch more than 10 so each filtered slice still has up to 10
+      { $lookup: { from: "vehicles", localField: "_id", foreignField: "_id", as: "v" } },
+      {
+        $project: {
+          _id: 0,
+          vehicleId: "$_id",
+          vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
+          vehicleType: { $ifNull: [{ $arrayElemAt: ["$v.type", 0] }, "unknown"] },
+          tripCount: 1,
+        },
+      },
+    ]);
+
+    const slice = (list) => {
+      const maxTrips = list[0]?.tripCount ?? 1;
+      return {
+        vehicles: list.slice(0, 10).map(v => ({ ...v, pct: +((v.tripCount / maxTrips) * 100).toFixed(1) })),
+        maxTrips,
+      };
+    };
+
+    const [top5Vehicles, top5Transporters, dailyTripsTrend, top25Vehicles, monthlyTrends] = await Promise.all([
+      // Top 5 vehicles by trip count in the period
+      Trip.aggregate([
+        { $match: { createdAt: { $gte: since, $lte: now }, vehicleId: { $ne: null }, ...factoryFilter } },
+        { $group: { _id: "$vehicleId", tripCount: { $sum: 1 } } },
+        { $sort: { tripCount: -1 } },
+        { $limit: 5 },
+        { $lookup: { from: "vehicles", localField: "_id", foreignField: "_id", as: "v" } },
+        {
+          $project: {
+            _id: 0,
+            vehicleId: "$_id",
+            tripCount: 1,
+            vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$v.vehicleNumber", 0] }, "Unknown"] },
+            type: { $ifNull: [{ $arrayElemAt: ["$v.type", 0] }, "unknown"] },
+          },
+        },
+      ]),
+
+      // Top 5 transporters by trip count in period
+      Vehicle.aggregate([
+        { $match: { type: "external", transporterName: { $nin: [null, "", " "] } } },
+        { $lookup: { from: "trips", localField: "_id", foreignField: "vehicleId", as: "trips" } },
+        {
+          $addFields: {
+            tripCount: {
+              $size: {
+                $filter: {
+                  input: "$trips",
+                  as: "trip",
+                  cond: {
+                    $and: [
+                      { $gte: ["$$trip.createdAt", since] },
+                      { $lte: ["$$trip.createdAt", now] },
+                      ...(factory
+                        ? [{
+                            $or: [
+                              { $eq: ["$$trip.destinationFactoryId", new mongoose.Types.ObjectId(factory)] },
+                              { $eq: ["$$trip.sourceFactoryId", new mongoose.Types.ObjectId(factory)] },
+                            ],
+                          }]
+                        : []),
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+        { $group: { _id: "$transporterName", tripCount: { $sum: "$tripCount" }, vehicleCount: { $sum: 1 } } },
+        { $sort: { tripCount: -1 } },
+        { $limit: 5 },
+        { $project: { _id: 0, transporterName: "$_id", tripCount: 1, vehicleCount: 1 } },
+      ]),
+
+      // Daily trips trend
+      Trip.aggregate([
+        { $match: { createdAt: { $gte: since, $lte: now }, vehicleId: { $ne: null }, ...factoryFilter } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Asia/Kolkata" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+
+      // Top 25 vehicles with per-day trip counts
+      TripSegment.aggregate([
+        { $match: { createdAt: { $gte: since, $lte: now }, vehicleId: { $ne: null }, ...factoryFilter } },
+        // Dedup by (vehicleId, tripId, date) first — same as allTopVehicles logic
+        {
+          $group: {
+            _id: {
+              vehicleId: "$vehicleId",
+              tripId: "$tripId",
+              date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Asia/Kolkata" } },
+            },
+          },
+        },
+        // Count unique trips per (vehicle, date)
+        { $group: { _id: { vehicleId: "$_id.vehicleId", date: "$_id.date" }, tripCount: { $sum: 1 } } },
+        { $sort: { "_id.vehicleId": 1, "_id.date": 1 } },
+        // Roll up to vehicle level
+        {
+          $group: {
+            _id: "$_id.vehicleId",
+            totalTrips: { $sum: "$tripCount" },
+            dailyTrips: { $push: { date: "$_id.date", tripCount: "$tripCount" } },
+          },
+        },
+        { $lookup: { from: "vehicles", localField: "_id", foreignField: "_id", as: "vehicle" } },
+        {
+          $project: {
+            _id: 0,
+            vehicleId: "$_id",
+            vehicleNumber: { $ifNull: [{ $arrayElemAt: ["$vehicle.vehicleNumber", 0] }, "Unknown"] },
+            type: { $ifNull: [{ $arrayElemAt: ["$vehicle.type", 0] }, "unknown"] },
+            totalTrips: 1,
+            dailyTrips: 1,
+          },
+        },
+        { $match: { type: regex } },
+        { $sort: { totalTrips: -1 } },
+        { $limit: 25 },
+      ]),
+
+      // Monthly trips trend (spans full months even for partial-month selections)
+      Trip.aggregate([
+        { $match: { createdAt: { $gte: monthSince, $lte: monthNow }, vehicleId: { $ne: null }, ...factoryFilter } },
+        {
+          $group: {
+            _id: {
+              year: { $year: { date: "$createdAt", timezone: "Asia/Kolkata" } },
+              month: { $month: { date: "$createdAt", timezone: "Asia/Kolkata" } },
+            },
+            closed: { $sum: { $cond: [{ $eq: ["$tripState", "CLOSED"] }, 1, 0] } },
+            cancelled: { $sum: { $cond: [{ $eq: ["$tripState", "CANCELLED"] }, 1, 0] } },
+            active: { $sum: { $cond: [{ $in: ["$tripState", ["ACTIVE", "COMPLETED"]] }, 1, 0] } },
+            total: { $sum: 1 },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+        {
+          $project: {
+            _id: 0,
+            label: {
+              $let: {
+                vars: { months: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"] },
+                in: { $concat: [{ $arrayElemAt: ["$$months", { $subtract: ["$_id.month", 1] }] }, " ", { $toString: "$_id.year" }] },
+              },
+            },
+            closed: 1, cancelled: 1, active: 1, total: 1,
+          },
+        },
+      ]),
+    ]);
+
+    // ── Reshape daily trips trend, filling missing days with 0 ──────────────
+    const tripsTrendMap = {};
+    dailyTripsTrend.forEach(r => { tripsTrendMap[r._id] = r.count; });
+    const dailyTripsTrendFilled = allDates.map(date => ({ date, count: tripsTrendMap[date] || 0 }));
+    const { data: bucketedTripsTrend } = bucketDailySeries(dailyTripsTrendFilled, days, "count");
+
+    // ── Fill missing days per vehicle in top25 ───────────────────────────────
+    const top25WithFullDates = top25Vehicles.map(vehicle => {
+      const dayMap = {};
+      vehicle.dailyTrips.forEach(d => { dayMap[d.date] = d.tripCount; });
+      return {
+        ...vehicle,
+        dailyTrips: allDates.map(date => ({ date, tripCount: dayMap[date] ?? 0 })),
+      };
+    });
+
+    const top5AvgPerDay = top25WithFullDates
+      .slice(0, 5)
+      .map(v => ({
+        vehicleNumber: v.vehicleNumber,
+        type: v.type,
+        totalTrips: v.totalTrips,
+        activeDays: v.dailyTrips.filter(d => d.tripCount > 0).length,
+        avgTripsPerDay: +(v.totalTrips / Math.max(1, v.dailyTrips.filter(d => d.tripCount > 0).length)).toFixed(1),
+      }))
+      .sort((a, b) => b.avgTripsPerDay - a.avgTripsPerDay);
+
+    const top25Bucketed = top25WithFullDates.map(v => {
+      const { data } = bucketDailySeries(v.dailyTrips, days, "tripCount");
+      return { ...v, dailyTrips: data };
+    });
+
+    // ── busiestDays: needs its own dailyArr (closed trips per day) ───────────
+    // Independent from getVehicleUsage's dailyArr — recomputed here since this
+    // controller no longer shares state with that one.
+    const allClosedInPeriod = await Trip.find(
+      { tripState: { $in: ["CLOSED", "CANCELLED"] }, completedAt: { $gte: since, $lte: now }, ...factoryFilter },
+      { completedAt: 1 }
+    ).lean();
+
+    const dailyMap = {};
+    allClosedInPeriod.forEach(t => {
+      const key = getISTDateKey(t.completedAt);
+      dailyMap[key] = (dailyMap[key] || 0) + 1;
+    });
+
+    const dailyArr = allDates.map(date => ({ date, count: dailyMap[date] || 0 }));
+    const busiestDays = [...dailyArr].sort((a, b) => b.count - a.count).slice(0, 15);
+
+    return res.json({
+      topVehiclesAndTransporters: {
+        top5Vehicles,
+        top5Transporters,
+        dailyTripsTrend: bucketedTripsTrend,
+        top25Vehicles: top25Bucketed,
+        monthlyTrends,
+        busiestDays,
+        top5AvgPerDay,
+      },
+      topVehicles: {
+        all: slice(allTopVehicles),
+        internal: slice(allTopVehicles.filter(v => internalSet.has(String(v.vehicleId)))),
+        external: slice(allTopVehicles.filter(v => externalSet.has(String(v.vehicleId)))),
+      },
+    });
+  } catch (err) {
+    console.error("Top vehicles/transporters error:", err);
+    return res.status(500).json({ message: "Top vehicles/transporters failed", error: err.message });
+  }
+};
+
+
+
+
 /* ------------------------------------------------------------------------ */
 /*  Config — matches TripSchema enums exactly.                              */
 /* ------------------------------------------------------------------------ */
-const ACTIVE_TRIP_STATE = "ACTIVE";
+const ACTIVE_TRIP_STATES = ["ACTIVE", "COMPLETED"]; // was: const ACTIVE_TRIP_STATE = "ACTIVE"
 const INSIDE_LOCATION = "inside_factory";
 
 const FG_MATERIAL = "FG"; 
@@ -2344,7 +3007,7 @@ const FACTORY_COLOR_PALETTE = [
 
 
 const WAITING_MATCH = {
-  tripState: ACTIVE_TRIP_STATE,
+  tripState: { $in: ACTIVE_TRIP_STATES },
   waitingSince: { $ne: null },
   $or: [
     // waiting outside the destination gate, arrived but not checked in
@@ -2360,30 +3023,14 @@ function isStillWaiting(trip) {
   return outsideWaiting || insideWaiting;
 }
 
-// Same routing rule as the cron: which factory does this trip's delay "belong" to.
-function getAlertFactoryId(trip) {
-  if (trip.checkedInAt) {
-    return (
-      trip.destinationFactoryId?._id?.toString?.() ||
-      trip.destinationFactoryId?.toString?.() ||
-      trip.currentFactoryId?._id?.toString?.() ||
-      trip.currentFactoryId?.toString?.() ||
-      null
-    );
-  }
-
-  if (trip.arrivedAt && !trip.checkedInAt && trip.phase === "DESTINATION" && trip.location === "outside_factory") {
+function getWaitingFactoryId(trip) {
+  if (trip.location === "outside_factory" && !trip.checkedInAt) {
     return trip.destinationFactoryId?._id?.toString?.() || trip.destinationFactoryId?.toString?.() || null;
   }
 
-  if (
-    trip.phase === "ORIGIN" &&
-    trip.location === "inside_factory" &&
-    trip.status !== "ROUTE_CHANGED" &&
-    !trip.arrivedAt &&
-    !trip.checkedInAt
-  ) {
-    return trip.sourceFactoryId?._id?.toString?.() || trip.sourceFactoryId?.toString?.() || null;
+  // Checked in, load/unload pending: attribute to wherever it's currently sitting.
+  if (trip.location === "inside_factory" && trip.checkedInAt) {
+    return trip.currentFactoryId?._id?.toString?.() || trip.currentFactoryId?.toString?.() || null;
   }
 
   return null;
@@ -2398,34 +3045,34 @@ const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const buildLocationMetricFilters = () => ({
   insideNow: {
-    tripState: ACTIVE_TRIP_STATE,
+    tripState: { $in: ACTIVE_TRIP_STATES },
     location: INSIDE_LOCATION,
   },
+
   fgVehicles: {
-    tripState: ACTIVE_TRIP_STATE,
+    tripState: { $in: ACTIVE_TRIP_STATES },
     location: INSIDE_LOCATION,
     "materials.name": FG_MATERIAL,
   },
   rmVehicles: {
-    tripState: ACTIVE_TRIP_STATE,
+    tripState: { $in: ACTIVE_TRIP_STATES },
     location: INSIDE_LOCATION,
     "materials.name": RM_MATERIAL,
   },
   internalShifts: {
-    tripState: ACTIVE_TRIP_STATE,
+    tripState: { $in: ACTIVE_TRIP_STATES },
     type: INTERNAL_TRIP_TYPE,
   },
   thisMonth: {
     createdAt: { $gte: startOfMonth() },
   },
   ready: {
-    tripState: ACTIVE_TRIP_STATE,
+    tripState: { $in: ACTIVE_TRIP_STATES },
     loadStatus: READY_LOAD_STATUS,
   },
 });
 
-const WAITING_FIELDS =
-  "tripState waitingSince location status checkedInAt loadStatus phase arrivedAt sourceFactoryId destinationFactoryId currentFactoryId";
+const WAITING_FIELDS = "tripState waitingSince location status checkedInAt loadStatus phase arrivedAt sourceFactoryId destinationFactoryId currentFactoryId";
 
 /**
  * Fetches every currently-waiting trip once, resolves each to its alert
@@ -2442,7 +3089,7 @@ async function computeWaitingMetricsByFactory() {
   for (const trip of waitingTrips) {
     if (!isStillWaiting(trip)) continue;
 
-    const factoryId = getAlertFactoryId(trip);
+    const factoryId = getWaitingFactoryId(trip);
     if (!factoryId) continue;
 
     const waitedMs = now - new Date(trip.waitingSince).getTime();
@@ -2465,15 +3112,47 @@ async function getFactoryDirectory(locationName) {
   const docs = await Factory.find(query).select("name location").lean();
 
   if (docs.length) {
-    return docs.map((d) => ({ _id: d._id, name: d.name }));
+    return docs.map((d) => ({ _id: d._id, name: d.name, location: d.location || null }));
   }
 
   if (!locationName) {
     const ids = await Vehicle.distinct("currentFactoryId", { currentFactoryId: { $ne: null } });
-    return ids.map((id) => ({ _id: id, name: id.toString().slice(-6).toUpperCase() }));
+    return ids.map((id) => ({ _id: id, name: id.toString().slice(-6).toUpperCase(), location: null }));
   }
 
   return [];
+}
+
+/**
+ * "Active Trips" for a factory = any trip currently touching it as either
+ * endpoint (source or destination), regardless of currentFactoryId/location —
+ * matches the gate dashboard's "all" scope. A trip whose source and
+ * destination are different factories counts once toward each.
+ */
+async function computeActiveTripsByFactory() {
+  return Trip.aggregate([
+    {
+      $match: {
+        tripState: { $in: ACTIVE_TRIP_STATES },
+        $or: [
+          { sourceFactoryId: { $ne: null } },
+          { destinationFactoryId: { $ne: null } },
+        ],
+      },
+    },
+    {
+      $project: {
+        factoryIds: {
+          $setUnion: [
+            { $cond: [{ $ne: ["$sourceFactoryId", null] }, ["$sourceFactoryId"], []] },
+            { $cond: [{ $ne: ["$destinationFactoryId", null] }, ["$destinationFactoryId"], []] },
+          ],
+        },
+      },
+    },
+    { $unwind: "$factoryIds" },
+    { $group: { _id: "$factoryIds", count: { $sum: 1 } } },
+  ]);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -2487,18 +3166,19 @@ export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
   const locationFilters = buildLocationMetricFilters();
   const metricKeys = Object.keys(locationFilters);
 
-  const [locationResults, waitingMetrics, factories] = await Promise.all([
-    Promise.all(
-      metricKeys.map((key) =>
-        Trip.aggregate([
-          { $match: locationFilters[key] },
-          { $group: { _id: "$currentFactoryId", count: { $sum: 1 } } },
-        ])
-      )
-    ),
-    computeWaitingMetricsByFactory(),
-    getFactoryDirectory(location),
-  ]);
+  const [locationResults, waitingMetrics, activeTripsResults, factories] = await Promise.all([
+  Promise.all(
+    metricKeys.map((key) =>
+      Trip.aggregate([
+        { $match: locationFilters[key] },
+        { $group: { _id: "$currentFactoryId", count: { $sum: 1 } } },
+      ])
+    )
+  ),
+  computeWaitingMetricsByFactory(),
+  computeActiveTripsByFactory(),
+  getFactoryDirectory(location),
+]);
 
   // factoryId(string) -> { metricKey: count }
   const factoryMetrics = {};
@@ -2514,14 +3194,23 @@ export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
     factoryMetrics[fid] = { ...factoryMetrics[fid], ...metrics };
   });
 
+  activeTripsResults.forEach(({ _id, count }) => {
+    if (!_id) return;
+    const fid = _id.toString();
+    factoryMetrics[fid] = factoryMetrics[fid] || {};
+    factoryMetrics[fid].activeTrips = count;
+  })
+
   const rows = factories.map((f, idx) => {
     const fid = f._id.toString();
     const m = factoryMetrics[fid] || {};
     return {
       key: fid,
       factory: f.name,
+      location: f.location || "N/A",
       color: FACTORY_COLOR_PALETTE[idx % FACTORY_COLOR_PALETTE.length],
       insideNow: m.insideNow || 0,
+      activeTrips: m.activeTrips || 0,
       fgVehicles: m.fgVehicles || 0,
       rmVehicles: m.rmVehicles || 0,
       internalShifts: m.internalShifts || 0,
@@ -2548,6 +3237,9 @@ const WAITING_METRIC_THRESHOLDS_MS = {
 
 export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
   const { factoryId, metricKey } = req.params;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20)); // cap at 100, default 20
+  const skip = (page - 1) * limit;
 
   if (!mongoose.Types.ObjectId.isValid(factoryId)) {
     return next(new AppError("Invalid factoryId", 400));
@@ -2555,21 +3247,28 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
 
   const locationFilters = buildLocationMetricFilters();
   const isWaitingMetric = Object.prototype.hasOwnProperty.call(WAITING_METRIC_THRESHOLDS_MS, metricKey);
+  const isActiveTripsMetric = metricKey === "activeTrips";
 
-  if (!isWaitingMetric && !locationFilters[metricKey]) {
+  if (!isWaitingMetric && !isActiveTripsMetric && !locationFilters[metricKey]) {
     return next(
       new AppError(
-        `Unknown metric '${metricKey}'. Expected one of: ${[...Object.keys(locationFilters), ...Object.keys(WAITING_METRIC_THRESHOLDS_MS)].join(", ")}`,
+        `Unknown metric '${metricKey}'. Expected one of: ${[
+          ...Object.keys(locationFilters),
+          "activeTrips",
+          ...Object.keys(WAITING_METRIC_THRESHOLDS_MS),
+        ].join(", ")}`,
         400
       )
     );
   }
 
   let trips;
+  let total;
 
   if (isWaitingMetric) {
-    // Delay/Overstay: factory routing depends on getAlertFactoryId, not currentFactoryId,
-    // so fetch all waiting trips and filter in JS the same way the summary endpoint does.
+    // Waiting metrics: factory routing depends on getWaitingFactoryId, resolved
+    // in JS — so filter/sort the full matching set first, then slice the page
+    // out of memory. Still bounded by WAITING_MATCH, not the whole Trip collection.
     const thresholdMs = WAITING_METRIC_THRESHOLDS_MS[metricKey];
     const now = Date.now();
 
@@ -2580,30 +3279,74 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
       .populate({ path: "destinationFactoryId", select: "name location" })
       .lean();
 
-    trips = waitingTrips.filter((t) => {
+    const filtered = waitingTrips.filter((t) => {
       if (!isStillWaiting(t)) return false;
-      if (getAlertFactoryId(t) !== factoryId) return false;
+      if (getWaitingFactoryId(t) !== factoryId) return false;
       const waitedMs = now - new Date(t.waitingSince).getTime();
       return waitedMs >= thresholdMs;
     });
+
+    filtered.sort((a, b) => new Date(a.waitingSince || a.createdAt) - new Date(b.waitingSince || b.createdAt));
+
+    total = filtered.length;
+    trips = filtered.slice(skip, skip + limit);
+
+  } else if (isActiveTripsMetric) {
+    const fid = new mongoose.Types.ObjectId(factoryId);
+    const baseMatch = {
+      tripState: { $in: ACTIVE_TRIP_STATES },
+      $or: [{ sourceFactoryId: fid }, { destinationFactoryId: fid }],
+    };
+
+    [total, trips] = await Promise.all([
+      Trip.countDocuments(baseMatch),
+      Trip.find(baseMatch)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
+        .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+        .populate({ path: "sourceFactoryId", select: "name location" })
+        .populate({ path: "destinationFactoryId", select: "name location" })
+        .populate({ path: "currentFactoryId", select: "name location" })
+        .lean(),
+    ]);
+
   } else {
-    trips = await Trip.find({
+    const baseMatch = {
       currentFactoryId: new mongoose.Types.ObjectId(factoryId),
       ...locationFilters[metricKey],
-    })
-      .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
-      .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
-      .populate({ path: "sourceFactoryId", select: "name location" })
-      .populate({ path: "destinationFactoryId", select: "name location" })
-      .populate({ path: "currentFactoryId", select: "name location" })
-      .lean();
+    };
+
+    [total, trips] = await Promise.all([
+      Trip.countDocuments(baseMatch),
+      Trip.find(baseMatch)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
+        .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+        .populate({ path: "sourceFactoryId", select: "name location" })
+        .populate({ path: "destinationFactoryId", select: "name location" })
+        .populate({ path: "currentFactoryId", select: "name location" })
+        .lean(),
+    ]);
   }
 
-  trips.sort((a, b) => new Date(a.waitingSince || a.createdAt) - new Date(b.waitingSince || b.createdAt));
+  // Only the DB-paginated branches need a final in-memory sort for display
+  // consistency; the waiting branch is already sorted above pre-slice.
+  if (!isWaitingMetric) {
+    trips.sort((a, b) => new Date(a.waitingSince || a.createdAt) - new Date(b.waitingSince || b.createdAt));
+  }
+
+  const sortedHistory = (t) =>
+    Array.isArray(t.tripHistory) ? [...t.tripHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)) : [];
 
   const vehicles = trips.map((t) => {
     const waitingMs = t.waitingSince ? Date.now() - new Date(t.waitingSince).getTime() : null;
     const durationMinutes = waitingMs !== null ? Math.round(waitingMs / 60000) : null;
+    const history = sortedHistory(t);
+    const lastEvent = history[history.length - 1] || null;
 
     return {
       tripId: t._id,
@@ -2618,7 +3361,10 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
       duration: durationMinutes !== null ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : null,
       purpose: t.purpose,
       status: metricKey,
-      tripDetails:{
+      lastAction: lastEvent
+        ? { action: lastEvent.action, timestamp: lastEvent.timestamp, actionLocation: lastEvent.actionLocation || null, actionBy: lastEvent.actionBy || null }
+        : null,
+      tripDetails: {
         purpose: t.purpose,
         tripType: t.type,
         sourceFactory: { name: t.sourceFactoryId?.name || t.externalSource || null, location: t.sourceFactoryId?.location || null },
@@ -2626,15 +3372,22 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
         currentFactory: { name: t.currentFactoryId?.name || null, location: t.currentFactoryId?.location || null },
         tripState: t.tripState,
         loadStatus: t.loadStatus,
-      }
+      },
     };
   });
+
+  const hasMore = skip + vehicles.length < total;
 
   return res.status(200).json({
     success: true,
     factoryId,
     metricKey,
+    page,
+    limit,
+    total,
     count: vehicles.length,
+    hasMore,
+    nextPage: hasMore ? page + 1 : null,
     data: vehicles,
   });
 });

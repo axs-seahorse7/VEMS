@@ -41,20 +41,7 @@ function FlowChart({ title, modes = [], defaultMode, onModeChange, dropDown }) {
     setMode(defaultMode ?? modes[0]?.value ?? "");
   }, [defaultMode]);  
 
-  if(modes.length > 0 && chartData.length === 0) {
-    return (
-      <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <CardLabel>{title}</CardLabel>
-          </div>
-        </div>
-        <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: C.muted }}>
-          No data for this period
-        </div>
-      </Card>
-    );
-  }
+ 
 
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -113,8 +100,16 @@ function FlowChart({ title, modes = [], defaultMode, onModeChange, dropDown }) {
         </span>
       </div>
 
-      {/* Bar chart */}
-      <FactoryBarChart data={chartData} color={chartColor} />
+      {modes.length > 0 && chartData.length === 0? ( 
+          <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: C.muted }}>
+              No data for this period
+            </div>
+          </Card>
+        ) :(
+          <FactoryBarChart data={chartData} color={chartColor} />
+        )
+      }
 
       {/* Footer */}
       <div style={{ fontSize: 11, color: C.muted, marginTop: -16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
