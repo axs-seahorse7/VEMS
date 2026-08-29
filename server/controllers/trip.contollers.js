@@ -177,7 +177,7 @@ const assignDriverToTrip = async ({
   );
 
 };
- 
+
 // ======================== REGISTER EXTERNAL VEHICLE ========================
 export const externalVehicleRegister = asyncHandler( async (req, res) => {
   const session = await mongoose.startSession();
@@ -838,7 +838,7 @@ export const checkinVehicle = asyncHandler( async (req, res) => {
       if (trip.location === "inside_factory") {
         throw new AppError("Vehicle already checked in", 400);
       }
-      
+
       // ========================
       // UPDATE TRIP
       // ========================
@@ -970,6 +970,10 @@ export const unloadTrip = async (req, res) => {
       if (trip.loadStatus === "unloaded") {
         throw new AppError("Trip already unloaded", 400);
       }
+
+      // const workflow = computeWorkflow(trip, [user.factory], user, getTripPhase(trip));
+      // checkAuthorizedAction(user, workflow);
+      
 
       // ========================
       // UPDATE TRIP
@@ -1129,7 +1133,7 @@ export const completeTrip = asyncHandler( async (req, res) => {
   }
 });
 
-// ======================== CLOSE THE TRIP AND RELEASE DRIVER & VEHICLE ========================
+// ======================== CHECKOUT AND DISPATCH THE VEHICLE FOR DESTINATION FACTORY ========================
 export const checkoutVehicle = asyncHandler( async (req, res) => {
   try {
     const { tripId } = req.params;
@@ -1155,8 +1159,7 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
     // ========================
     // UPDATE TRIP
     // ========================
-    const updatedTrip =
-      await Trip.findByIdAndUpdate(
+    const updatedTrip = await Trip.findByIdAndUpdate(
         tripId,
         {
           location: "enroute",
@@ -1172,7 +1175,7 @@ export const checkoutVehicle = asyncHandler( async (req, res) => {
                   blockId: user?.blockId || null
                 },
               actionLocation: user?.workLocation,
-              factoryId:trip.sourceFactoryId || null,
+              factoryId:user?.factory?._id || null,
               action: "checkout",
               timestamp: new Date(),
               waitingSince: null,
@@ -3273,6 +3276,8 @@ export const getLiveVehicleTrips = async (req, res) => {
   }
 };
 
+
+// Get vehicle counts for dashboard cards (all, inside, outside, enroute, dispatched, closed, pickup, delivery, FG, RM)
 export const getVehiclesLength = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
@@ -3337,6 +3342,11 @@ export const getVehiclesLength = async (req, res) => {
       // All — factory-wide for non-intra, site/block-scoped for intra
       Trip.countDocuments({
         tripState: { $in: ["ACTIVE", "COMPLETED"] },
+        location:  { $nin: ["enroute"] },
+        $or:[
+          {phase: "ORIGIN", sourceFactoryId: factoryId},
+          {phase: "DESTINATION", destinationFactoryId: factoryId}
+        ],
         ...factoryOrIntraVisible([{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }]),
       }),
 
@@ -3404,6 +3414,14 @@ export const getVehiclesLength = async (req, res) => {
       Trip.countDocuments({
         tripState: { $in: ["ACTIVE", "COMPLETED"] },
         purpose:   "Delivery",
+        $or: [
+          { location: "outside_factory", phase: "DESTINATION", destinationFactoryId: factoryId },
+          { location: "inside_factory",  $or: [
+              { phase: "ORIGIN",      sourceFactoryId:      factoryId },
+              { phase: "DESTINATION", destinationFactoryId: factoryId },
+            ]
+          },
+        ],
         ...factoryOrIntraVisible([{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }]),
       }),
 

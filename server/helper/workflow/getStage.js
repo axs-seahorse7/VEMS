@@ -180,11 +180,11 @@ function getStage(trip, user) {
     return STAGES.SELECT_NEXT_LOCATION;
   }
 
-  if (!isIntraPlant && tripState === "ACTIVE" && type === "internal_transfer" && location === "inside_factory" && (userFactoryId === String(typeof currentFactoryId === "object" ? currentFactoryId?._id : currentFactoryId)) ) {
-    return STAGES.READY_FOR_DISPATCH_CHECKOUT;
-  }
+  // if (!isIntraPlant && tripState === "ACTIVE" && type === "internal_transfer" && location === "inside_factory" && (userFactoryId === String(typeof currentFactoryId === "object" ? currentFactoryId?._id : currentFactoryId)) ) {
+  //   return STAGES.READY_FOR_DISPATCH_CHECKOUT;
+  // }
 
-  if (!isIntraPlant && tripState === "ACTIVE" && type === "internal_transfer" && location === "inside_factory" && (userFactoryId === String((typeof currentFactoryId) === "object" ? currentFactoryId?._id : currentFactoryId)) ) {
+  if (!isIntraPlant && tripState === "ACTIVE" && loadStatus === "pending" && type === "internal_transfer" && location === "inside_factory" && (userFactoryId === String(typeof currentFactoryId === "object" ? currentFactoryId?._id : currentFactoryId)) ) {
     return STAGES.READY_FOR_DISPATCH_CHECKOUT;
   }
 

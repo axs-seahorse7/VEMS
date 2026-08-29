@@ -1726,6 +1726,7 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   });
 
   const trip = data || null;
+  console.log("VEHICLE DETAILS MODAL DATA:", trip);
 
   const location    = trip?.location;
   const vehicleData = trip?.vehicle;
