@@ -368,13 +368,14 @@ useEffect(() => {
         </CardCell>
       ),
     },
-    { title: "Active Trips", dataIndex: "activeTrips", key: "activeTrips", width: 90, align: "center", render: numericCell("activeTrips"), sorter: (a, b) => a.activeTrips - b.activeTrips },
     { title: "Inside Now", dataIndex: "insideNow", key: "insideNow", width: 90, align: "center", render: numericCell("insideNow"), sorter: (a, b) => a.insideNow - b.insideNow },
+    { title: "Active Trips", dataIndex: "activeTrips", key: "activeTrips", width: 90, align: "center", render: numericCell("activeTrips"), sorter: (a, b) => a.activeTrips - b.activeTrips },
     { title: "FG Vehicles", dataIndex: "fgVehicles", key: "fgVehicles", width: 90, align: "center", render: numericCell("fgVehicles"), sorter: (a, b) => a.fgVehicles - b.fgVehicles },
     { title: "RM Vehicles", dataIndex: "rmVehicles", key: "rmVehicles", width: 90, align: "center", render: numericCell("rmVehicles"), sorter: (a, b) => a.rmVehicles - b.rmVehicles },
     { title: "Internal Shift", dataIndex: "internalShifts", key: "internalShifts", width: 94, align: "center", render: numericCell("internalShifts"), sorter: (a, b) => a.internalShifts - b.internalShifts },
     { title: "Waiting > 4 Hrs", dataIndex: "delay4hrs", key: "delay4hrs", width: 96, align: "center", render: delayCell("delay4hrs"), sorter: (a, b) => a.delay4hrs - b.delay4hrs },
     { title: "Waiting > 12 Hrs", dataIndex: "delay12hrs", key: "delay12hrs", width: 100, align: "center", render: delayCell("delay12hrs"), sorter: (a, b) => a.delay12hrs - b.delay12hrs },
+    { title: "This Month", dataIndex: "thisMonth", key: "thisMonth", width: 90, align: "center", render: numericCell("thisMonth") },
     {
       title: "Waiting > 24 Hrs",
       dataIndex: "overstay",
@@ -395,7 +396,6 @@ useEffect(() => {
       ),
       sorter: (a, b) => a.overstay - b.overstay,
     },
-    { title: "This Month", dataIndex: "thisMonth", key: "thisMonth", width: 90, align: "center", render: numericCell("thisMonth") },
     {
       title: "Ready",
       dataIndex: "ready",
