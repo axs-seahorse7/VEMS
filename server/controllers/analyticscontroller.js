@@ -1,5 +1,6 @@
 // controllers/analyticsController.js
 import mongoose from "mongoose";
+import ExcelJS from "exceljs";
 
 import Trip from "../db/models/Vehicle-Model/trip.model.js";
 import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
@@ -3048,7 +3049,6 @@ const buildLocationMetricFilters = () => ({
     tripState: { $in: ACTIVE_TRIP_STATES },
     location: INSIDE_LOCATION,
   },
-
   fgVehicles: {
     tripState: { $in: ACTIVE_TRIP_STATES },
     location: INSIDE_LOCATION,
@@ -3063,14 +3063,13 @@ const buildLocationMetricFilters = () => ({
     tripState: { $in: ACTIVE_TRIP_STATES },
     type: INTERNAL_TRIP_TYPE,
   },
-  thisMonth: {
-    createdAt: { $gte: startOfMonth() },
-  },
   ready: {
     tripState: { $in: ACTIVE_TRIP_STATES },
     loadStatus: READY_LOAD_STATUS,
   },
+  // thisMonth removed — see computeThisMonthSegmentsByFactory()
 });
+
 
 const WAITING_FIELDS = "tripState waitingSince location status checkedInAt loadStatus phase arrivedAt sourceFactoryId destinationFactoryId currentFactoryId";
 
@@ -3155,75 +3154,102 @@ async function computeActiveTripsByFactory() {
   ]);
 }
 
+async function computeThisMonthSegmentsByFactory() {
+  return TripSegment.aggregate([
+    {
+      $match: {
+        createdAt: { $gte: startOfMonth() },
+        $or: [
+          { sourceFactoryId: { $ne: null } },
+          { destinationFactoryId: { $ne: null } },
+        ],
+      },
+    },
+    {
+      $project: {
+        factoryIds: {
+          $setUnion: [
+            { $cond: [{ $ne: ["$sourceFactoryId", null] }, ["$sourceFactoryId"], []] },
+            { $cond: [{ $ne: ["$destinationFactoryId", null] }, ["$destinationFactoryId"], []] },
+          ],
+        },
+      },
+    },
+    { $unwind: "$factoryIds" },
+    { $group: { _id: "$factoryIds", count: { $sum: 1 } } },
+  ]);
+}
+
+
 /* ------------------------------------------------------------------------ */
 /*  GET /analytics/executive-dashboard                                      */
 /*  Returns one row per factory with all 9 dashboard columns.               */
 /* ------------------------------------------------------------------------ */
-export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
-  const rawLocation = req.params.location || req.query.location || null;
-  const location = rawLocation && rawLocation.toLowerCase() !== "all" ? rawLocation : null;
+// export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
+//   const rawLocation = req.params.location || req.query.location || null;
+//   const location = rawLocation && rawLocation.toLowerCase() !== "all" ? rawLocation : null;
 
-  const locationFilters = buildLocationMetricFilters();
-  const metricKeys = Object.keys(locationFilters);
+//   const locationFilters = buildLocationMetricFilters();
+//   const metricKeys = Object.keys(locationFilters);
 
-  const [locationResults, waitingMetrics, activeTripsResults, factories] = await Promise.all([
-  Promise.all(
-    metricKeys.map((key) =>
-      Trip.aggregate([
-        { $match: locationFilters[key] },
-        { $group: { _id: "$currentFactoryId", count: { $sum: 1 } } },
-      ])
-    )
-  ),
-  computeWaitingMetricsByFactory(),
-  computeActiveTripsByFactory(),
-  getFactoryDirectory(location),
-]);
+//   const [locationResults, waitingMetrics, activeTripsResults, factories] = await Promise.all([
+//   Promise.all(
+//     metricKeys.map((key) =>
+//       Trip.aggregate([
+//         { $match: locationFilters[key] },
+//         { $group: { _id: "$currentFactoryId", count: { $sum: 1 } } },
+//       ])
+//     )
+//   ),
+//   computeWaitingMetricsByFactory(),
+//   computeActiveTripsByFactory(),
+//   getFactoryDirectory(location),
+// ]);
 
-  // factoryId(string) -> { metricKey: count }
-  const factoryMetrics = {};
-  metricKeys.forEach((key, i) => {
-    locationResults[i].forEach(({ _id, count }) => {
-      if (!_id) return;
-      const fid = _id.toString();
-      factoryMetrics[fid] = factoryMetrics[fid] || {};
-      factoryMetrics[fid][key] = count;
-    });
-  });
-  Object.entries(waitingMetrics).forEach(([fid, metrics]) => {
-    factoryMetrics[fid] = { ...factoryMetrics[fid], ...metrics };
-  });
+//   // factoryId(string) -> { metricKey: count }
+//   const factoryMetrics = {};
+//   metricKeys.forEach((key, i) => {
+//     locationResults[i].forEach(({ _id, count }) => {
+//       if (!_id) return;
+//       const fid = _id.toString();
+//       factoryMetrics[fid] = factoryMetrics[fid] || {};
+//       factoryMetrics[fid][key] = count;
+//     });
+//   });
+//   Object.entries(waitingMetrics).forEach(([fid, metrics]) => {
+//     factoryMetrics[fid] = { ...factoryMetrics[fid], ...metrics };
+//   });
 
-  activeTripsResults.forEach(({ _id, count }) => {
-    if (!_id) return;
-    const fid = _id.toString();
-    factoryMetrics[fid] = factoryMetrics[fid] || {};
-    factoryMetrics[fid].activeTrips = count;
-  })
+//   activeTripsResults.forEach(({ _id, count }) => {
+//     if (!_id) return;
+//     const fid = _id.toString();
+//     factoryMetrics[fid] = factoryMetrics[fid] || {};
+//     factoryMetrics[fid].activeTrips = count;
+//   })
 
-  const rows = factories.map((f, idx) => {
-    const fid = f._id.toString();
-    const m = factoryMetrics[fid] || {};
-    return {
-      key: fid,
-      factory: f.name,
-      location: f.location || "N/A",
-      color: FACTORY_COLOR_PALETTE[idx % FACTORY_COLOR_PALETTE.length],
-      insideNow: m.insideNow || 0,
-      activeTrips: m.activeTrips || 0,
-      fgVehicles: m.fgVehicles || 0,
-      rmVehicles: m.rmVehicles || 0,
-      internalShifts: m.internalShifts || 0,
-      delay4hrs: m.delay4hrs || 0,
-      delay12hrs: m.delay12hrs || 0,
-      thisMonth: m.thisMonth || 0,
-      overstay: m.overstay || 0,
-      ready: m.ready || 0,
-    };
-  });
+//   const rows = factories.map((f, idx) => {
+//     const fid = f._id.toString();
+//     const m = factoryMetrics[fid] || {};
+//     return {
+//       key: fid,
+//       factory: f.name,
+//       location: f.location || "N/A",
+//       color: FACTORY_COLOR_PALETTE[idx % FACTORY_COLOR_PALETTE.length],
+//       insideNow: m.insideNow || 0,
+//       activeTrips: m.activeTrips || 0,
+//       fgVehicles: m.fgVehicles || 0,
+//       rmVehicles: m.rmVehicles || 0,
+//       internalShifts: m.internalShifts || 0,
+//       delay4hrs: m.delay4hrs || 0,
+//       delay12hrs: m.delay12hrs || 0,
+//       thisMonth: m.thisMonth || 0,
+//       overstay: m.overstay || 0,
+//       ready: m.ready || 0,
+//     };
+//   });
 
-  res.status(200).json({ success: true, data: rows });
-});
+//   res.status(200).json({ success: true, data: rows });
+// });
 
 /* ------------------------------------------------------------------------ */
 /*  GET /analytics/executive-dashboard/:factoryId/:metricKey                */
@@ -3238,66 +3264,67 @@ const WAITING_METRIC_THRESHOLDS_MS = {
 export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
   const { factoryId, metricKey } = req.params;
   const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20)); // cap at 100, default 20
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
   const skip = (page - 1) * limit;
-
+ 
   if (!mongoose.Types.ObjectId.isValid(factoryId)) {
     return next(new AppError("Invalid factoryId", 400));
   }
-
-  const locationFilters = buildLocationMetricFilters();
+ 
+  const locationFilters = buildLocationMetricFilters(); // no thisMonth key anymore
   const isWaitingMetric = Object.prototype.hasOwnProperty.call(WAITING_METRIC_THRESHOLDS_MS, metricKey);
   const isActiveTripsMetric = metricKey === "activeTrips";
-
-  if (!isWaitingMetric && !isActiveTripsMetric && !locationFilters[metricKey]) {
+  const isThisMonthMetric = metricKey === "thisMonth";
+ 
+  if (!isWaitingMetric && !isActiveTripsMetric && !isThisMonthMetric && !locationFilters[metricKey]) {
     return next(
       new AppError(
         `Unknown metric '${metricKey}'. Expected one of: ${[
           ...Object.keys(locationFilters),
           "activeTrips",
+          "thisMonth",
           ...Object.keys(WAITING_METRIC_THRESHOLDS_MS),
         ].join(", ")}`,
         400
       )
     );
   }
-
+ 
   let trips;
   let total;
-
+  let vehicles;
+ 
   if (isWaitingMetric) {
-    // Waiting metrics: factory routing depends on getWaitingFactoryId, resolved
-    // in JS — so filter/sort the full matching set first, then slice the page
-    // out of memory. Still bounded by WAITING_MATCH, not the whole Trip collection.
     const thresholdMs = WAITING_METRIC_THRESHOLDS_MS[metricKey];
     const now = Date.now();
-
+ 
     const waitingTrips = await Trip.find(WAITING_MATCH)
       .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
       .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
       .populate({ path: "sourceFactoryId", select: "name location" })
       .populate({ path: "destinationFactoryId", select: "name location" })
+      .populate({ path: "currentFactoryId", select: "name location" })
       .lean();
-
+ 
     const filtered = waitingTrips.filter((t) => {
       if (!isStillWaiting(t)) return false;
       if (getWaitingFactoryId(t) !== factoryId) return false;
       const waitedMs = now - new Date(t.waitingSince).getTime();
       return waitedMs >= thresholdMs;
     });
-
+ 
     filtered.sort((a, b) => new Date(a.waitingSince || a.createdAt) - new Date(b.waitingSince || b.createdAt));
-
+ 
     total = filtered.length;
     trips = filtered.slice(skip, skip + limit);
-
+ 
   } else if (isActiveTripsMetric) {
     const fid = new mongoose.Types.ObjectId(factoryId);
     const baseMatch = {
       tripState: { $in: ACTIVE_TRIP_STATES },
       $or: [{ sourceFactoryId: fid }, { destinationFactoryId: fid }],
     };
-
+ 
     [total, trips] = await Promise.all([
       Trip.countDocuments(baseMatch),
       Trip.find(baseMatch)
@@ -3311,13 +3338,84 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
         .populate({ path: "currentFactoryId", select: "name location" })
         .lean(),
     ]);
-
+ 
+  } else if (isThisMonthMetric) {
+    // TripSegment-based: "this month" means round-trip legs (source->dest
+    // or dest->source), not current Trip documents.
+    const fid = new mongoose.Types.ObjectId(factoryId);
+    const baseMatch = {
+      createdAt: { $gte: startOfMonth() },
+      $or: [{ sourceFactoryId: fid }, { destinationFactoryId: fid }],
+    };
+ 
+    const [segTotal, segments] = await Promise.all([
+      TripSegment.countDocuments(baseMatch),
+      TripSegment.find(baseMatch)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate({ path: "vehicleId", select: "vehicleNumber typeOfVehicle" })
+        .populate({ path: "driverId", select: "driverName driverContact licenseNumber" })
+        .populate({ path: "sourceFactoryId", select: "name location" })
+        .populate({ path: "destinationFactoryId", select: "name location" })
+        .lean(),
+    ]);
+ 
+    total = segTotal;
+ 
+    // Segment-specific mapper — deliberately NOT the shared Trip mapper below.
+    vehicles = segments.map((seg) => {
+      const durationMinutes =
+        seg.startedAt && seg.completedAt
+          ? Math.round((new Date(seg.completedAt) - new Date(seg.startedAt)) / 60000)
+          : null;
+ 
+      return {
+        tripId: seg.tripId,
+        segmentId: seg._id,
+        segmentNumber: seg.segmentNumber,
+        vehicleNo: seg.vehicleId?.vehicleNumber || null,
+        type: seg.materials?.name || null, // materials is a single object on TripSegment, not an array
+        typeOfVehicle: seg.vehicleId?.typeOfVehicle || null,
+        driverName: seg.driverId?.driverName || null,
+        driverPhone: seg.driverId?.driverContact || null,
+        entryTime: seg.startedAt || seg.createdAt,
+        waitingSince: null,
+        durationMinutes,
+        duration:
+          durationMinutes !== null
+            ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
+            : null,
+        purpose: seg.purpose,
+        status: "thisMonth",
+        lastAction: null, // TripSegment has no tripHistory log to pull a "last action" from
+        tripDetails: {
+          purpose: seg.purpose,
+          tripType: seg.triptype,
+          sourceFactory: {
+            name: seg.sourceFactoryId?.name || seg.externalSource || null,
+            location: seg.sourceFactoryId?.location || null,
+          },
+          destinationFactory: {
+            name: seg.destinationFactoryId?.name || seg.externalDestination || null,
+            location: seg.destinationFactoryId?.location || null,
+          },
+          currentFactory: null, // not meaningful for a historical/completed leg
+          tripState: null,
+          loadStatus: null,
+          segmentStatus: seg.status, // ACTIVE/COMPLETED/CANCELLED/ROUTE_CHANGED/CLOSED — not Trip.tripState
+          startedAt: seg.startedAt,
+          completedAt: seg.completedAt,
+        },
+      };
+    });
+ 
   } else {
     const baseMatch = {
       currentFactoryId: new mongoose.Types.ObjectId(factoryId),
       ...locationFilters[metricKey],
     };
-
+ 
     [total, trips] = await Promise.all([
       Trip.countDocuments(baseMatch),
       Trip.find(baseMatch)
@@ -3332,52 +3430,54 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
         .lean(),
     ]);
   }
-
-  // Only the DB-paginated branches need a final in-memory sort for display
-  // consistency; the waiting branch is already sorted above pre-slice.
-  if (!isWaitingMetric) {
+ 
+  if (!isWaitingMetric && !isThisMonthMetric) {
     trips.sort((a, b) => new Date(a.waitingSince || a.createdAt) - new Date(b.waitingSince || b.createdAt));
   }
-
-  const sortedHistory = (t) =>
-    Array.isArray(t.tripHistory) ? [...t.tripHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)) : [];
-
-  const vehicles = trips.map((t) => {
-    const waitingMs = t.waitingSince ? Date.now() - new Date(t.waitingSince).getTime() : null;
-    const durationMinutes = waitingMs !== null ? Math.round(waitingMs / 60000) : null;
-    const history = sortedHistory(t);
-    const lastEvent = history[history.length - 1] || null;
-
-    return {
-      tripId: t._id,
-      vehicleNo: t.vehicleId?.vehicleNumber || null,
-      type: t.materials?.[0]?.name || null,
-      typeOfVehicle: t.vehicleId?.typeOfVehicle || null,
-      driverName: t.driverId?.driverName || null,
-      driverPhone: t.driverId?.driverContact || null,
-      entryTime: t.startedAt || t.createdAt,
-      waitingSince: t.waitingSince,
-      durationMinutes,
-      duration: durationMinutes !== null ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : null,
-      purpose: t.purpose,
-      status: metricKey,
-      lastAction: lastEvent
-        ? { action: lastEvent.action, timestamp: lastEvent.timestamp, actionLocation: lastEvent.actionLocation || null, actionBy: lastEvent.actionBy || null }
-        : null,
-      tripDetails: {
+ 
+  if (!isThisMonthMetric) {
+    const sortedHistory = (t) =>
+      Array.isArray(t.tripHistory)
+        ? [...t.tripHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+        : [];
+ 
+    vehicles = trips.map((t) => {
+      const waitingMs = t.waitingSince ? Date.now() - new Date(t.waitingSince).getTime() : null;
+      const durationMinutes = waitingMs !== null ? Math.round(waitingMs / 60000) : null;
+      const history = sortedHistory(t);
+      const lastEvent = history[history.length - 1] || null;
+ 
+      return {
+        tripId: t._id,
+        vehicleNo: t.vehicleId?.vehicleNumber || null,
+        type: t.materials?.[0]?.name || null,
+        typeOfVehicle: t.vehicleId?.typeOfVehicle || null,
+        driverName: t.driverId?.driverName || null,
+        driverPhone: t.driverId?.driverContact || null,
+        entryTime: t.startedAt || t.createdAt,
+        waitingSince: t.waitingSince,
+        durationMinutes,
+        duration: durationMinutes !== null ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : null,
         purpose: t.purpose,
-        tripType: t.type,
-        sourceFactory: { name: t.sourceFactoryId?.name || t.externalSource || null, location: t.sourceFactoryId?.location || null },
-        destinationFactory: { name: t.destinationFactoryId?.name || t.externalDestination || null, location: t.destinationFactoryId?.location || null },
-        currentFactory: { name: t.currentFactoryId?.name || null, location: t.currentFactoryId?.location || null },
-        tripState: t.tripState,
-        loadStatus: t.loadStatus,
-      },
-    };
-  });
-
+        status: metricKey,
+        lastAction: lastEvent
+          ? { action: lastEvent.action, timestamp: lastEvent.timestamp, actionLocation: lastEvent.actionLocation || null, actionBy: lastEvent.actionBy || null }
+          : null,
+        tripDetails: {
+          purpose: t.purpose,
+          tripType: t.type,
+          sourceFactory: { name: t.sourceFactoryId?.name || t.externalSource || null, location: t.sourceFactoryId?.location || null },
+          destinationFactory: { name: t.destinationFactoryId?.name || t.externalDestination || null, location: t.destinationFactoryId?.location || null },
+          currentFactory: { name: t.currentFactoryId?.name || null, location: t.currentFactoryId?.location || null },
+          tripState: t.tripState,
+          loadStatus: t.loadStatus,
+        },
+      };
+    });
+  }
+ 
   const hasMore = skip + vehicles.length < total;
-
+ 
   return res.status(200).json({
     success: true,
     factoryId,
@@ -3390,4 +3490,205 @@ export const getFactoryVehicleDetails = asyncHandler(async (req, res, next) => {
     nextPage: hasMore ? page + 1 : null,
     data: vehicles,
   });
+});
+
+
+
+/* ------------------------------------------------------------------------ */
+/*  Shared row builder                                                      */
+/*  Same logic that used to live inline in getExecutiveDashboardSummary —   */
+/*  pulled out so the JSON endpoint and the new XLSX endpoint can never     */
+/*  drift out of sync with each other.                                     */
+/* ------------------------------------------------------------------------ */
+async function buildExecutiveDashboardRows(location) {
+  const locationFilters = buildLocationMetricFilters(); // no longer has thisMonth
+  const metricKeys = Object.keys(locationFilters);
+ 
+  const [locationResults, waitingMetrics, activeTripsResults, thisMonthResults, factories] =
+    await Promise.all([
+      Promise.all(
+        metricKeys.map((key) =>
+          Trip.aggregate([
+            { $match: locationFilters[key] },
+            { $group: { _id: "$currentFactoryId", count: { $sum: 1 } } },
+          ])
+        )
+      ),
+      computeWaitingMetricsByFactory(),
+      computeActiveTripsByFactory(),
+      computeThisMonthSegmentsByFactory(),
+      getFactoryDirectory(location),
+    ]);
+ 
+  const factoryMetrics = {};
+  metricKeys.forEach((key, i) => {
+    locationResults[i].forEach(({ _id, count }) => {
+      if (!_id) return;
+      const fid = _id.toString();
+      factoryMetrics[fid] = factoryMetrics[fid] || {};
+      factoryMetrics[fid][key] = count;
+    });
+  });
+  Object.entries(waitingMetrics).forEach(([fid, metrics]) => {
+    factoryMetrics[fid] = { ...factoryMetrics[fid], ...metrics };
+  });
+  activeTripsResults.forEach(({ _id, count }) => {
+    if (!_id) return;
+    const fid = _id.toString();
+    factoryMetrics[fid] = factoryMetrics[fid] || {};
+    factoryMetrics[fid].activeTrips = count;
+  });
+  thisMonthResults.forEach(({ _id, count }) => {
+    if (!_id) return;
+    const fid = _id.toString();
+    factoryMetrics[fid] = factoryMetrics[fid] || {};
+    factoryMetrics[fid].thisMonth = count;
+  });
+ 
+  return factories.map((f, idx) => {
+    const fid = f._id.toString();
+    const m = factoryMetrics[fid] || {};
+    return {
+      key: fid,
+      factory: f.name,
+      location: f.location || "N/A",
+      color: FACTORY_COLOR_PALETTE[idx % FACTORY_COLOR_PALETTE.length],
+      insideNow: m.insideNow || 0,
+      activeTrips: m.activeTrips || 0,
+      fgVehicles: m.fgVehicles || 0,
+      rmVehicles: m.rmVehicles || 0,
+      internalShifts: m.internalShifts || 0,
+      delay4hrs: m.delay4hrs || 0,
+      delay12hrs: m.delay12hrs || 0,
+      thisMonth: m.thisMonth || 0, // now segment-based
+      overstay: m.overstay || 0,
+      ready: m.ready || 0,
+    };
+  });
+}
+
+
+/**
+ * "All Plants" summary row — sums every factory row per metric column,
+ * matching the black totals bar at the top of the dashboard table.
+ */
+function computeTotalsRow(rows) {
+  const sumKeys = [
+    "insideNow",
+    "activeTrips",
+    "fgVehicles",
+    "rmVehicles",
+    "internalShifts",
+    "delay4hrs",
+    "delay12hrs",
+    "thisMonth",
+    "overstay",
+    "ready",
+  ];
+  const totals = { factory: "All Plants", location: "" };
+  sumKeys.forEach((k) => {
+    totals[k] = rows.reduce((sum, r) => sum + (r[k] || 0), 0);
+  });
+  return totals;
+}
+
+/* ------------------------------------------------------------------------ */
+/*  Existing JSON endpoint — now just a thin wrapper around the shared      */
+/*  row builder. Behavior is unchanged.                                    */
+/* ------------------------------------------------------------------------ */
+export const getExecutiveDashboardSummary = asyncHandler(async (req, res) => {
+  const rawLocation = req.params.location || req.query.location || null;
+  const location = rawLocation && rawLocation.toLowerCase() !== "all" ? rawLocation : null;
+
+  const rows = await buildExecutiveDashboardRows(location);
+
+  res.status(200).json({ success: true, data: rows });
+});
+
+/* ------------------------------------------------------------------------ */
+/*  GET /analytics/executive-dashboard/download                            */
+/*  Streams the same table shown on screen as a .xlsx download.            */
+/* ------------------------------------------------------------------------ */
+const EXPORT_COLUMNS = [
+  { header: "Factory", key: "factory", width: 24 },
+  { header: "Location", key: "location", width: 16 },
+  { header: "Active Trips", key: "activeTrips", width: 13 },
+  { header: "Inside Now", key: "insideNow", width: 12 },
+  { header: "FG Vehicles", key: "fgVehicles", width: 12 },
+  { header: "RM Vehicles", key: "rmVehicles", width: 12 },
+  { header: "Internal Shift", key: "internalShifts", width: 14 },
+  { header: "Waiting > 4 Hrs", key: "delay4hrs", width: 15 },
+  { header: "Waiting > 12 Hrs", key: "delay12hrs", width: 16 },
+  { header: "24+ Hrs Delay", key: "overstay", width: 14 },
+  { header: "This Month", key: "thisMonth", width: 12 },
+  { header: "Ready", key: "ready", width: 10 },
+];
+
+const HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
+const TOTALS_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FF111827" } };
+const OVERSTAY_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFCE4E4" } };
+
+export const downloadExecutiveDashboardExcel = asyncHandler(async (req, res) => {
+  const rawLocation = req.params.location || req.query.location || null;
+  const location = rawLocation && rawLocation.toLowerCase() !== "all" ? rawLocation : null;
+
+  const rows = await buildExecutiveDashboardRows(location);
+  const totals = computeTotalsRow(rows);
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "VEMS";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Executive Dashboard", {
+    views: [{ state: "frozen", ySplit: 2 }],
+  });
+  sheet.columns = EXPORT_COLUMNS;
+
+  // header row
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.fill = HEADER_FILL;
+  headerRow.alignment = { vertical: "middle", horizontal: "center" };
+  headerRow.height = 20;
+
+  // "All Plants" totals row — row 2, mirrors the black bar in the UI
+  const totalsRow = sheet.addRow(totals);
+  totalsRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  totalsRow.fill = TOTALS_FILL;
+  totalsRow.alignment = { vertical: "middle", horizontal: "center" };
+  totalsRow.getCell("factory").alignment = { vertical: "middle", horizontal: "left" };
+
+  // one row per factory
+  rows.forEach((r) => {
+    const row = sheet.addRow(r);
+    row.alignment = { vertical: "middle", horizontal: "center" };
+    row.getCell("factory").alignment = { vertical: "middle", horizontal: "left" };
+    row.getCell("location").alignment = { vertical: "middle", horizontal: "left" };
+
+    // mirror the red-tinted overstay cell from the UI
+    if (r.overstay > 0) {
+      const cell = row.getCell("overstay");
+      cell.fill = OVERSTAY_FILL;
+      cell.font = { color: { argb: "FFB91C1C" }, bold: true };
+    }
+  });
+
+  sheet.autoFilter = {
+    from: "A1",
+    to: `${sheet.getColumn(EXPORT_COLUMNS.length).letter}1`,
+  };
+
+  const locationLabel = location ? location.replace(/[^a-z0-9]+/gi, "_") : "All_Plants";
+  const filename = `executive-dashboard-${locationLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  // let the client read the filename off the header via a CORS allowlist
+  res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+
+  await workbook.xlsx.write(res);
+  res.end();
 });

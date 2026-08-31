@@ -85,6 +85,12 @@ const tripStateColor = (tripState) => {
   if (tripState === "CANCELLED") return "red";
   return "default";
 };
+const tripSegmentStatusColor = (segmentStatus) => {
+  if (segmentStatus === "ACTIVE") return "green";
+  if (segmentStatus === "COMPLETED") return "blue";
+  if (segmentStatus === "CANCELLED") return "red";
+  return "default";
+};
 
 const formatDateTime = (iso) => {
   if (!iso) return "—";
@@ -138,7 +144,6 @@ export default function ExecutiveDashboardTable({onDownloadAll, userName = "", s
       const { data } = await api.get(
         `/analytics/executive-dashboard/${location || "all"}`
       );
-      console.log("Executive Dashboard Data:", data);
       setRows(data?.data || []);
     } catch (error) {
       console.error(error);
@@ -185,8 +190,7 @@ const openDrawer = async (record, metricKey) => {
   });
 
   try {
-    const res = await api.get(
-      `/analytics/executive-dashboard/${record.key}/${metricKey}${location ? `?location=${location}` : ""}`,
+    const res = await api.get(`/analytics/executive-dashboard/${record.key}/${metricKey}${location ? `?location=${location}` : ""}`,
       { params: { page: 1, limit: PAGE_SIZE } }
     );
     const body = res?.data || {};
@@ -237,6 +241,41 @@ const loadMoreVehicles = useCallback(async () => {
 
     return current;
   });
+}, [location]);
+
+
+const [downloading, setDownloading] = useState(false);
+
+const handleDownload = useCallback(async () => {
+  setDownloading(true);
+  try {
+    const res = await api.get(`/analytics/executive-dashboard/download${location ? `?location=${location}` : ""}`,
+      { responseType: "blob" }
+    );
+
+    // pull the filename the server set, fall back to a sane default
+    const disposition = res.headers["content-disposition"] || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename =
+      match?.[1] || `executive-dashboard-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    const blob = new Blob([res.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(error);
+    message.error("Failed to download executive dashboard.");
+  } finally {
+    setDownloading(false);
+  }
 }, [location]);
 
 
@@ -336,9 +375,8 @@ useEffect(() => {
     { title: "Internal Shift", dataIndex: "internalShifts", key: "internalShifts", width: 94, align: "center", render: numericCell("internalShifts"), sorter: (a, b) => a.internalShifts - b.internalShifts },
     { title: "Waiting > 4 Hrs", dataIndex: "delay4hrs", key: "delay4hrs", width: 96, align: "center", render: delayCell("delay4hrs"), sorter: (a, b) => a.delay4hrs - b.delay4hrs },
     { title: "Waiting > 12 Hrs", dataIndex: "delay12hrs", key: "delay12hrs", width: 100, align: "center", render: delayCell("delay12hrs"), sorter: (a, b) => a.delay12hrs - b.delay12hrs },
-    { title: "This Month", dataIndex: "thisMonth", key: "thisMonth", width: 90, align: "center", render: numericCell("thisMonth") },
     {
-      title: "Overstay",
+      title: "Waiting > 24 Hrs",
       dataIndex: "overstay",
       key: "overstay",
       width: 100,
@@ -351,12 +389,13 @@ useEffect(() => {
           onClick={() => openDrawer(record, "overstay")}
         >
           <Tag color={value > 0 ? "red" : "default"} style={{ margin: 0, borderRadius: 6, fontSize: 11, padding: "0 6px", lineHeight: "18px" }}>
-            {value ?? 0} Overstay
+            {value ?? 0} 
           </Tag>
         </CardCell>
       ),
       sorter: (a, b) => a.overstay - b.overstay,
     },
+    { title: "This Month", dataIndex: "thisMonth", key: "thisMonth", width: 90, align: "center", render: numericCell("thisMonth") },
     {
       title: "Ready",
       dataIndex: "ready",
@@ -451,7 +490,7 @@ useEffect(() => {
             vehicleNumber={""}
             refetchDashboard={loadSummary}
             onShare={() => {}}
-            onDownload={() => {handleDownload()}}
+            onDownload={handleDownload}
         />
       </div>
 
@@ -565,7 +604,7 @@ useEffect(() => {
 
               return (
                 <div
-                    key={v.tripId || i}
+                    key={v.tripId + v.vehicleNo || i}
                     style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 14, marginTop: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
                 >
                     <Space align="center" style={{ marginBottom: 10 }} wrap>
@@ -639,7 +678,7 @@ useEffect(() => {
                     )}
 
                     {(trip.loadStatus || trip.tripState || trip.tripType) && (
-                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #f0f0f0" }}>
+                        <div style={{ marginTop: 8, gap: 8, display: "flex", flexWrap: "wrap", paddingTop: 8, borderTop: "1px dashed #f0f0f0" }}>
                             {trip.loadStatus && (
                                 <Tag icon={<InboxOutlined />} color={loadStatusColor(trip.loadStatus)} style={{ marginBottom: 4 }}>
                                     {trip.loadStatus}
@@ -650,9 +689,17 @@ useEffect(() => {
                                     {trip.tripState}
                                 </Tag>
                             )}
-                            {trip.tripType && (
-                                <Tag style={{ marginBottom: 4 }}>{trip?.type === "external_delivery" ? "External Trip" : "Internal Trip"}</Tag>
+                            {trip?.tripType && (
+                                <Tag style={{ marginBottom: 4 }}>
+                                  {(trip.tripType === "external_delivery" || trip.tripType === "EXTERNAL") ? "External Trip" : "Internal Trip"}
+                                </Tag>
                             )}
+
+                            {trip?.segmentStatus && (
+                                  <Tag style={{ marginBottom: 4 }} color={tripSegmentStatusColor(trip.segmentStatus)}>
+                                    {trip.segmentStatus}
+                                  </Tag>
+                              )}
                         </div>
                     )}
                 </div>
