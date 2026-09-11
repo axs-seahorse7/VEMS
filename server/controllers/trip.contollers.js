@@ -218,13 +218,42 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
       // ========================
       //  VEHICLE (GET OR CREATE)
       // ========================
-      const vehicle = await Vehicle.findOneAndUpdate(
+     const vehicle = await Vehicle.findOneAndUpdate(
         { vehicleNumber },
         {
+          $set: {
+            typeOfVehicle: req.body.typeOfVehicle,
+            transporterName: req.body.transporterName ?? null,
+            ownerFactoryId: req.body.ownerFactoryId ?? null,
+            PUCExpiry: req.body.PUCExpiry ?? null,
+          },
           $setOnInsert: {
             vehicleNumber,
-            type: "external",
-            ...req.body
+            type: "internal"
+          }
+        },
+        { new: true, upsert: true, session }
+      );
+
+
+
+      const driver = await Driver.findOneAndUpdate(
+        {
+          $or: [
+            { driverIdNumber },
+            { licenseNumber }
+          ]
+        },
+        {
+          $set: {
+            driverName,
+            driverContact,
+            driverIdType,
+            licenseNumber,
+            typeOfVehicle
+          },
+          $setOnInsert: {
+            driverIdNumber
           }
         },
         {
@@ -234,32 +263,6 @@ export const externalVehicleRegister = asyncHandler( async (req, res) => {
         }
       );
 
-      // ========================
-      //  DRIVER (GET OR CREATE)
-      // ========================
-      const driver = await Driver.findOneAndUpdate(
-        {
-          $or: [
-            { driverIdNumber },
-            { licenseNumber }
-          ]
-        },
-        {
-          $setOnInsert: {
-            driverName,
-            driverContact,
-            driverIdType,
-            driverIdNumber,
-            licenseNumber,
-            typeOfVehicle
-          }
-        },
-        {
-          new: true,
-          upsert: true,
-          session
-        }
-      );
 
       
       // ========================
@@ -434,26 +437,23 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
         throw new AppError("Your session is expired, please login again", 400);
       }
 
-     
-      const vehicle = await Vehicle.findOneAndUpdate(
+    const vehicle = await Vehicle.findOneAndUpdate(
+        { vehicleNumber },
         {
-          vehicleNumber
-        },
-        {
+          $set: {
+            typeOfVehicle: req.body.typeOfVehicle,
+            transporterName : req.body.transporterName ?? null,
+            ownerFactoryId: req.body.ownerFactoryId ?? null,
+            PUCExpiry: req.body.PUCExpiry ?? null,
+          },
           $setOnInsert: {
-            ...req.body,
             vehicleNumber,
             type: "internal"
           }
         },
-        {
-          new: true,
-          upsert: true,
-          session
-        }
+        { new: true, upsert: true, session }
       );
 
-      
       const driver = await Driver.findOneAndUpdate(
         {
           $or: [
@@ -462,12 +462,14 @@ export const internalVehicleRegister = asyncHandler( async (req, res) => {
           ]
         },
         {
-          $setOnInsert: {
+          $set: {
             driverName,
             driverContact,
             driverIdType,
-            driverIdNumber,
             licenseNumber
+          },
+          $setOnInsert: {
+            driverIdNumber
           }
         },
         {
