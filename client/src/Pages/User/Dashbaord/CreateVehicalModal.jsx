@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import api from "../../../../services/API/Api/api";
 import {
   Modal, Form, Input, Select, AutoComplete, Switch,
@@ -8,7 +8,7 @@ import {
 import {
   BankOutlined, CarOutlined, UserOutlined, FileTextOutlined,
   SearchOutlined, LoadingOutlined, SaveOutlined, SwapOutlined,
-  EnvironmentOutlined, CheckCircleFilled, TruckOutlined,
+  EnvironmentOutlined, CheckCircleFilled, TruckOutlined, EnvironmentFilled , DownOutlined, UpOutlined 
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import getDeviceInfo from "../../../utils/Get-DeviceInfo/getDeviceInfo.js";
@@ -661,8 +661,110 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
     setHasDraft({ internal: false, external: false });
   };
 
-  const factoryOpts = factories.filter((f) => f._id !== user.factory?._id).map((f) => ({ value: f._id, label: `${f.name} – ${f.location}` }));
+const [expandedLocation, setExpandedLocation] = useState(null);
 
+const factoryOpts = useMemo(() => {
+  const others = factories.filter((f) => f._id !== user.factory?._id);
+  const grouped = others.reduce((acc, f) => {
+    const loc = f.location || "Other";
+    (acc[loc] ||= []).push(f);
+    return acc;
+  }, {});
+
+  const userLocation = user.factory?.location;
+  const otherLocations = Object.keys(grouped)
+    .filter((loc) => loc !== userLocation)
+    .sort((a, b) => a.localeCompare(b));
+
+  const opts = [];
+
+  // user's own location — always flat, always visible, always searchable
+  if (userLocation && grouped[userLocation]) {
+    opts.push({
+      label: (
+        <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: "#1677ff" }}>
+          <EnvironmentFilled />
+          {userLocation}
+          <Tag color="blue" style={{ marginLeft: 4, lineHeight: "16px" }}>Your Location</Tag>
+        </span>
+      ),
+      title: userLocation,
+      options: grouped[userLocation]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((f) => ({ value: f._id, label: `${f.name} – ${f.location}` })),
+    });
+  }
+
+  // other locations — collapsed by default, one open at a time
+  otherLocations.forEach((loc) => {
+    const isOpen = loc === expandedLocation;
+    const count = grouped[loc].length;
+
+    const headerRow = (
+      <span
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        onMouseDown={(e) => e.preventDefault()} // prevent select from stealing focus/closing on click
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpandedLocation(isOpen ? null : loc);
+        }}
+      >
+        <span>{loc}{!isOpen && <span style={{ color: "#999", marginLeft: 6 }}>({count})</span>}</span>
+        {isOpen ? <UpOutlined style={{ fontSize: 10 }} /> : <DownOutlined style={{ fontSize: 10 }} />}
+      </span>
+    );
+
+    if (isOpen) {
+      opts.push({
+        label: headerRow,
+        title: loc,
+        options: grouped[loc]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((f) => ({ value: f._id, label: `${f.name} – ${f.location}` })),
+      });
+    } else {
+      // single disabled leaf option — acts as a clickable, always-rendered header row
+      opts.push({ value: `__collapsed_${loc}`, label: headerRow, disabled: true });
+    }
+  });
+
+  return opts;
+}, [factories, user.factory, expandedLocation]);
+
+
+const renderFactorySelect = (form, onChange, key, label, options, required = false) => (
+  <Form.Item
+    layout="vertical"
+    label={lbl(label, required)}
+    validateStatus={errors[key] ? "error" : undefined}
+    help={errors[key]}
+    labelCol={{ span: 24 }}
+    wrapperCol={{ span: 24 }}
+    style={{ marginBottom: 11 }}
+  >
+    <Select
+      value={form[key] || undefined}
+      placeholder="Select…"
+      options={options}
+      showSearch
+      filterOption={factoryFilterOption}
+      style={{ width: "100%" }}
+      className="veh-select"
+        popupClassName="factory-select-dropdown" // antd v5; use dropdownClassName if on antd v4
+      onChange={(val) => { onChange(key, val); clearErr(key); }}
+    />
+  </Form.Item>
+);
+
+// custom filter: skip collapsed headers, only match real factory rows,
+// and only within own location / the currently expanded group (since
+// collapsed groups' factories simply aren't in the options array)
+const factoryFilterOption = (input, option) => {
+  if (!input) return true;
+  if (option?.disabled) return false;
+  const text = typeof option.label === "string" ? option.label : "";
+  return text.toLowerCase().includes(input.toLowerCase());
+};
   // ── Field renderers (compact) ─────────────────────────────────────────────────
   const lookupSuffix = (key) => {
     const isDriverLookup = key === "driverContact" || key === "driverIdNumber";
@@ -895,7 +997,9 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
       <Section icon={<FileTextOutlined style={{ fontSize: 18 }} />} title="Trip Details" subtitle="Destination, purpose and material info" theme={THEME.internal} found={false}>
         <Row gutter={10}>
           {!internalForm.isIntraPlant && (
-            <Col xs={24} sm={8}>{renderSelectField(internalForm, setInternal, "destinationFactoryId", "Destination Factory", fetchingFactories ? [] : factoryOpts, true)}</Col>
+            <Col xs={24} sm={8}>
+              {renderFactorySelect(internalForm, setInternal, "destinationFactoryId", "Destination Factory", fetchingFactories ? [] : factoryOpts, true)}
+            </Col>
           )}
           <Col xs={24} sm={internalForm.isIntraPlant ? 12 : 8}>{renderSelectField(internalForm, setInternal, "purpose", "Purpose", PURPOSE_OPTS, true)}</Col>
           <Col xs={24} sm={internalForm.isIntraPlant ? 12 : 8}>{renderSelectField(internalForm, setInternal, "materialType", "Material Type", MATERIAL_TYPES, true)}</Col>
@@ -921,18 +1025,6 @@ export default function CreateVehicleModal({ open, onClose, onRefresh, tripToEdi
       </Section>
 
       <Section icon={<FileTextOutlined style={{ fontSize: 18 }} />} title="Trip Details" subtitle="Purpose, material, internal shifting & intra-plant config" theme={THEME.external} found={false}>
-        {/* <div style={{ background: "linear-gradient(135deg,#f8faff,#eef2ff)", border: "1.25px solid #e0e7ff", borderRadius: 11, padding: "8px 12px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 9, background: externalForm.isInternalShifting ? "#ede9fe" : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <SwapOutlined style={{ color: externalForm.isInternalShifting ? THEME.internal.icon : "#9ca3af", fontSize: 13 }} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 12, color: "#374151" }}>Internal Shifting</div>
-              <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Plant to Plant transfer</div>
-            </div>
-          </div>
-          <Switch size="small" checked={externalForm.isInternalShifting} onChange={(checked) => setExternalForm((p) => ({ ...p, isInternalShifting: checked }))} />
-        </div> */}
 
         {externalForm.isInternalShifting && !externalForm.isIntraPlant && (
           <Row gutter={10}>

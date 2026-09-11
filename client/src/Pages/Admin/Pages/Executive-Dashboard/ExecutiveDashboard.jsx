@@ -321,8 +321,6 @@ useEffect(() => {
   // Column widths tightened across the board — Factory kept readable at 160,
 
   const columns = [
-    // Factory column render — pass align="left", add a little left padding
-    // so the icon isn't flush against the pill's rounded edge
     {
       title: "Factory",
       dataIndex: "factory",
@@ -417,6 +415,7 @@ useEffect(() => {
       sorter: (a, b) => a.ready - b.ready,
     },
   ];
+
 
   const totals = useMemo(() => {
     const keys = ["insideNow", "activeTrips", "fgVehicles", "rmVehicles", "internalShifts", "delay4hrs", "delay12hrs", "thisMonth", "overstay", "ready"];

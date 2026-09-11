@@ -41,3 +41,19 @@
   50%       { opacity: 0.3; transform: scale(0.6); }
 }
 
+
+/* scoped to this dropdown only — won't affect other Selects in the app */
+.factory-select-dropdown .ant-select-item-option:not(.ant-select-item-option-disabled) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* last item in each group shouldn't have a trailing line before the next group header */
+.factory-select-dropdown .ant-select-item-option:not(.ant-select-item-option-disabled):last-child {
+  border-bottom: none;
+}
+
+/* slightly heavier line under "Your Location" and each expanded group's own last row
+   is already handled above — this just tidies spacing around group labels */
+.factory-select-dropdown .ant-select-item-group {
+  padding-top: 8px;
+}
