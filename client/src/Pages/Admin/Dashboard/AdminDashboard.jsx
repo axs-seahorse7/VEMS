@@ -1,33 +1,24 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import api from "../../../../services/API/Api/api";
-import { Divider, Select, Card, message, Modal, Spin } from "antd";
+import { Select, Card, message, Modal, Spin } from "antd";
 import { debounce } from "lodash";
-import { Line, Doughnut } from "react-chartjs-2";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import Chart from "chart.js/auto";
+// Side-effect import: registers Chart.js components for the chart wrappers below.
+import "chart.js/auto";
 import dayjs from "dayjs";
 
 import AdminNavbar from "../Nav/AdminNavbar.jsx";
-import { DEFAULT_DATE_RANGE, DEFAULT_LOCATION } from "../Nav/AdminNavbar.jsx";
+import { DEFAULT_DATE_RANGE } from "../Nav/AdminNavbar.jsx";
 import { useDashboard } from "../../../Global/Dashboard-Context/DashboardProvider.jsx";
 
 import Donut from "../components/Analytics/Donut.jsx";
-import AreaSparkline from "../components/Analytics/AreaSparkline.jsx";
-import TooltipBubble from "../components/Analytics/TooltipBubble.jsx";
-import FactoryBarChart from "../components/Analytics/FactoryBarChart.jsx";
 import FlowChart from "../components/Analytics/FlowChart.jsx";
-import CongestionGauge from "../components/Analytics/CongestionGauge.jsx";
-import BottleneckBar from "../components/Analytics/BottleneckBar.jsx";
-import HBar from "../components/Analytics/HBar.jsx";
-import VBarGroup from "../components/Analytics/VBarGroup.jsx";
 import BarChart from "../components/Analytics/BarChart.jsx";
 import WaitingAnalysisCard from "../components/Analytics/WaitingAnalysisCard.jsx";
 import TripExecutionDonut from "../components/Analytics/TripExecutionDonut.jsx";
 import DriverAnalyticsCard from "../components/Analytics/DriverAnalyticsCard.jsx";
-import TripTypeDonut from "../components/Analytics/TripTypeDonut.jsx";
 import PGBreakdownCard from "../components/Analytics/PGBreakdownCard.jsx";
 import TripHeatmap from "../components/Trends/HeatMaps.jsx";
-import DriverSearchPage from "../components/Cards/DriverSearchPage.jsx";
 import DailyTripLine from "../components/Analytics/DailyTripLine.jsx";
 
 import Skeleton from "../components/Loader/Skeleton.jsx";
@@ -35,7 +26,6 @@ import StatCell from "../components/Cards/StatCell.jsx";
 import Delta from "../components/Cards/Delta.jsx";
 import CardLabel from "../components/Cards/CardLabel.jsx";
 import BigNumber from "../components/Cards/BigNumber.jsx";
-import { useUser } from "../../../Global/User-Context/UserContext.jsx";
 
 const TRANSPORTERS = [
   { v: "ATUL PLAST", l: "ATUL PLAST" },
@@ -57,14 +47,6 @@ const TRANSPORTERS = [
   { v: "vishwash", l: "vishwash" },
 ];
 
-const PERIODS = [
-  { key: "today", label: "Today" },
-  { key: "yesterday", label: "Yesterday" },
-  { key: "week", label: "Week" },
-  { key: "month", label: "Month" },
-  { key: "quarter", label: "Quarter" },
-];
-
 const VEHICLE_ICONS = {
   truck: "🚛", miniTruck: "🚚", containerTruck: "🚛", mixerTruck: "🚜",
   waterTanker: "🚒", tractor: "🚜", car: "🚗", bus: "🚌",
@@ -76,6 +58,12 @@ const C = {
   slate: "#94a3b8", slateLight: "#e2e8f0", red: "#fca5a5", redDark: "#ef4444",
   bg: "#f8fafc", card: "#ffffff", border: "#e5e7eb", text: "#0f172a",
   muted: "#64748b", micro: "#94a3b8",
+};
+
+const EMPTY_TOP_VEHICLES = {
+  all: { vehicles: [], maxTrips: 1 },
+  internal: { vehicles: [], maxTrips: 1 },
+  external: { vehicles: [], maxTrips: 1 },
 };
 
 // One endpoint per backend controller. `needsFactory: true` endpoints are
@@ -92,20 +80,42 @@ const ENDPOINTS = [
 ];
 
 export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, activePage }) {
-  const { user } = useUser() || {};
-  const [period, setPeriod] = useState("month");
+  const [period] = useState("month");
   const [vehicleType, setVehicleType] = useState("all");
   const [selectTransporter, setSelectTransporter] = useState("");
   const [trendsByTransporter, setTrendsByTransporter] = useState(null);
-  const { setDateRange, setDates, setTableData, setIsFetching, setOnDateRangeChange, dateRange, location, setFactory, factory, setOnFactoryChange, setDashboardRefetch } = useDashboard();
+  const { setDateRange, dateRange, location, factory } = useDashboard();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadModalVisible, setDownloadModalVisible] = useState(false);
 
   useEffect(() => {
-    if (!dateRange) {
-      setDateRange(DEFAULT_DATE_RANGE);
-    }
+    if (!dateRange) setDateRange(DEFAULT_DATE_RANGE);
   }, [dateRange, setDateRange]);
+
+  // Stable primitives for query keys / params (dayjs objects are not stable keys).
+  const startISO = dateRange?.[0]?.toISOString();
+  const endISO = dateRange?.[1]?.toISOString();
+
+  /* ---------------------------------------------------------------------
+   * Top vehicle
+   * Only feeds the "High Performed Vehicle" card + navbar label. It follows
+   * the selected date range, and it NEVER blocks the rest of the dashboard:
+   * if it fails or finds nothing, every other card still loads fleet-wide.
+   * ------------------------------------------------------------------- */
+  const { data: resolvedVehicleId, isLoading: isTopLoading } = useQuery({
+    queryKey: ["topVehicle", startISO, endISO],
+    queryFn: async () => {
+      const { data } = await api.get("/analytics/vehicle-dashboard/top", {
+        params: { startDate: startISO, endDate: endISO },
+      });
+      return data?.vehicleId ?? null;
+    },
+    enabled: !propVehicleId && activePage === "overview" && !!dateRange,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const vehicleId = propVehicleId ?? resolvedVehicleId ?? null;
 
   const handleDownload = async () => {
     if (isDownloading) {
@@ -116,13 +126,25 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
       setIsDownloading(true);
       setDownloadModalVisible(true);
       message.success("Preparing your download...", 1.5);
-      const res = await api.get("/trip/download", { params: { factory: factory, from: dateRange[0]?.format("YYYY-MM-DD"), to: dateRange[1]?.format("YYYY-MM-DD"), export: "xlsx" }, responseType: "blob" });
+      const res = await api.get("/trip/download", {
+        params: {
+          factory,
+          from: dateRange?.[0]?.format("YYYY-MM-DD"),
+          to: dateRange?.[1]?.format("YYYY-MM-DD"),
+          export: "xlsx",
+        },
+        responseType: "blob",
+      });
       const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `closed-trips-${new Date().toISOString().slice(0, 10)}.xlsx` });
-      a.click(); URL.revokeObjectURL(a.href);
+      const a = Object.assign(document.createElement("a"), {
+        href: URL.createObjectURL(blob),
+        download: `closed-trips-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
       message.success("Download Completed!", 2);
     } catch (err) {
-      console.error("Error downloading report:", err?.res?.data?.message || err.message || err);
+      console.error("Error downloading report:", err?.response?.data?.message || err.message || err);
       Modal.error({ title: "Download Failed", content: "An error occurred while downloading the report. Please try again." });
     } finally {
       setIsDownloading(false);
@@ -130,65 +152,56 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
     }
   };
 
-  const fetchTopVehicle = () => api.get("/analytics/vehicle-dashboard/top").then(r => r.data.vehicleId);
-
-  const { data: resolvedVehicleId, isError: isTopError } = useQuery({
-    queryKey: ["topVehicle"],
-    queryFn: fetchTopVehicle,
-    enabled: !propVehicleId && activePage === "overview",
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const handleSearch = useCallback(
-    debounce((val) => { if (val) setSelectTransporter(val); }, 500),
+  const handleSearch = useMemo(
+    () => debounce((val) => { if (val) setSelectTransporter(val); }, 500),
     []
   );
+  useEffect(() => () => handleSearch.cancel(), [handleSearch]);
 
   useEffect(() => {
-    if (!selectTransporter || selectTransporter === "") return;
-    const fetchTrends = async () => {
+    if (!selectTransporter || activePage !== "overview") return;
+    let cancelled = false;
+    (async () => {
       try {
-        if (activePage !== "overview") return;
         const response = await api.get("/analytics/transporter-customer-trend", { params: { transporterName: selectTransporter } });
-        setTrendsByTransporter(response.data);
+        if (!cancelled) setTrendsByTransporter(response.data);
       } catch (error) {
         console.error("Error fetching trends:", error);
       }
-    };
-    fetchTrends();
-  }, [selectTransporter]);
+    })();
+    return () => { cancelled = true; };
+  }, [selectTransporter, activePage]);
 
-  const vehicleId = propVehicleId ?? resolvedVehicleId;
-
+  // `vehicleId` is optional: when null, the backend returns fleet-wide data
+  // (axios drops undefined params).
   const commonParams = {
-    vehicleId,
+    vehicleId: vehicleId ?? undefined,
     period,
-    startDate: dateRange?.[0]?.toISOString() ?? undefined,
-    endDate: dateRange?.[1]?.toISOString() ?? undefined,
+    startDate: startISO,
+    endDate: endISO,
     location,
     factory,
     vehicleType,
   };
 
-  // Fire all 7 endpoints in parallel. Each tracks its own loading/error
-  // state, so a slow card (e.g. top-vehicles) never blocks a fast one
-  // (e.g. summary) from rendering.
+  // Fire all endpoints in parallel. Each tracks its own loading/error state,
+  // so a slow card never blocks a fast one. They wait for the top-vehicle
+  // lookup to settle (so we don't fire twice), but run even if it found nothing.
   const queries = useQueries({
     queries: ENDPOINTS.map(({ key, url, needsFactory }) => ({
-      queryKey: ["vehicleDashboard", key, vehicleId, period, dateRange, factory, location, vehicleType],
+      queryKey: ["vehicleDashboard", key, vehicleId ?? "fleet", period, startISO, endISO, factory, location, vehicleType],
       queryFn: () => api.get(url, { params: commonParams }).then(r => r.data),
-      enabled: !!vehicleId && (!needsFactory || !!factory),
+      enabled: !isTopLoading && !!dateRange && (!needsFactory || !!factory),
       staleTime: 2 * 60 * 1000,
     })),
   });
 
   const byKey = Object.fromEntries(ENDPOINTS.map(({ key }, i) => [key, queries[i]]));
-  const { summary, usage, tripTypeSplit, topVehicles: topVehiclesQ, waiting, drivers, pgToPg } = byKey;
+  const { summary, usage, topVehicles: topVehiclesQ, waiting, drivers, pgToPg } = byKey;
 
-  // Page can't render at all without the summary call (it's the only one
-  // that resolves `vehicle` — needed for the navbar/header).
-  const isPageLoading = summary.isLoading;
-  const isPageError = isTopError || summary.isError;
+  // Only the summary call is required to render the page shell.
+  const isPageLoading = isTopLoading || summary.isLoading || (!summary.data && !summary.isError);
+  const isPageError = summary.isError;
 
   if (isPageLoading) return (
     <div style={s.page}>
@@ -212,19 +225,23 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
   if (isPageError) return (
     <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 400 }}>
       <div style={{ textAlign: "center", color: C.redDark, fontSize: 14 }}>
-        {isTopError ? "Could not resolve top vehicle." : "Failed to load dashboard data."}
+        Failed to load dashboard data.
       </div>
     </div>
   );
 
-  if (!summary.data) return null;
+  /* ---------------- Null-safe data extraction ---------------- */
+  const {
+    vehicle = null,
+    weeklyStats = {},
+    sameDayColouser = null,
+    tripExecution = null,
+  } = summary.data ?? {};
 
-  const { vehicle, weeklyStats, sameDayColouser, tripExecution } = summary.data;
   const vehicleUsage = usage.data?.vehicleUsage ?? { factoryChart: {} };
   const idleAnalysis = usage.data?.idleAnalysis;
-  const tripTypeSplitData = tripTypeSplit.data?.tripTypeSplit;
   const topVehiclesAndTransporters = topVehiclesQ.data?.topVehiclesAndTransporters ?? {};
-  const topVehiclesByType = topVehiclesQ.data?.topVehicles ?? { all: { vehicles: [], maxTrips: 1 }, internal: { vehicles: [], maxTrips: 1 }, external: { vehicles: [], maxTrips: 1 } };
+  const topVehiclesByType = topVehiclesQ.data?.topVehicles ?? EMPTY_TOP_VEHICLES;
   const waitingAnalysis = waiting.data?.waitingAnalysis;
   const driverAnalytics = drivers.data?.driverAnalytics;
   const pgToPgData = pgToPg.data?.pgToPg;
@@ -239,16 +256,17 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
 
   const visibleVehicles = topVehiclesByType[vehicleType] ?? { vehicles: [], maxTrips: 1 };
 
-  const sohDelta = +(sameDayColouser?.sohPct - 80).toFixed(1);
+  const sohPct = sameDayColouser?.sohPct;
+  const sohDelta = typeof sohPct === "number" ? +(sohPct - 80).toFixed(1) : 0;
 
   return (
     <div style={s.page}>
       <style>{keyframes}</style>
 
       <AdminNavbar
-        vehicleNumber={vehicle.vehicleNumber}
+        vehicleNumber={vehicle?.vehicleNumber ?? "All Vehicles"}
         onShare={() => {}}
-        onDownload={() => { handleDownload(); }}
+        onDownload={handleDownload}
       />
 
       <Modal open={downloadModalVisible} footer={null} closable={false} maskClosable={false} centered>
@@ -266,42 +284,52 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
       <div style={s.grid}>
         <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
 
+          {/* High performed vehicle — the only card that needs a vehicle */}
           <Card style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
               <span className="block">Weekly Stats</span>
               <span className="text-yellow-500 mt-2">High Performed Vehicle</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ width: 72, height: 52, background: C.slateLight, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0 }}>
-                {VEHICLE_ICONS[vehicle.typeOfVehicle] ?? "🚛"}
+
+            {vehicle ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ width: 72, height: 52, background: C.slateLight, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, flexShrink: 0 }}>
+                    {VEHICLE_ICONS[vehicle.typeOfVehicle] ?? "🚛"}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{vehicle.vehicleNumber}</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
+                      {vehicle.model ?? vehicle.vehicleNumber}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
+                      {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Vehicle" : "External"}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
+                      Updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <StatCell label="Active Since" value={weeklyStats.activeSince ?? "—"} />
+                  <StatCell label="Total Trips" value={(weeklyStats.totalClosedTrips ?? 0).toLocaleString("en-IN")} />
+                  <StatCell label="Period Trips" value={weeklyStats.periodTrips ?? 0} accent />
+                  <StatCell label="Completed" value={weeklyStats.periodClosed ?? 0} accent />
+                  <StatCell label="Avg / Day" value={`${weeklyStats.avgTripsPerDay ?? 0} trips`} />
+                  <StatCell label="Est. Trip Hours" value={`${weeklyStats.totalTripHours ?? 0}h`} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: vehicle.isActive ? "#f0fdf4" : "#fef2f2", border: `1px solid ${vehicle.isActive ? "#bbf7d0" : "#fecaca"}`, borderRadius: 8, padding: "8px 12px" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: vehicle.isActive ? "#22c55e" : C.redDark, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: vehicle.isActive ? "#15803d" : C.redDark }}>
+                    {vehicle.isActive ? "Vehicle Active" : "Vehicle Inactive"}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: C.muted, padding: "24px 4px" }}>
+                No completed trips in this date range.
               </div>
-              <div>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{vehicle.vehicleNumber}</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
-                  {vehicle.model ?? vehicle.vehicleNumber}
-                </div>
-                <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
-                  {vehicle.typeOfVehicle ?? "Vehicle"} · {vehicle.type === "internal" ? "PG Vehicle" : "External"}
-                </div>
-                <div style={{ fontSize: 10, color: C.micro, marginTop: 2 }}>
-                  Updated: {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <StatCell label="Active Since" value={weeklyStats.activeSince} />
-              <StatCell label="Total Trips" value={weeklyStats.totalClosedTrips.toLocaleString("en-IN")} />
-              <StatCell label="Period Trips" value={weeklyStats.periodTrips} accent />
-              <StatCell label="Completed" value={weeklyStats.periodClosed} accent />
-              <StatCell label="Avg / Day" value={`${weeklyStats.avgTripsPerDay} trips`} />
-              <StatCell label="Est. Trip Hours" value={`${weeklyStats.totalTripHours}h`} />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: vehicle.isActive ? "#f0fdf4" : "#fef2f2", border: `1px solid ${vehicle.isActive ? "#bbf7d0" : "#fecaca"}`, borderRadius: 8, padding: "8px 12px" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: vehicle.isActive ? "#22c55e" : C.redDark, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: vehicle.isActive ? "#15803d" : C.redDark }}>
-                {vehicle.isActive ? "Vehicle Active" : "Vehicle Inactive"}
-              </span>
-            </div>
+            )}
           </Card>
 
           <div style={{ gridColumn: "span 2" }}>
@@ -325,16 +353,22 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
         <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
           <Card>
-            <CardLabel>Same Day Colosure Rate</CardLabel>
-            <BigNumber style={{ color: sameDayColouser?.sohPct > 60 ? C.teal : C.redDark, fontSize: 24, margin: "6px 0" }}>
-              {sameDayColouser?.sohPct ?? 0}%
+            <CardLabel>Same Day Closure Rate</CardLabel>
+            <BigNumber style={{ color: (sohPct ?? 0) > 60 ? C.teal : C.redDark, fontSize: 24, margin: "6px 0" }}>
+              {sohPct ?? 0}%
             </BigNumber>
             <div style={{ fontSize: 11, color: C.muted, margin: "2px 0 14px" }}>
               This period
               <Delta val={sohDelta} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", gap: 16 }}>
-              <Donut size={110} stroke={14} label={`${sameDayColouser?.total}`} sublabel="Total Trips" segments={sameDayColouser?.segments?.map(s => ({ pct: s.pct, color: s.color }))} />
+              <Donut
+                size={110}
+                stroke={14}
+                label={`${sameDayColouser?.total ?? 0}`}
+                sublabel="Total Trips"
+                segments={sameDayColouser?.segments?.map(seg => ({ pct: seg.pct, color: seg.color })) ?? []}
+              />
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {sameDayColouser?.segments?.map(seg => (
                   <div key={seg.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -352,7 +386,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
           <Card>
             <CardLabel>Trip Execution (Internal vs External)</CardLabel>
             <div style={{ display: "flex", height: 190, justifyContent: "center", alignItems: "center" }}>
-              <TripExecutionDonut segments={tripExecution?.bars} />
+              <TripExecutionDonut segments={tripExecution?.bars ?? []} />
             </div>
           </Card>
 
@@ -363,12 +397,12 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
               title="Daily Trends"
               subtitle=" Daily trips trends "
               isLegendVisible={false}
-              labels={dailyTripsTrend?.map(d => d.label) ?? []}
-              datasets={[{ label: "Trips", data: dailyTripsTrend?.map(d => d.count), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 }]}
+              labels={dailyTripsTrend.map(d => d.label)}
+              datasets={[{ label: "Trips", data: dailyTripsTrend.map(d => d.count), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 }]}
             />
           )}
 
-          <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: " 1fr 1fr 1fr", gap: 14 }}>
+          <div style={{ gridColumn: "span 3", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
             {topVehiclesQ.isLoading ? (
               <>
                 <Skeleton h={210} r={14} />
@@ -379,18 +413,18 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
                 <div style={{ gridColumn: "span 1", display: "flex", flexDirection: "column", gap: 14 }}>
                   <BarChart
                     title="Top 5 Vehicles"
-                    labels={top5Vehicles?.map(v => v.vehicleNumber)}
+                    labels={top5Vehicles.map(v => v.vehicleNumber)}
                     isLegendVisible={false}
-                    datasets={[{ label: "Trips", data: top5Vehicles?.map(v => v.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 }]}
+                    datasets={[{ label: "Trips", data: top5Vehicles.map(v => v.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 }]}
                   />
                 </div>
                 <div style={{ gridColumn: "span 2", display: "flex", flexDirection: "column", gap: 14 }}>
                   <BarChart
                     title="Top 5 Transporters"
-                    labels={top5Transporters?.map(t => t.transporterName)}
+                    labels={top5Transporters.map(t => t.transporterName)}
                     datasets={[
-                      { label: "Trips", data: top5Transporters?.map(t => t.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
-                      { label: "Vehicles", data: top5Transporters?.map(t => t.vehicleCount), backgroundColor: "#09637E", borderColor: "#09637E", borderWidth: 1.5, borderRadius: 5 },
+                      { label: "Trips", data: top5Transporters.map(t => t.tripCount), backgroundColor: "#4f8ef7cc", borderColor: "#4f8ef7", borderWidth: 1.5, borderRadius: 5 },
+                      { label: "Vehicles", data: top5Transporters.map(t => t.vehicleCount), backgroundColor: "#09637E", borderColor: "#09637E", borderWidth: 1.5, borderRadius: 5 },
                     ]}
                   />
                 </div>
@@ -421,9 +455,9 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
                 <BarChart
                   title="Busiest Days"
                   subtitle="Top days by trip volume (descending)"
-                  labels={busiestDays?.map(d => dayjs(d.date).format("D MMM"))}
+                  labels={busiestDays.map(d => dayjs(d.date).format("D MMM"))}
                   isLegendVisible={false}
-                  datasets={[{ label: "Trips", data: busiestDays?.map(d => d.count), backgroundColor: C.teal, _baseColor: C.teal }]}
+                  datasets={[{ label: "Trips", data: busiestDays.map(d => d.count), backgroundColor: C.teal, _baseColor: C.teal }]}
                 />
                 <BarChart
                   title="Avg Trips / Day — Top 5 Vehicles"
@@ -478,8 +512,8 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
               <Skeleton h={200} r={10} />
             ) : (
               <DailyTripLine
-                dailyTrend={idleAnalysis?.dailyTrend}
-                labels={idleAnalysis?.dailyTrend.map(d => d.label)}
+                dailyTrend={idleAnalysis?.dailyTrend ?? []}
+                labels={idleAnalysis?.dailyTrend?.map(d => d.label) ?? []}
                 activeDays={idleAnalysis?.activeDays}
                 idleDays={idleAnalysis?.idleDays}
                 period={period}
@@ -487,7 +521,7 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
             )}
           </Card>
 
-          <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr ", gridTemplateRows: "auto", gap: 14 }}>
+          <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto", gap: 14 }}>
             {waiting.isLoading || !factory ? (
               <Skeleton h={180} r={14} />
             ) : (
@@ -510,14 +544,14 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
           <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>Transporter:</span>
           <Select
             showSearch
-            value={selectTransporter}
+            value={selectTransporter || undefined}
             placeholder="Type transporter name..."
             defaultActiveFirstOption={false}
             filterOption={(input, option) => option.label.toLowerCase().includes(input.toLowerCase())}
             style={{ width: 240 }}
             onChange={(val) => setSelectTransporter(val)}
             onSearch={handleSearch}
-            options={TRANSPORTERS.filter(t => t.v).map(t => ({ value: t.v, label: t.l }))}
+            options={TRANSPORTERS.map(t => ({ value: t.v, label: t.l }))}
           />
         </div>
 
@@ -531,8 +565,10 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
               label: selectTransporter,
               color: "#39B1D1",
               countLabel: "total",
-              footerLabel: `${trendsByTransporter.totalTrips} trips · ${trendsByTransporter.customers?.length} customers`,
-              data: Array.isArray(trendsByTransporter.customers) ? trendsByTransporter.customers.map(c => ({ factoryName: c.customerName, count: c.totalTrips })) : [],
+              footerLabel: `${trendsByTransporter.totalTrips} trips · ${trendsByTransporter.customers?.length ?? 0} customers`,
+              data: Array.isArray(trendsByTransporter.customers)
+                ? trendsByTransporter.customers.map(c => ({ factoryName: c.customerName, count: c.totalTrips }))
+                : [],
             }]}
           />
         ) : (
@@ -544,13 +580,13 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
 
       {topVehiclesQ.isLoading ? (
         <Skeleton h={320} r={14} style={{ marginTop: 14 }} />
-      ) : top25Vehicles?.length > 0 && (
+      ) : top25Vehicles.length > 0 && (
         <div style={{ flex: "1 1 600px", minWidth: 0 }}>
           <TripHeatmap
             vehicles={top25Vehicles}
             dates={top25Vehicles[0]?.dailyTrips?.map(d => ({ date: d.date, label: d.label }))}
             matrix={top25Vehicles.map(v =>
-              top25Vehicles[0]?.dailyTrips?.map(dateRef => v.dailyTrips.find(d => d.date === dateRef.date)?.tripCount ?? 0)
+              top25Vehicles[0]?.dailyTrips?.map(dateRef => v.dailyTrips?.find(d => d.date === dateRef.date)?.tripCount ?? 0)
             )}
             title="Top 25 Vehicles Trip Heatmap"
             subtitle="Trips per vehicle per day"
@@ -576,11 +612,6 @@ export default function VehiclePerformanceDashboard({ vehicleId: propVehicleId, 
 const s = {
   page: { position: "relative", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", background: C.bg, minHeight: "100vh", padding: "5px 15px", boxSizing: "border-box", borderRadius: 14 },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", width: "100%", gap: 10 },
-  backBtn: { background: "#f1f5f9", border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, cursor: "pointer", color: C.text, fontWeight: 700 },
-  periodBtn: { padding: "5px 11px", fontSize: 11, fontWeight: 600, border: "none", borderRadius: 6, background: "transparent", color: C.muted, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s" },
-  periodBtnActive: { background: "#fff", color: C.text, boxShadow: "0 1px 4px rgba(0,0,0,0.1)" },
-  shareBtn: { padding: "7px 14px", fontSize: 12, fontWeight: 600, border: `1px solid ${C.border}`, borderRadius: 8, background: "#fff", color: C.text, cursor: "pointer" },
-  downloadBtn: { padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "none", borderRadius: 8, background: C.teal, color: "#fff", cursor: "pointer", boxShadow: "0 2px 8px rgba(13,148,136,0.3)" },
   grid: { display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, alignItems: "start" },
 };
 

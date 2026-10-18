@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState,  useMemo } from "react";
 import { Layout, Menu, Avatar, Dropdown, Badge, Button, Typography, Breadcrumb, Space, Divider } from "antd";
 import {
   AppstoreOutlined,
@@ -9,8 +9,6 @@ import {
   BellOutlined,
   UserOutlined,
   LogoutOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   DownOutlined,
 } from "@ant-design/icons";
 import api from "../../../services/API/Api/api";
@@ -28,7 +26,7 @@ const getNavItems = (user) => [
     icon: <AppstoreOutlined />,
     children: [
       { id: "overview",           label: "Overview" },
-      { id: "searchDrivers",      label: "Search Drivers" },
+      { id: "searchDrivers",      label: "Find Trip" },
       { id: "vehiclePerformance", label: "Vehicle Performance" },
       { id: "executiveDashboard", label: "Executive Dashboard" },
     ],

@@ -183,18 +183,20 @@ export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal, onCo
   const [open, setOpen]         = useState(false);
   const [trip, setTrip]         = useState(null);
   const [step, setStep]         = useState("select");   // "select" | "internal" | "external" | "intraplant"
+  const [skipCheckin, setSkipCheckin] = useState(false);
   const [selected, setSelected] = useState(null);
   const [selectedSite, setSelectedSite]   = useState(null);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const customers = [...CUSTOMER, ...SUPPLIERS].sort((a, b) => a.l.localeCompare(b.l));
 
-  const openChangeRouteModal = (tripData) => {
+  const openChangeRouteModal = (tripData, skipCheckin) => {
     setTrip(tripData);
     setStep(tripData?.isIntraPlant ? "intraplant" : "select");
     setSelected(null);
     setSelectedSite(null);
     setSelectedBlock(null);
     setOpen(true);
+    setSkipCheckin(skipCheckin || false);
   };
 
   const close = () => {
@@ -235,6 +237,8 @@ export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal, onCo
       onConfirmInternal: handleConfirmInternal,
       onConfirmExternal: handleConfirmExternal,
       onConfirmIntraPlant: handleConfirmIntraPlant,
+      skipCheckin,
+      setSkipCheckin,
     },
   };
 }
@@ -243,10 +247,11 @@ export function useChangeRouteModal({ onConfirmInternal, onConfirmExternal, onCo
 ═══════════════════════════════════════════════════════════════ */
 
 export default function ChangeRouteModal({
-  open, trip, step, setStep,
+  open, trip,  step, setStep,
   selected, setSelected,
   selectedSite, setSelectedSite,
   selectedBlock, setSelectedBlock,
+  skipCheckin, setSkipCheckin,
   onClose, onConfirmInternal, onConfirmExternal, onConfirmIntraPlant, onConfirmLoadMaterialAndNewTrip
 }) {
   const isInternal = step === "internal";

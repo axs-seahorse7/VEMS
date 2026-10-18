@@ -1939,181 +1939,177 @@ export const cancelTrip = asyncHandler( async (req, res) => {
 });
 
 // ======================== CHANGE ROUTE ========================
-export const changeRoute = asyncHandler( async (req, res) => {
+export const changeRoute = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
   let tripDetails = null;
+
   try {
-    let updatedTrip = null;
     await session.withTransaction(async () => {
       const { tripId } = req.params;
-      const {newDestinationFactoryId, newSiteId, newBlockId, customer, type } = req.body;
+      const { newDestinationFactoryId, newSiteId, newBlockId, customer, type, skipCheckin } = req.body;
 
-      const user = await User.findById(req.userId)
-        .populate("factory")
-        .session(session);
-
+      const user = await User.findById(req.userId).populate("factory").session(session);
       if (!user?.factory) {
         throw new AppError("Your session expired. Please login again.", 400);
       }
 
-  
-      const trip = await Trip.findById(tripId)
-      .session(session);
-
+      const trip = await Trip.findById(tripId).session(session);
       if (!trip) {
         throw new AppError("Trip maybe closed or not available", 404);
       }
 
-     
       if (["CLOSED", "CANCELLED"].includes(trip.tripState)) {
         throw new AppError("Cannot change route of a closed or cancelled trip", 400);
       }
 
+      // ========================
+      // LOCATION GUARD
+      // Allowed: inside the factory (existing rule) OR before check-in (new rule)
+      // ========================
+      const ROUTE_CHANGE_ALLOWED_LOCATIONS = ["inside_factory", "outside_factory"];
+      if (!ROUTE_CHANGE_ALLOWED_LOCATIONS.includes(trip.location)) {
+        throw new AppError(
+          "Route can only be changed before check-in or from inside the factory",
+          400
+        );
+      }
+
+      // ========================
+      // VALIDATION
+      // ========================
       if (type === "internal" && !newDestinationFactoryId) {
-        throw new AppError(
-          "New destination factory is required for internal transfer", 400
-        );
+        throw new AppError("New destination factory is required for internal transfer", 400);
       }
-
       if (type === "external" && !customer) {
-        throw new AppError(
-          "Customer is required for external movement", 400
-        );
+        throw new AppError("Customer is required for external movement", 400);
       }
-
-      // ========================
-      // SAME DESTINATION CHECK
-      // ========================
       if (type === "internal" && String(trip.destinationFactoryId) === String(newDestinationFactoryId)) {
-        throw new AppError(
-          "Vehicle is already at this factory.", 400
-        );
+        throw new AppError("Vehicle is already at this factory.", 400);
       }
 
       const now = new Date();
 
+      // Before check-in there is no "inside" step, so always go straight to in-transit.
+      // Same trip state that checkoutVehicle produces.
+      const isSkip = !!skipCheckin || trip.location === "outside_factory";
+
+      const destinationFactoryId =
+        type === "intraplant" && trip.isIntraPlant === true
+          ? user.factory._id
+          : newDestinationFactoryId || null;
+
       // ========================
       // UPDATE PAYLOAD
+      // phase stays "ORIGIN" in both paths: getStage (IN_TRANSIT / READY_FOR_ARRIVAL)
+      // and the "enroute" / "dispatched" filters all require it.
       // ========================
       const updatePayload = {
-        type:type === "external"? "external_delivery": "internal_transfer",
-        purpose: trip.loadStatus === "loaded" && trip.purpose === "Pickup" ? "Delivery" : trip.purpose,
-        loadStatus: trip.loadStatus === "loaded"? "pending" : trip.loadStatus,
-        currentFactoryId: user?.factory._id,
-        externalDestination:type === "external"? customer: null,
-        sourceFactoryId:user?.factory._id,
-        destinationFactoryId: type === "intraplant" && trip.isIntraPlant === true ? user?.factory._id : newDestinationFactoryId || null,
+        type: type === "external" ? "external_delivery" : "internal_transfer",
+        purpose: isSkip? trip.purpose : trip.loadStatus === "loaded" && trip.purpose === "Pickup" ? "Delivery" : trip.purpose,
+        loadStatus: trip.loadStatus === "loaded" ? "pending" : trip.loadStatus,
+        currentFactoryId: user.factory._id,
+        externalDestination: type === "external" ? customer : null,
+        sourceFactoryId: user.factory._id,
+        destinationFactoryId,
         phase: "ORIGIN",
-        status: "ROUTE_CHANGED",
+        location: isSkip ? "enroute" : "inside_factory",
+        status: isSkip ? "IN_TRANSIT" : "ROUTE_CHANGED",
         startedAt: now,
-        waitingSince: now,
+        waitingSince: isSkip ? null : now,
       };
 
-      if(trip.isIntraPlant){
-        updatePayload.siteId = user?.siteId || null
-        updatePayload.blockId = user?.blockId  || null
-        updatePayload.sourceSiteId = user?.siteId || null
-        updatePayload.sourceBlockId = user?.blockId  || null
-        updatePayload.destinationSiteId = newSiteId || null
-        updatePayload.destinationBlockId = newBlockId || null
+      if (trip.isIntraPlant) {
+        updatePayload.siteId = user.siteId || null;
+        updatePayload.blockId = user.blockId || null;
+        updatePayload.sourceSiteId = user.siteId || null;
+        updatePayload.sourceBlockId = user.blockId || null;
+        updatePayload.destinationSiteId = newSiteId || null;
+        updatePayload.destinationBlockId = newBlockId || null;
       }
 
       // ========================
-      // HISTORY SEGMENT
+      // HISTORY (single route_change entry)
       // ========================
-      const segmentData = {
-        movementType: type,
-        externalDestination:type === "internal"? null : customer,
-        sourceFactoryId: trip.destinationFactoryId,
-        destinationFactoryId: type === "intraplant" && trip.isIntraPlant === true ? user?.factory._id : newDestinationFactoryId || null,
-        startedAt: trip.startedAt,
-        completedAt: now,
+      const historyEntry = {
+        status: "ROUTE_CHANGED",
+        phase: "ROUTE_UPDATE",
+        actionBy: user.email || "system",
+        actionDetails: {
+          siteId: user.siteId || null,
+          blockId: user.blockId || null,
+        },
+        actionLocation: user.workLocation,
+        location: trip.location || null,
+        factoryId: user.factory._id,
+        action: "route_change",
+        timestamp: now,
+        segment: {
+          movementType: type,
+          externalDestination: type === "internal" ? null : customer,
+          sourceFactoryId: trip.destinationFactoryId, // factory the vehicle had arrived at
+          destinationFactoryId,                       // new factory
+          startedAt: trip.startedAt,
+          completedAt: now,
+        },
       };
 
-      
-      updatedTrip = await Trip.findByIdAndUpdate(
-          tripId,
-          {
-            ...updatePayload,
-            $push: {
-              tripHistory: {
-                status: "ROUTE_CHANGED",
-                phase: "ROUTE_UPDATE",
-                actionBy: user?.email || "system",
-                actionDetails: {
-                  siteId: user?.siteId || null,
-                  blockId: user?.blockId || null
-                },
-                actionLocation: user?.workLocation,
-                location: trip.location || null,
-                factoryId: user?.factory._id,
-                action: "route_change",
-                timestamp: now,
-                segment: segmentData
-              }
-            }
-          },
-          {
-            new: true,
-            session
-          }
+      const updatedTrip = await Trip.findByIdAndUpdate(
+        tripId,
+        { ...updatePayload, $push: { tripHistory: historyEntry } },
+        { new: true, session }
+      );
+
+      // ========================
+      // SEGMENTS (inside the transaction)
+      // ========================
+      if (trip.currentSegment) {
+        await tripSegment.findByIdAndUpdate(
+          trip.currentSegment,
+          { status: "CLOSED", completedAt: now },
+          { session }
         );
+      }
 
+      const segmentCount = await tripSegment
+        .countDocuments({ tripId: updatedTrip._id })
+        .session(session);
+
+      const [newSegment] = await tripSegment.create(
+        [
+          {
+            tripId: updatedTrip._id,
+            triptype: updatedTrip.type === "internal_transfer" ? "INTERNAL" : "EXTERNAL",
+            purpose:  updatedTrip.purpose,
+            status: "ACTIVE",
+            segmentNumber: segmentCount + 1,
+            materials: updatedTrip.materials?.[0],
+            externalSource: updatedTrip.externalSource ?? null,
+            externalDestination: updatedTrip.externalDestination ?? null,
+            sourceFactoryId: updatedTrip.sourceFactoryId ?? null,
+            destinationFactoryId: updatedTrip.destinationFactoryId ?? null,
+            vehicleId: updatedTrip.vehicleId,
+            driverId: updatedTrip.driverId,
+            startedAt: updatedTrip.startedAt,
+            completedAt: null,
+          },
+        ],
+        { session }
+      );
+
+      updatedTrip.currentSegment = newSegment._id;
+      await updatedTrip.save({ session });
+
+      tripDetails = {
+        trip: updatedTrip,
+        success: true,
+        message: "Route Changed Successfully.",
+      };
     });
-
-   
-
-    const segmentId = updatedTrip.currentSegment
-
-    if(segmentId){
-     await tripSegment.findByIdAndUpdate(segmentId, {
-        status: "CLOSED",
-        completedAt: new Date()
-      },{
-        new: true,
-        session
-      })
-
-    }
-
-    const existingSegments = await tripSegment.find({ tripId: updatedTrip._id }).session(session);
-
-    let segmentCounter = null;
-    if(existingSegments){
-      segmentCounter = existingSegments.length + 1;
-    }
-
-    const newSegment = await tripSegment.create([{
-        tripId: updatedTrip._id,
-        triptype: updatedTrip.type === "internal_transfer"? "INTERNAL": "EXTERNAL",
-        status: "ACTIVE",
-        segmentNumber: segmentCounter || 1,
-        materials: updatedTrip.materials[0],
-        externalSource: updatedTrip.externalSource?? null,
-        externalDestination: updatedTrip.externalDestination?? null,
-        sourceFactoryId: updatedTrip.sourceFactoryId?? null,
-        destinationFactoryId: updatedTrip.destinationFactoryId?? null,
-        vehicleId: updatedTrip.vehicleId,
-        driverId: updatedTrip.driverId,
-        startedAt: updatedTrip.startedAt,
-        completedAt: null,
-      }], { session });
-
-      updatedTrip.currentSegment = newSegment[0]._id
-      await updatedTrip.save({session})
-
-    tripDetails = {
-      trip: updatedTrip,
-      success: true,
-      message: "Route Changed Successfully."
-    }
-    
   } finally {
     session.endSession();
-    
   }
-  return res.status(200).json(tripDetails);
 
+  return res.status(200).json(tripDetails);
 });
 
 // ======================== LOAD MATERIAL AND CREATE NEW TRIP ========================
@@ -2447,7 +2443,6 @@ export const dispatchVehicle = asyncHandler(async (req, res) => {
     session.endSession();
   }
 });
-
 
 
 
@@ -2928,6 +2923,7 @@ export const getVehicleTrips = async (req, res) => {
     const sites = await Site.find({_id: { $in: user?.factory?.allowedSites }});
     const currentPhase = getTripPhase(trips[0], user, sites);
     const workflow = computeWorkflow(trips[0], sites, user, currentPhase);
+
 
     return res.json({...trips[0], workflow, success: true, message: "Trip fetched successfully"});
 
@@ -3626,9 +3622,58 @@ export const closedAndCancelledTrips = async (req, res) => {
   }
 };
 
+// Needs these in the trip controller file (add whatever is missing):
+//   import mongoose from "mongoose";
+//   import Vehicle from "../db/models/Vehicle-Model/vehicle.model.js";
+//   import Driver  from "../db/models/Driver-model/driver.model.js";
+
+/* ── Search helpers ─────────────────────────────────────────────────────── */
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const OBJECT_ID_RE = /^[a-f\d]{24}$/i;
+
+const buildSearchMatch = async (rawTerm) => {
+  const term = (rawTerm || "").trim();
+  if (!term) return null;
+
+  const or = [];
+
+  if (OBJECT_ID_RE.test(term)) {
+    const oid = new mongoose.Types.ObjectId(term);
+    or.push({ _id: oid }, { vehicleId: oid }, { driverId: oid });
+  } else {
+    const compact = term.replace(/[\s-]/g, "");
+    const vehicleRx = compact
+      ? new RegExp(compact.split("").map(escapeRegExp).join("[\\s-]*"), "i")
+      : null;
+    const textRx = new RegExp(escapeRegExp(term), "i");
+
+    const [vehicles, drivers] = await Promise.all([
+      vehicleRx
+        ? Vehicle.find({ vehicleNumber: vehicleRx }).select("_id").limit(500).lean()
+        : [],
+      Driver.find({
+        $or: [
+          { driverName: textRx },
+          { driverContact: textRx },
+          { licenseNumber: textRx },
+        ],
+      })
+        .select("_id")
+        .limit(500)
+        .lean(),
+    ]);
+
+    if (vehicles.length) or.push({ vehicleId: { $in: vehicles.map((v) => v._id) } });
+    if (drivers.length) or.push({ driverId: { $in: drivers.map((d) => d._id) } });
+  }
+
+  // Nothing matched → force an empty result instead of returning everything
+  return or.length ? { $or: or } : { _id: { $in: [] } };
+};
+
 export const getClosedTrips = async (req, res) => {
   try {
-    const { vehicleNumber, driverContact, from, to, cursor, limit } = req.query;
+    const { search, vehicleNumber, driverContact, from, to, cursor, limit } = req.query;
 
     const user = await User.findById(req.userId).select("factory");
     if (!user || !user.factory) {
@@ -3636,117 +3681,88 @@ export const getClosedTrips = async (req, res) => {
     }
 
     const factoryId = user.factory;
+    const searchTerm = (search || "").trim();
 
     /* ── Pagination ─────────────────────────────────────────── */
-    const PAGE_LIMIT = Math.min(parseInt(limit) || 20, 100); // default 20, hard cap 100
-
-    // cursor = updatedAt ISO string of the last item received on the previous page
+    const PAGE_LIMIT = Math.min(parseInt(limit) || 20, 100);
     const cursorDate = cursor ? new Date(cursor) : null;
 
-    /* ── Date range ─────────────────────────────────────────── */
-    let fromDate, toDate;
+    /* ── Date range ─────────────────────────────────────────────
+     * - explicit from/to  → use them
+     * - searching, no dates → NO default window (search all time),
+     *   otherwise an older vehicle/trip could never be found
+     * - otherwise         → last 36 hours
+     * ───────────────────────────────────────────────────────── */
+    let fromDate;
+    let toDate;
 
     if (from || to) {
       fromDate = from ? new Date(from) : null;
-      toDate   = to   ? new Date(to)   : null;
+      toDate = to ? new Date(to) : null;
       if (toDate) toDate.setHours(23, 59, 59, 999);
-    } else {
-      // Default: last 36 hours
-      toDate   = new Date();
+    } else if (!searchTerm) {
+      toDate = new Date();
       fromDate = new Date(toDate.getTime() - 36 * 60 * 60 * 1000);
     }
 
-    // Build the updatedAt filter for the DATA pipeline (includes cursor offset)
-    const dataDateFilter = {};
-    if (fromDate)   dataDateFilter.$gte = fromDate;
-    if (toDate)     dataDateFilter.$lte = toDate;
-    if (cursorDate) dataDateFilter.$lt  = cursorDate; // cursor: fetch older than last seen
-
-    /* ── Base match for DATA pipeline ───────────────────────── */
-    const baseMatch = {
-      tripState: {
-        $in: ["CLOSED", "CANCELLED"]
-      },
-      ...(Object.keys(dataDateFilter).length && { updatedAt: dataDateFilter }),
-      $or: [
-        { sourceFactoryId: factoryId },
-        { destinationFactoryId: factoryId },
-      ],
-    };
-
-    /* ── Base match for STATS pipeline (full range, no cursor) ─ */
     const statsDateFilter = {};
     if (fromDate) statsDateFilter.$gte = fromDate;
-    if (toDate)   statsDateFilter.$lte = toDate;
+    if (toDate) statsDateFilter.$lte = toDate;
 
-    const statsBaseMatch = {
-      tripState: {
-        $in: ["CLOSED", "CANCELLED"]
-      },
-      ...(Object.keys(statsDateFilter).length && { updatedAt: statsDateFilter }),
-      $or: [
-        { sourceFactoryId: factoryId },
-        { destinationFactoryId: factoryId },
-      ],
+    const dataDateFilter = { ...statsDateFilter };
+    if (cursorDate) dataDateFilter.$lt = cursorDate;
+
+    /* ── Base matches ───────────────────────────────────────────
+     * Factory scope is ALWAYS applied, even for ObjectId search, so a user
+     * can't pull another factory's trips by guessing ids.
+     * ───────────────────────────────────────────────────────── */
+    const searchMatch = await buildSearchMatch(searchTerm);
+
+    const factoryScope = {
+      $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }],
+    };
+    const scope = searchMatch ? [factoryScope, searchMatch] : [factoryScope];
+
+    const baseMatch = {
+      tripState: { $in: ["CLOSED", "CANCELLED"] },
+      ...(Object.keys(dataDateFilter).length && { updatedAt: dataDateFilter }),
+      $and: scope,
     };
 
-    /* ── Dynamic search filters (post-lookup) ───────────────── */
-    const searchMatch = {
+    const statsBaseMatch = {
+      tripState: { $in: ["CLOSED", "CANCELLED"] },
+      ...(Object.keys(statsDateFilter).length && { updatedAt: statsDateFilter }),
+      $and: scope,
+    };
+
+    /* ── Legacy explicit filters (kept for other callers) ───── */
+    const fieldMatch = {
       ...(vehicleNumber && {
-        "vehicle.vehicleNumber": { $regex: vehicleNumber, $options: "i" },
+        "vehicle.vehicleNumber": { $regex: escapeRegExp(vehicleNumber), $options: "i" },
       }),
       ...(driverContact && {
-        "driver.driverContact": { $regex: driverContact, $options: "i" },
+        "driver.driverContact": { $regex: escapeRegExp(driverContact), $options: "i" },
       }),
     };
 
     /* ── Shared lookup + project stages ─────────────────────── */
     const lookupStages = [
-      {
-        $lookup: {
-          from: "vehicles",
-          localField: "vehicleId",
-          foreignField: "_id",
-          as: "vehicle",
-        },
-      },
+      { $lookup: { from: "vehicles", localField: "vehicleId", foreignField: "_id", as: "vehicle" } },
       { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: false } },
 
-      {
-        $lookup: {
-          from: "drivers",
-          localField: "driverId",
-          foreignField: "_id",
-          as: "driver",
-        },
-      },
+      { $lookup: { from: "drivers", localField: "driverId", foreignField: "_id", as: "driver" } },
       { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
 
-      ...(Object.keys(searchMatch).length ? [{ $match: searchMatch }] : []),
+      ...(Object.keys(fieldMatch).length ? [{ $match: fieldMatch }] : []),
 
-      {
-        $lookup: {
-          from: "factories",
-          localField: "sourceFactoryId",
-          foreignField: "_id",
-          as: "sourceFactory",
-        },
-      },
+      { $lookup: { from: "factories", localField: "sourceFactoryId", foreignField: "_id", as: "sourceFactory" } },
       { $unwind: { path: "$sourceFactory", preserveNullAndEmptyArrays: true } },
 
-      {
-        $lookup: {
-          from: "factories",
-          localField: "destinationFactoryId",
-          foreignField: "_id",
-          as: "destinationFactory",
-        },
-      },
+      { $lookup: { from: "factories", localField: "destinationFactoryId", foreignField: "_id", as: "destinationFactory" } },
       { $unwind: { path: "$destinationFactory", preserveNullAndEmptyArrays: true } },
 
       {
         $project: {
-          // Trip meta
           _id: 1,
           type: 1,
           tripState: 1,
@@ -3756,14 +3772,12 @@ export const getClosedTrips = async (req, res) => {
           externalSource: 1,
           externalDestination: 1,
 
-          // Vehicle
           "vehicle._id": 1,
           "vehicle.vehicleNumber": 1,
           "vehicle.type": 1,
           "vehicle.typeOfVehicle": 1,
           "vehicle.PUCExpiry": 1,
 
-          // Driver
           "driver._id": 1,
           "driver.driverName": 1,
           "driver.driverContact": 1,
@@ -3771,7 +3785,6 @@ export const getClosedTrips = async (req, res) => {
           "driver.driverIdNumber": 1,
           "driver.licenseNumber": 1,
 
-          // Factories
           "sourceFactory.name": 1,
           "sourceFactory.location": 1,
           "destinationFactory.name": 1,
@@ -3782,71 +3795,58 @@ export const getClosedTrips = async (req, res) => {
       { $sort: { updatedAt: -1 } },
     ];
 
-    /* ── Data pipeline — paginated ───────────────────────────── */
     const dataPipeline = [
       { $match: baseMatch },
       ...lookupStages,
-      { $limit: PAGE_LIMIT + 1 }, // +1 to detect whether a next page exists
+      { $limit: PAGE_LIMIT + 1 },
     ];
 
-    /* ── Stats pipeline — full range, runs only on page 1 ───── */
     const statsPipeline = [
       { $match: statsBaseMatch },
       ...lookupStages,
       {
         $group: {
           _id: null,
-          totalTrips:        { $sum: 1 },
-          uniqueVehicles:    { $addToSet: "$vehicle._id" },
-          uniqueDrivers:     { $addToSet: "$driver._id" },
+          totalTrips: { $sum: 1 },
+          uniqueVehicles: { $addToSet: "$vehicle._id" },
+          uniqueDrivers: { $addToSet: "$driver._id" },
           vehicleTripCounts: { $push: { vehicleNumber: "$vehicle.vehicleNumber", vehicleId: "$vehicle._id" } },
-          driverTripCounts:  { $push: { driverContact: "$driver.driverContact", driverName: "$driver.driverName", driverId: "$driver._id" } },
+          driverTripCounts: { $push: { driverContact: "$driver.driverContact", driverName: "$driver.driverName", driverId: "$driver._id" } },
         },
       },
       {
         $addFields: {
           uniqueVehicleCount: { $size: "$uniqueVehicles" },
-          uniqueDriverCount:  { $size: "$uniqueDrivers" },
+          uniqueDriverCount: { $size: "$uniqueDrivers" },
         },
       },
     ];
 
-    // Run in parallel; skip stats on subsequent pages (cursor present) to save DB load
     const [dataResult, statsResult] = await Promise.all([
       Trip.aggregate(dataPipeline),
       !cursorDate ? Trip.aggregate(statsPipeline) : Promise.resolve([]),
     ]);
 
-    /* ── Slice trips + determine hasMore ────────────────────── */
-    const hasMore   = dataResult.length > PAGE_LIMIT;
-    const trips     = hasMore ? dataResult.slice(0, PAGE_LIMIT) : dataResult;
-    const nextCursor = hasMore && trips.length > 0
-      ? trips[trips.length - 1].updatedAt.toISOString()
-      : null;
+    const hasMore = dataResult.length > PAGE_LIMIT;
+    const trips = hasMore ? dataResult.slice(0, PAGE_LIMIT) : dataResult;
+    const nextCursor =
+      hasMore && trips.length > 0 ? trips[trips.length - 1].updatedAt.toISOString() : null;
 
-    /* ── Empty first-page response ───────────────────────────── */
+    // isDefault = the implicit 36h window was applied (not when searching)
+    const isDefault = !(from || to || searchTerm);
+    const dateRange = { from: fromDate ?? null, to: toDate ?? null, isDefault };
+
     if (trips.length === 0 && !cursorDate) {
       return res.status(200).json({
         success: true,
         count: 0,
         data: [],
-        stats: {
-          totalTrips: 0,
-          uniqueVehicleCount: 0,
-          uniqueDriverCount: 0,
-          perVehicle: [],
-          perDriver: [],
-        },
-        pagination: {
-          hasMore: false,
-          nextCursor: null,
-          limit: PAGE_LIMIT,
-        },
-        dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
+        stats: { totalTrips: 0, uniqueVehicleCount: 0, uniqueDriverCount: 0, perVehicle: [], perDriver: [] },
+        pagination: { hasMore: false, nextCursor: null, limit: PAGE_LIMIT },
+        dateRange,
       });
     }
 
-    
     let stats = { totalTrips: 0, uniqueVehicleCount: 0, uniqueDriverCount: 0, perVehicle: [], perDriver: [] };
 
     if (!cursorDate && statsResult.length > 0) {
@@ -3873,9 +3873,9 @@ export const getClosedTrips = async (req, res) => {
       ).sort((a, b) => b.tripCount - a.tripCount);
 
       stats = {
-        totalTrips:         s.totalTrips,
+        totalTrips: s.totalTrips,
         uniqueVehicleCount: s.uniqueVehicleCount,
-        uniqueDriverCount:  s.uniqueDriverCount,
+        uniqueDriverCount: s.uniqueDriverCount,
         perVehicle,
         perDriver,
       };
@@ -3883,17 +3883,12 @@ export const getClosedTrips = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      count: trips.length,       
-      data: trips,          
-      stats,                   
-      pagination: {
-        hasMore,                    
-        nextCursor,                
-        limit: PAGE_LIMIT,
-      },
-      dateRange: { from: fromDate, to: toDate, isDefault: !(from || to) },
+      count: trips.length,
+      data: trips,
+      stats,
+      pagination: { hasMore, nextCursor, limit: PAGE_LIMIT },
+      dateRange,
     });
-
   } catch (error) {
     console.error("Error fetching closed trips:", error);
     return res.status(500).json({
@@ -4026,31 +4021,54 @@ export const getVehicleLiveStatus = asyncHandler(
 
 
 
-const fmtDT = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { hour12: true }) : "";
 
-const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("en-IN") : "";
+// Trip downloading helpers and Excel-style formatting (Controller)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Keep your existing imports at the top of this file, they are all still used:
+//   ExcelJS, mongoose, User, Trip, tripSegment
+// ─────────────────────────────────────────────────────────────────────────────
+
+/* ══════════════════════════════════════════════════════════════
+   TIME HELPERS — the server runs in UTC, so every date/time is
+   formatted explicitly in IST. (Before this, all times in the
+   sheet were 5h30m behind what users saw in the app.)
+══════════════════════════════════════════════════════════════ */
+const APP_TZ = "Asia/Kolkata";
+
+const fmtDT   = (d) => (d ? new Date(d).toLocaleString("en-IN", { hour12: true, timeZone: APP_TZ }) : "");
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { timeZone: APP_TZ }) : "");
+const ymdIST  = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: APP_TZ }); // YYYY-MM-DD
+
+/** Start / end of the IST calendar day that contains `value` ("2026-10-15" or any ISO date). */
+const istDayBoundary = (value, endOfDay) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = ymdIST(d);
+  return new Date(`${day}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}+05:30`);
+};
+
+const slug = (s) => String(s ?? "").trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /* ══════════════════════════════════════════════════════════════
    EXCEL STYLE HELPERS
 ══════════════════════════════════════════════════════════════ */
 
 const COLORS = {
-  headerBg:    "1E293B",  // slate-800  — dark section label rows
-  headerFg:    "FFFFFF",
-  colHeaderBg: "F1F5F9",  // slate-100  — column name row
-  colHeaderFg: "334155",
-  seg1Bg:      "FFFFFF",  // first segment  — white
-  seg2Bg:      "F8FAFC",  // alternating segment — off-white
-  multiMatBg:  "FFF7ED",  // orange-50  — 2nd+ material row within same segment
-  routeChangeBg: "EFF6FF", // blue-50   — route_change event in log
-  evenRowBg:   "F8FAFC",
-  cancelBg:    "FEF2F2",  // red-50 — cancelled trip rows
-  white:       "FFFFFF",
+  headerBg:      "1E293B",
+  headerFg:      "FFFFFF",
+  colHeaderBg:   "F1F5F9",
+  colHeaderFg:   "334155",
+  seg1Bg:        "FFFFFF",
+  seg2Bg:        "F8FAFC",
+  multiMatBg:    "FFF7ED",
+  routeChangeBg: "EFF6FF",
+  evenRowBg:     "F8FAFC",
+  cancelBg:      "FEF2F2",
+  white:         "FFFFFF",
 };
 
-/** Apply bold styled header to a row */
 const styleHeader = (row, bgHex, fgHex) => {
   row.eachCell({ includeEmpty: true }, (cell) => {
     cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + bgHex } };
@@ -4060,7 +4078,6 @@ const styleHeader = (row, bgHex, fgHex) => {
   });
 };
 
-/** Apply standard data cell styling */
 const styleData = (cell, bgHex) => {
   cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + bgHex } };
   cell.font      = { name: "Arial", size: 9 };
@@ -4073,65 +4090,65 @@ const styleData = (cell, bgHex) => {
 
 const styleRow = (row, bgHex) => row.eachCell({ includeEmpty: true }, (cell) => styleData(cell, bgHex));
 
+/* ══════════════════════════════════════════════════════════════
+   HISTORY HELPERS
+══════════════════════════════════════════════════════════════ */
+
+const isRouteChange = (ev) => ev.action?.toLowerCase() === "route_change";
 
 /**
- * True if the event action/status is a route_change.
+ * Place name for one end of a segment: the INTERNAL factory wins; the external
+ * free-text name is used only when there is no internal factory on that side.
+ * (Each side is resolved on its own — an external trip can be "external source
+ * → internal destination" or the reverse, so the leg type must not decide.)
  */
-const isRouteChange = (ev) => {
-  const a = ev.action?.toLowerCase();
-  // const s = ev.status?.toLowerCase();
-  return a === "route_change";
-};
+const placeLabel = (factoryDoc, externalVal) =>
+  factoryDoc?.name ||
+  (typeof externalVal === "string" && externalVal.trim() ? externalVal.trim() : "");
+
+const destLabel = (seg) => placeLabel(seg?.destinationFactory, seg?.externalDestination);
 
 /**
- * Resolve a human-readable factory label. Internal segments have a real
- * Factory document (ObjectId ref); external segments only ever had a free-text
- * string. Both represent the exact same concept — "where this leg goes" — so
- * we collapse them into a single field instead of showing two half-empty columns.
+ * Decide which segment every history event belongs to.
+ *
+ *  1. A route_change CLOSES the current segment: the route_change itself is the
+ *     last event of the old segment, and everything after it (checkout, arrived,
+ *     check-in ...) belongs to the NEXT segment. (The old code pulled the single
+ *     event after a route_change into the old segment — that was wrong whenever
+ *     that event was the checkout / arrival at the new destination.)
+ *  2. If an event carries tripSegmentId and it points to a known segment that is
+ *     not behind the current one, that id wins — no timing guesswork needed.
+ *  3. Anything left over stays in the last segment (e.g. the final "closed").
+ *
+ * @returns {Array<Array>} one event array per segment, same order as `segments`
  */
-const resolveFactoryLabel = (isExternal, externalVal, factoryDoc) =>
-  isExternal ? (externalVal || "") : (factoryDoc?.name || "");
+function assignEventsToSegments(sortedHistory, segments) {
+  const groups = segments.map(() => []);
+  if (!segments.length) return groups;
 
-/**
- * @param {Array} history - trip.tripHistory sorted ascending by timestamp
- * @returns {Array<Array>} one events-array per segment, in order
- */
-function splitHistoryBySegment(history) {
-  const chunks = [];
-  let current = [];
+  const idxById = new Map(segments.map((s, i) => [String(s._id), i]));
+  const last = segments.length - 1;
+  let cursor = 0;
 
-  for (let i = 0; i < history.length; i++) {
-    const ev = history[i];
-    current.push(ev);
+  for (const ev of sortedHistory) {
+    const hinted = ev.tripSegmentId ? idxById.get(String(ev.tripSegmentId)) : undefined;
+    if (hinted !== undefined && hinted > cursor) cursor = hinted; // never move backwards
 
-    if (isRouteChange(ev)) {
-      // Pull in the one event right after ROUTE_CHANGE (typically checkout)
-      // and close the segment here.
-      if (i + 1 < history.length) {
-        current.push(history[i + 1]);
-        i += 1; // already consumed, skip it in the outer loop
-      }
-      chunks.push(current);
-      current = [];
-    }
+    groups[cursor].push(ev);
+
+    if (isRouteChange(ev)) cursor = Math.min(cursor + 1, last);
   }
-
-  // Trailing events after the last ROUTE_CHANGE (or the entire history, if
-  // there was no ROUTE_CHANGE at all) form the final segment.
-  if (current.length) chunks.push(current);
-
-  return chunks;
+  return groups;
 }
 
-function pickEventTime(events, ...targets) {
-  const upper = targets.map((t) => t.toUpperCase());
-  const found = events.find(
-    (ev) =>
-      upper.includes(ev.action?.toUpperCase()) ||
-      upper.includes(ev.status?.toUpperCase())
-  );
-  return fmtDT(found?.timestamp);
-}
+/**
+ * Time of the first event matching any of the given actions. Used only for the
+ * "closed" timestamp now; the timeline columns were removed from Trip Details.
+ */
+const eventTime = (events, ...actions) => {
+  const want = actions.map((a) => a.toLowerCase());
+  return events.find((ev) => want.includes(ev.action?.toLowerCase()))?.timestamp;
+};
 
 /* ══════════════════════════════════════════════════════════════
    CONTROLLER
@@ -4147,20 +4164,25 @@ export const getDownloadTrips = async (req, res) => {
       return res.status(404).json({ message: "User or factory not found" });
     }
 
-    let factoryId = user.factory;
-
+    // Factory this report is for:
+    //  • normal user / admin → the factory assigned to them (or the one they picked)
+    //  • system admin        → the factory they picked, or ALL locations when none is picked
+    let factoryId = user.factory || null;
     if (factory && mongoose.Types.ObjectId.isValid(factory)) {
       factoryId = new mongoose.Types.ObjectId(factory);
     }
 
-    /* ── 2. Build date range ─────────────────────────────────── */
+    const Factory = mongoose.model("Factory");
+    const factoryDoc = factoryId
+      ? await Factory.findById(factoryId).select("name location").lean()
+      : null;
+
+    /* ── Date range (IST calendar days) ─────────────────────── */
     let fromDate, toDate;
     if (from || to) {
-      fromDate = from ? new Date(from) : null;
-      toDate   = to   ? new Date(to)   : null;
-      if (toDate) toDate.setHours(23, 59, 59, 999);
+      fromDate = istDayBoundary(from, false);
+      toDate   = istDayBoundary(to, true);
     } else {
-      // default: last 36 hours
       toDate   = new Date();
       fromDate = new Date(toDate.getTime() - 36 * 60 * 60 * 1000);
     }
@@ -4174,31 +4196,14 @@ export const getDownloadTrips = async (req, res) => {
         $match: {
           tripState: { $in: ["CLOSED", "CANCELLED"] },
           ...(Object.keys(dateFilter).length && { updatedAt: dateFilter }),
-          $or: [
-            { sourceFactoryId: factoryId },
-            { destinationFactoryId: factoryId },
-          ],
+          ...(factoryId && {
+            $or: [{ sourceFactoryId: factoryId }, { destinationFactoryId: factoryId }],
+          }),
         },
       },
-      // vehicle — required; skip trips with no vehicle
-      {
-        $lookup: {
-          from: "vehicles",
-          localField: "vehicleId",
-          foreignField: "_id",
-          as: "vehicle",
-        },
-      },
+      { $lookup: { from: "vehicles", localField: "vehicleId", foreignField: "_id", as: "vehicle" } },
       { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: false } },
-      // driver — optional
-      {
-        $lookup: {
-          from: "drivers",
-          localField: "driverId",
-          foreignField: "_id",
-          as: "driver",
-        },
-      },
+      { $lookup: { from: "drivers", localField: "driverId", foreignField: "_id", as: "driver" } },
       { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
       { $sort: { updatedAt: -1 } },
     ]);
@@ -4211,46 +4216,14 @@ export const getDownloadTrips = async (req, res) => {
 
     const rawSegments = await tripSegment.aggregate([
       { $match: { tripId: { $in: tripIds } } },
-      {
-        $lookup: {
-          from: "vehicles",
-          localField: "vehicleId",
-          foreignField: "_id",
-          as: "vehicle",
-        },
-      },
+      { $lookup: { from: "vehicles", localField: "vehicleId", foreignField: "_id", as: "vehicle" } },
       { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: true } },
-      // driver per segment
-      {
-        $lookup: {
-          from: "drivers",
-          localField: "driverId",
-          foreignField: "_id",
-          as: "driver",
-        },
-      },
+      { $lookup: { from: "drivers", localField: "driverId", foreignField: "_id", as: "driver" } },
       { $unwind: { path: "$driver", preserveNullAndEmptyArrays: true } },
-      // source factory
-      {
-        $lookup: {
-          from: "factories",
-          localField: "sourceFactoryId",
-          foreignField: "_id",
-          as: "sourceFactory",
-        },
-      },
+      { $lookup: { from: "factories", localField: "sourceFactoryId", foreignField: "_id", as: "sourceFactory" } },
       { $unwind: { path: "$sourceFactory", preserveNullAndEmptyArrays: true } },
-      // destination factory
-      {
-        $lookup: {
-          from: "factories",
-          localField: "destinationFactoryId",
-          foreignField: "_id",
-          as: "destinationFactory",
-        },
-      },
+      { $lookup: { from: "factories", localField: "destinationFactoryId", foreignField: "_id", as: "destinationFactory" } },
       { $unwind: { path: "$destinationFactory", preserveNullAndEmptyArrays: true } },
-      // sort: trip first, then segment order within trip
       { $sort: { tripId: 1, segmentNumber: 1 } },
     ]);
 
@@ -4261,6 +4234,25 @@ export const getDownloadTrips = async (req, res) => {
       segmentsByTrip.get(key).push(seg);
     }
 
+    /* ── Factory names for the history log ────────────────────
+       Trip.tripHistory only stores factory IDs (not populated by aggregate),
+       which is why the "Factory" column of the Event Log was always empty. */
+    const factoryIds = new Set();
+    for (const t of trips) {
+      [t.sourceFactoryId, t.destinationFactoryId].filter(Boolean).forEach((id) => factoryIds.add(String(id)));
+      for (const h of t.tripHistory || []) {
+        [h.factoryId, h.segment?.sourceFactoryId, h.segment?.destinationFactoryId]
+          .filter(Boolean)
+          .forEach((id) => factoryIds.add(String(id)));
+      }
+    }
+    const factoryNameById = new Map();
+    if (factoryIds.size) {
+      const docs = await Factory.find({ _id: { $in: [...factoryIds] } }).select("name").lean();
+      docs.forEach((f) => factoryNameById.set(String(f._id), f.name));
+    }
+    const fName = (id) => (id ? factoryNameById.get(String(id)) || "" : "");
+
     /* ════════════════════════════════════════════════════════════
        BUILD WORKBOOK
     ════════════════════════════════════════════════════════════ */
@@ -4268,78 +4260,59 @@ export const getDownloadTrips = async (req, res) => {
     wb.creator = "Fleet Management System";
     wb.created = new Date();
 
+    /* ── Sheet 1: Trip Details — one row per segment (per material) ── */
     const wsDetail = wb.addWorksheet("Trip Details", {
-      // xSplit: 3 pins Trip ID / Vehicle No. / Purpose on the left while
-      // scrolling horizontally through the rest of the sheet.
       views:     [{ state: "frozen", xSplit: 3, ySplit: 2 }],
       pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
     });
 
     wsDetail.columns = [
-      // PINNED (cols 1-3) — frozen, always visible while scrolling
-      { key: "tripId",        width: 28 },
-      { key: "vehicleNo",     width: 16 },
-      { key: "purpose",       width: 16 },
-      // TRIP INFO (cols 4-7)
-      { key: "segNo",         width: 8  },
-      { key: "tripType",      width: 14 },
-      { key: "status",        width: 12 },
-      { key: "cancelReason",  width: 24 },
-      // VEHICLE (cols 8-11)
-      { key: "vehicleCat",    width: 16 },
-      { key: "vehicleType",   width: 18 },
-      { key: "pucExpiry",     width: 14 },
+      // PINNED (1-3)
+      { key: "tripId",         width: 28 },
+      { key: "vehicleNo",      width: 16 },
+      { key: "purpose",        width: 16 },
+      // TRIP INFO (4-7)
+      { key: "segNo",          width: 8  },
+      { key: "tripType",       width: 14 },
+      { key: "status",         width: 12 },
+      { key: "cancelReason",   width: 24 },
+      // VEHICLE (8-11)
+      { key: "vehicleCat",     width: 16 },
+      { key: "vehicleType",    width: 18 },
+      { key: "pucExpiry",      width: 14 },
       { key: "transporterName",width: 18 },
-      // DRIVER (cols 12-16)
-      { key: "driverName",    width: 18 },
-      { key: "driverContact", width: 14 },
-      { key: "driverIdType",  width: 14 },
-      { key: "driverIdNo",    width: 16 },
-      { key: "licenseNo",     width: 16 },
-      // ROUTE (cols 17-20) — Source/Dest Factory now unify the internal
-      // (Factory doc) and external (free-text) cases into one readable field.
-      { key: "srcFactory",    width: 22 },
-      { key: "srcLocation",   width: 18 },
-      { key: "dstFactory",    width: 22 },
-      { key: "dstLocation",   width: 18 },
-      // SEGMENT TIMING (cols 21-22)
-      { key: "segStartedAt",  width: 22 },
-      { key: "segCompletedAt",width: 22 },
-      // TIMELINE (cols 23-31)
-      { key: "tBegin",        width: 20 },
-      { key: "tArrived",      width: 20 },
-      { key: "tCheckin",      width: 20 },
-      { key: "tCheckout",     width: 20 },
-      { key: "tLoad",         width: 20 },
-      { key: "tUnload",       width: 20 },
-      { key: "tDestination",  width: 20 },
-      { key: "tRouteChange",  width: 20 },
-      { key: "tClosed",       width: 20 },
-      // MATERIAL (cols 32-40)
-      { key: "matName",       width: 18 },
-      { key: "matType",       width: 16 },
-      { key: "qty",           width: 10 },
-      { key: "unit",          width: 8  },
-      { key: "invoiceNo",     width: 16 },
-      { key: "invoiceAmt",    width: 16 },
-      { key: "seal",          width: 12 },
-      { key: "supplier",      width: 18 },
-      { key: "customer",      width: 18 },
+      // DRIVER (12-16)
+      { key: "driverName",     width: 18 },
+      { key: "driverContact",  width: 14 },
+      { key: "driverIdType",   width: 14 },
+      { key: "driverIdNo",     width: 16 },
+      { key: "licenseNo",      width: 16 },
+      // ROUTE (17-20)
+      { key: "srcFactory",     width: 22 },
+      { key: "srcLocation",    width: 18 },
+      { key: "dstFactory",     width: 22 },
+      { key: "dstLocation",    width: 18 },
+      // MATERIAL (21-29)
+      { key: "matName",        width: 18 },
+      { key: "matType",        width: 16 },
+      { key: "qty",            width: 10 },
+      { key: "unit",           width: 8  },
+      { key: "invoiceNo",      width: 16 },
+      { key: "invoiceAmt",     width: 16 },
+      { key: "seal",           width: 12 },
+      { key: "supplier",       width: 18 },
+      { key: "customer",       width: 18 },
     ];
 
-    // Row 1 — section label spans
     const labelRow1 = wsDetail.addRow([]);
     const sectionDefs = [
-      { col: 1,  span: 3,  label: "PINNED"           },
-      { col: 4,  span: 4,  label: "TRIP INFO"        },
-      { col: 8,  span: 4,  label: "VEHICLE"          },
-      { col: 12, span: 5,  label: "DRIVER"           },
-      { col: 17, span: 4,  label: "ROUTE"            },
-      { col: 21, span: 2,  label: "SEGMENT TIMING"   },
-      { col: 23, span: 9,  label: "TIMELINE"         },
-      { col: 32, span: 9,  label: "MATERIAL / CARGO" },
+      { col: 1,  span: 3, label: "PINNED"           },
+      { col: 4,  span: 4, label: "TRIP INFO"        },
+      { col: 8,  span: 4, label: "VEHICLE"          },
+      { col: 12, span: 5, label: "DRIVER"           },
+      { col: 17, span: 4, label: "ROUTE"            },
+      { col: 21, span: 9, label: "MATERIAL / CARGO" },
     ];
-
     sectionDefs.forEach(({ col, span, label }) => {
       labelRow1.getCell(col).value = label;
       if (span > 1) wsDetail.mergeCells(1, col, 1, col + span - 1);
@@ -4347,21 +4320,18 @@ export const getDownloadTrips = async (req, res) => {
     styleHeader(labelRow1, COLORS.headerBg, COLORS.headerFg);
     labelRow1.height = 22;
 
-    // Row 2 — column headers
     const headerRow1 = wsDetail.addRow([
       "Trip ID", "Vehicle No.", "Purpose",
       "Seg #", "Trip Type", "Status", "Cancellation Reason",
       "Category", "Vehicle Type", "PUC Expiry", "Transporter",
       "Driver Name", "Contact", "ID Type", "ID Number", "License No.",
       "Source Factory", "Source Location", "Dest. Factory", "Dest. Location",
-      "Seg Started At", "Seg Completed At",
-      "Begin", "Arrived", "Check-In", "Check-Out", "Loaded", "Unloaded", "At Destination", "Route Changed", "Closed",
       "Material", "Mat. Type", "Qty", "Unit", "Invoice No.", "Invoice Amt (₹)", "Seal", "Supplier", "Customer",
     ]);
-
     styleHeader(headerRow1, COLORS.colHeaderBg, COLORS.colHeaderFg);
     headerRow1.height = 32;
 
+    /* ── Sheet 2: Event Log — every history event with its real timestamp ── */
     const wsLog = wb.addWorksheet("Event Log", {
       views: [{ state: "frozen", ySplit: 1 }],
     });
@@ -4379,70 +4349,63 @@ export const getDownloadTrips = async (req, res) => {
       { key: "actionBy",   width: 26 },
       { key: "actionLoc",  width: 16 },
       { key: "factory",    width: 20 },
+      { key: "routeFrom",  width: 22 },
+      { key: "routeTo",    width: 22 },
       { key: "timestamp",  width: 22 },
     ];
 
     const logHeaderRow = wsLog.addRow([
       "Trip ID", "Seg #", "Vehicle No.", "Driver", "Event #",
       "Status", "Action", "Location", "Phase",
-      "Action By", "Action Location", "Factory", "Timestamp",
+      "Action By", "Action Location", "Factory",
+      "Route Changed From", "Route Changed To", "Timestamp",
     ]);
-
     styleHeader(logHeaderRow, COLORS.headerBg, COLORS.headerFg);
     logHeaderRow.height = 24;
 
-    /* ────────────────────────────────────────────────────────────
-       SHEET 3 — SUMMARY
-    ──────────────────────────────────────────────────────────── */
+    /* ── Sheet 3: Summary ── */
     const wsSummary = wb.addWorksheet("Summary");
     wsSummary.columns = [{ width: 30 }, { width: 22 }, { width: 16 }];
 
-    // counters for summary — populated while iterating trips below
     let totalSegments = 0;
-    const vehicleMap  = {}; // vehicleNo → { docs, segments }
-    const driverMap   = {}; // driverName → { contact, docs, segments }
+    const vehicleMap = {};
+    const driverMap  = {};
 
     /* ════════════════════════════════════════════════════════════
-       MAIN DATA LOOP — iterate trips → segments → materials
+       MAIN LOOP — trips → segments → materials / events
     ════════════════════════════════════════════════════════════ */
     for (const trip of trips) {
-      const tripIdStr  = trip._id.toString();
-      const history    = trip.tripHistory || [];
-      const segments   = segmentsByTrip.get(tripIdStr) || [];
+      const tripIdStr = trip._id.toString();
+      const segments  = segmentsByTrip.get(tripIdStr) || [];
 
-      // Sort history by timestamp ascending for reliable window mapping
-      const sortedHistory = [...history].sort(
-        (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
-      );
+      // stable sort: timestamp, then original order (same-millisecond events keep their order)
+      const sortedHistory = (trip.tripHistory || [])
+        .map((ev, i) => ({ ev, i }))
+        .sort((a, b) => new Date(a.ev.timestamp) - new Date(b.ev.timestamp) || a.i - b.i)
+        .map(({ ev }) => ev);
 
       const effectiveSegments = segments.length > 0 ? segments : [
-              {
-                _id:                  trip._id,          // fake id
-                tripId:               trip._id,
-                segmentNumber:        1,
-                triptype:             trip.type === "internal_transfer" ? "INTERNAL" : "EXTERNAL",
-                purpose:              trip.purpose || "",
-                vehicleId:            trip.vehicleId,
-                driverId:             trip.driverId,
-                vehicle:              trip.vehicle,
-                driver:               trip.driver,
-                sourceFactoryId:      trip.sourceFactoryId,
-                destinationFactoryId: trip.destinationFactoryId,
-                sourceFactory:        trip.sourceFactory,
-                destinationFactory:   trip.destinationFactory,
-                externalSource:       trip.externalSource      || "",
-                externalDestination:  trip.externalDestination || "",
-                materials:            trip.materials?.[0] || null,
-                startedAt:            trip.startedAt,
-                completedAt:          trip.completedAt || trip.updatedAt,
-                status:               trip.tripState,
-                _synthetic:           true,
-              },
-            ];
+        {
+          _id:                 trip._id, // fake id
+          tripId:              trip._id,
+          segmentNumber:       1,
+          triptype:            trip.type === "internal_transfer" ? "INTERNAL" : "EXTERNAL",
+          purpose:             trip.purpose || "",
+          vehicle:             trip.vehicle,
+          driver:              trip.driver,
+          // trips without TripSegment docs: build the factory objects from the trip's own ids
+          sourceFactory:       trip.sourceFactory      || (trip.sourceFactoryId      ? { name: fName(trip.sourceFactoryId) }      : null),
+          destinationFactory:  trip.destinationFactory || (trip.destinationFactoryId ? { name: fName(trip.destinationFactoryId) } : null),
+          externalSource:      trip.externalSource      || "",
+          externalDestination: trip.externalDestination || "",
+          materials:           trip.materials?.[0] || null,
+          status:              trip.tripState,
+          _synthetic:          true,
+        },
+      ];
 
       totalSegments += effectiveSegments.length;
 
-      /* Summary: vehicle-level count */
       effectiveSegments.forEach((seg) => {
         const vn = seg.vehicle?.vehicleNumber || trip.vehicle?.vehicleNumber || "Unknown";
         vehicleMap[vn] = vehicleMap[vn] || { docs: new Set(), segments: 0 };
@@ -4456,143 +4419,66 @@ export const getDownloadTrips = async (req, res) => {
         driverMap[dn].segments++;
       });
 
-      // Trip-level status / cancellation info (same for every segment/material row of this trip)
       const isCancelled  = trip.tripState === "CANCELLED";
       const statusLabel  = isCancelled ? "Cancelled" : "Closed";
       const cancelReason = isCancelled ? (trip.reason || "") : "";
 
-      /* ── Resolve segment start/end boundaries for DISPLAY ────────
-         TripSegment.startedAt can be null on real records (the first
-         segment in particular — its startedAt write and the next
-         segment's creation can happen within the same instant from
-         separate concurrent requests, and one loses the race). This is
-         purely cosmetic now (see below for how events are actually
-         assigned to segments) — it just keeps the "Seg Started/Completed
-         At" columns from showing blank when the DB value is missing.
+      const segEventGroups = assignEventsToSegments(sortedHistory, effectiveSegments);
 
-         Fallback: segment 1 always starts when the trip itself starts;
-         any later segment's start defaults to the previous segment's own
-         completedAt (they're adjacent legs — one ends where the next
-         begins). */
-      const resolvedStarts = effectiveSegments.map((seg, idx) => {
-        if (seg.startedAt) return seg.startedAt;
-        if (idx === 0) return trip.startedAt;
-        const prev = effectiveSegments[idx - 1];
-        return prev.completedAt || prev.startedAt || trip.startedAt;
-      });
-      const resolvedEnds = effectiveSegments.map((seg, idx) => {
-        if (seg.completedAt) return seg.completedAt;
-        if (idx === effectiveSegments.length - 1) return trip.completedAt || trip.updatedAt;
-        return resolvedStarts[idx + 1];
-      });
-
-      /* ── Split history into per-segment event groups ─────────────
-         Structural split, not timestamp-based: walk the sorted history
-         once, and every ROUTE_CHANGE (plus the single event right after
-         it) closes out a segment. See splitHistoryBySegment() above for
-         the full reasoning. The resulting chunks line up 1:1, in order,
-         with effectiveSegments (segment 1, 2, 3...).
-
-         If the counts don't match (data inconsistency — e.g. a route
-         change logged without ever creating the follow-on TripSegment
-         doc), any extra trailing chunks are folded into the last real
-         segment rather than silently dropped, and any missing chunks
-         just leave that segment's event list empty. */
-      const historyChunks = splitHistoryBySegment(sortedHistory);
-      const segEventGroups = effectiveSegments.map((_, idx) => historyChunks[idx] || []);
-      if (historyChunks.length > effectiveSegments.length) {
-        const overflow = historyChunks.slice(effectiveSegments.length).flat();
-        segEventGroups[segEventGroups.length - 1] =
-          segEventGroups[segEventGroups.length - 1].concat(overflow);
-      }
-
-      /* ── Process each segment ── */
       effectiveSegments.forEach((seg, segIdx) => {
-        const isLastSeg = segIdx === effectiveSegments.length - 1;
         const segEvents = segEventGroups[segIdx];
 
-        /* Resolved vehicle/driver — prefer segment-level, fall back to trip */
         const vehicle = seg.vehicle || trip.vehicle || {};
         const driver  = seg.driver  || trip.driver  || {};
 
-        /* Resolved factories — segment has its own populated factories */
         const srcFactory = seg.sourceFactory      || {};
         const dstFactory = seg.destinationFactory || {};
 
-        const isExternal = seg.triptype === "EXTERNAL";
-        const srcFactoryLabel = resolveFactoryLabel(
-          isExternal, seg.externalSource || trip.externalSource, srcFactory
-        );
-        const dstFactoryLabel = resolveFactoryLabel(
-          isExternal, seg.externalDestination || trip.externalDestination, dstFactory
-        );
-
-        /* Timeline from segment-scoped events */
-        const timeline = [
-          pickEventTime(segEvents, "begin"),
-          pickEventTime(segEvents, "arrived"),
-          pickEventTime(segEvents, "checkin"),
-          pickEventTime(segEvents, "checkout"),
-          pickEventTime(segEvents, "load"),
-          pickEventTime(segEvents, "unload"),
-          pickEventTime(segEvents, "destination", "complete"),
-          pickEventTime(segEvents, "route_change"),
-          // closed timestamp only on last segment
-          isLastSeg ? fmtDT(trip.completedAt || trip.updatedAt) : "",
-        ];
+        // internal factory first, external name only if there is no internal factory.
+        // Only the segment's own fields are used: falling back to trip-level
+        // externalSource/externalDestination is what printed the same external
+        // name on both sides.
+        const srcFactoryLabel = placeLabel(srcFactory, seg.externalSource);
+        const dstFactoryLabel = placeLabel(dstFactory, seg.externalDestination);
 
         let materials;
         if (seg._synthetic) {
-          // synthetic segment — use trip.materials array
           materials = trip.materials?.length ? trip.materials : [null];
         } else if (seg.materials && Object.keys(seg.materials).length > 0) {
-          // segment has its own material object — wrap in array
           materials = [seg.materials];
         } else {
-          // no segment-level material — use trip.materials as fallback
           materials = trip.materials?.length ? trip.materials : [null];
         }
 
-        /* ── Emit one Excel row per material ── */
+        /* ── Trip Details: one row per material ── */
         materials.forEach((mat, mIdx) => {
           const bgHex = isCancelled
             ? COLORS.cancelBg
             : mIdx === 0
               ? (segIdx % 2 === 0 ? COLORS.seg1Bg : COLORS.seg2Bg)
-              : COLORS.multiMatBg; // extra material rows get orange tint
+              : COLORS.multiMatBg;
 
-          const rowData = [
-            // PINNED
+          const dataRow = wsDetail.addRow([
             tripIdStr,
-            vehicle.vehicleNumber      || "",
+            vehicle.vehicleNumber || "",
             seg.purpose || trip.purpose || "",
-            // TRIP INFO
             `Seg ${seg.segmentNumber}`,
             seg.triptype === "INTERNAL" ? "Internal" : "External",
             statusLabel,
             cancelReason,
-            // VEHICLE
-            vehicle.typeOfVehicle      || "",
+            vehicle.typeOfVehicle || "",
             vehicle.type === "internal" ? "Internal" : "External",
             fmtDate(vehicle.PUCExpiry),
-            vehicle.transporterName     || "",
-            // DRIVER
-            driver.driverName          || "",
-            driver.driverContact       || "",
-            driver.driverIdType        || "",
-            driver.driverIdNumber      || "",
-            driver.licenseNumber       || "",
-            // ROUTE
+            vehicle.transporterName || "",
+            driver.driverName    || "",
+            driver.driverContact || "",
+            driver.driverIdType  || "",
+            driver.driverIdNumber|| "",
+            driver.licenseNumber || "",
             srcFactoryLabel,
-            srcFactory.location        || "",
+            srcFactory.location || "",
             dstFactoryLabel,
-            dstFactory.location        || "",
-            // SEGMENT TIMING
-            fmtDT(resolvedStarts[segIdx]),
-            fmtDT(resolvedEnds[segIdx]),
-            // TIMELINE
-            ...timeline,
-            // MATERIAL
+            dstFactory.location || "",
             mat?.name          || "",
             mat?.material      || "",
             mat?.quantity      ?? "",
@@ -4602,62 +4488,60 @@ export const getDownloadTrips = async (req, res) => {
             mat?.seal          || "",
             mat?.supplier      || "",
             mat?.customer      || "",
-          ];
-
-          const dataRow = wsDetail.addRow(rowData);
+          ]);
           dataRow.height = 18;
           styleRow(dataRow, bgHex);
-
-          // Bold Trip ID on first material row of each segment
-          if (mIdx === 0) {
-            dataRow.getCell(1).font = { bold: true, name: "Arial", size: 9 };
-          }
+          if (mIdx === 0) dataRow.getCell(1).font = { bold: true, name: "Arial", size: 9 };
         });
 
-        /* ── Emit one Event Log row per history event in this window ── */
+        /* ── Event Log: one row per event of this segment ── */
         segEvents.forEach((ev, evIdx) => {
-          const isRouteChangeRow = ev.action?.toUpperCase() === "ROUTE_CHANGE" ||
-                                ev.status?.toUpperCase() === "ROUTE_CHANGED";
+          const rc = isRouteChange(ev) || ev.status?.toUpperCase() === "ROUTE_CHANGED";
+
+          // route change: OLD destination → NEW destination.
+          // Primary source = the segment that was closed → the segment that was opened.
+          // Fallback (no follow-on segment, e.g. old data) = the segment snapshot on the event.
+          let routeFrom = "";
+          let routeTo   = "";
+          if (isRouteChange(ev)) {
+            const next = effectiveSegments[segIdx + 1];
+            routeFrom = destLabel(seg);
+            routeTo   = next
+              ? destLabel(next)
+              : (fName(ev.segment?.destinationFactoryId) || ev.segment?.externalDestination || "");
+          }
 
           const logRow = wsLog.addRow([
             tripIdStr,
             `Seg ${seg.segmentNumber}`,
-            vehicle.vehicleNumber  || "",
-            driver.driverName      || "",
+            vehicle.vehicleNumber || "",
+            driver.driverName     || "",
             evIdx + 1,
-            ev.status              || "",
-            ev.action              || "",
-            ev.location             || "",
-            ev.phase               || "",
-            ev.actionBy            || "",
-            ev.actionLocation      || "",
-            ev.factory?.name       || "",
+            ev.status         || "",
+            ev.action         || "",
+            ev.location       || "",
+            ev.phase          || "",
+            ev.actionBy       || "",
+            ev.actionLocation || "",
+            fName(ev.factoryId),
+            routeFrom,
+            routeTo,
             fmtDT(ev.timestamp),
           ]);
           logRow.height = 16;
-          styleRow(
-            logRow,
-            isRouteChangeRow
-              ? COLORS.routeChangeBg
-              : evIdx % 2 === 0 ? COLORS.white : COLORS.evenRowBg
-          );
+          styleRow(logRow, rc ? COLORS.routeChangeBg : evIdx % 2 === 0 ? COLORS.white : COLORS.evenRowBg);
+          if (isRouteChange(ev)) {
+            logRow.getCell(13).font = { bold: true, name: "Arial", size: 9 };
+            logRow.getCell(14).font = { bold: true, name: "Arial", size: 9 };
+          }
         });
       });
     } // end trips loop
 
-    /* ── Autofilters ── */
-    wsDetail.autoFilter = {
-      from: { row: 2, column: 1 },
-      to:   { row: 2, column: wsDetail.columns.length },
-    };
-    wsLog.autoFilter = {
-      from: { row: 1, column: 1 },
-      to:   { row: 1, column: wsLog.columns.length },
-    };
+    wsDetail.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: wsDetail.columns.length } };
+    wsLog.autoFilter    = { from: { row: 1, column: 1 }, to: { row: 1, column: wsLog.columns.length } };
 
-    /* ════════════════════════════════════════════════════════════
-       SHEET 3 — SUMMARY  (fill now that we have all counts)
-    ════════════════════════════════════════════════════════════ */
+    /* ── Summary ── */
     const addSummaryKV = (label, value, bold = false) => {
       const r = wsSummary.addRow([label, value]);
       if (bold) {
@@ -4666,15 +4550,19 @@ export const getDownloadTrips = async (req, res) => {
       }
     };
 
+    const scopeLabel = factoryDoc?.name
+      ? `${factoryDoc.name}${factoryDoc.location ? ` (${factoryDoc.location})` : ""}`
+      : "All Locations";
+
     addSummaryKV("Fleet Trip Download Report", "", true);
-    addSummaryKV("Generated At",  new Date().toLocaleString("en-IN"));
+    addSummaryKV("Factory / Location", scopeLabel);
+    addSummaryKV("Generated At",  `${fmtDT(new Date())} IST`);
     addSummaryKV("Date Range",    `${fmtDate(fromDate)} → ${fmtDate(toDate)}`);
     wsSummary.addRow([]);
-    addSummaryKV("Total Trip Documents", trips.length,    true);
-    addSummaryKV("Total Segments",       totalSegments,   true);
+    addSummaryKV("Total Trip Documents", trips.length,  true);
+    addSummaryKV("Total Segments",       totalSegments, true);
     wsSummary.addRow([]);
 
-    // Per-vehicle table
     const vHeader = wsSummary.addRow(["Vehicle No.", "Trip Documents", "Segments"]);
     styleHeader(vHeader, COLORS.colHeaderBg, COLORS.colHeaderFg);
     Object.entries(vehicleMap)
@@ -4686,7 +4574,6 @@ export const getDownloadTrips = async (req, res) => {
 
     wsSummary.addRow([]);
 
-    // Per-driver table
     const dHeader = wsSummary.addRow(["Driver", "Contact", "Trip Documents"]);
     styleHeader(dHeader, COLORS.colHeaderBg, COLORS.colHeaderFg);
     Object.entries(driverMap)
@@ -4697,14 +4584,15 @@ export const getDownloadTrips = async (req, res) => {
       });
 
     /* ════════════════════════════════════════════════════════════
-       STREAM RESPONSE
+       STREAM RESPONSE — file name carries the factory (or "All-Locations")
     ════════════════════════════════════════════════════════════ */
-    const filename = `fleet-trips-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
+    const scope = factoryDoc?.name ? slug(factoryDoc.name) : "All-Locations";
+    const dayFrom = ymdIST(fromDate || new Date());
+    const dayTo   = ymdIST(toDate   || new Date());
+    const range   = dayFrom === dayTo ? dayTo : `${dayFrom}_to_${dayTo}`;
+    const filename = `closed-trips-${scope}-${range}.xlsx`;
 
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
     await wb.xlsx.write(res);
@@ -4712,9 +4600,7 @@ export const getDownloadTrips = async (req, res) => {
 
   } catch (error) {
     console.error("Error generating trip download:", error);
-    if (res.headersSent) {
-      return res.end();
-    }
+    if (res.headersSent) return res.end();
 
     return res.status(500).json({
       success: false,

@@ -629,11 +629,13 @@ export default function ManageUsers() {
         </div>
         <Button
           type="primary"
+          disabled={!loggedInUser.isSystemAdmin}
+          title={loggedInUser.isSystemAdmin ? "Create a new user" : "Contact to IT Admin to create a new user"}
           icon={<PlusOutlined />}
           onClick={() => setCreateOpen(true)}
           style={{ background: "#6366f1", borderColor: "#6366f1", fontWeight: 700, height: 38, borderRadius: 9 }}
         >
-          Create User
+          New User
         </Button>
       </div>
 

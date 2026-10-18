@@ -1,8 +1,7 @@
 import { STAGES, ACTIONS } from "./constant.js";
 
-function getAllowedActions(stage, trip) {
+function getAllowedActions(stage, trip, userActor = null) {
   switch (stage) {
-
     // ---------------------------- INTERNAL & EXTERNAL FACTORY MOVEMENT ACTIONS ----------------------------
     case STAGES.WAITING_CHECKIN:
       return [ACTIONS.CHECKIN, ACTIONS.CANCEL];
@@ -11,7 +10,10 @@ function getAllowedActions(stage, trip) {
       return [ACTIONS.ARRIVED];
 
     case STAGES.ARRIVED:
-      return [ACTIONS.CHECKIN, ACTIONS.CANCEL];
+      if (userActor === "storeSite" || userActor === "dispatchSite") {
+        return [ACTIONS.CHECKIN];
+      }
+      return [ACTIONS.CHECKIN, ACTIONS.CANCEL, ACTIONS.CHANGED_ROUTE_WITHOUT_CHECKIN];
 
     case STAGES.WAITING_UNLOAD:
       return [ACTIONS.UNLOAD, ACTIONS.ROUTE_CHANGE_WITHOUT_UNLOAD];

@@ -1,6 +1,7 @@
 import { 
     getVehicleTripLeaderboard, getFleetOverview, getFleetSummary, getAvgTripsPerDay,getTopPerformers, getTimeAnalysis, getTransporterVisits, 
-    // getVehicleDashboard, 
+    // getVehicleDashboard,
+    tripFinder, 
     getTopVehicleId, 
     driverSearch, 
     vehicleSearch, 
@@ -33,6 +34,7 @@ router.get("/vehicle-performance-table",    getVehiclePerformanceTable);
 router.get("/vehicle-trip-leaderboard",     getVehicleTripLeaderboard);
 router.get("/vehicle-dashboard/top",        getTopVehicleId);
 // router.get("/vehicle-dashboard",            getVehicleDashboard);
+router.get("/trip-finder/:tripId",          tripFinder);
 router.get("/driver-search",                driverSearch);
 router.get("/vehicle-search",               vehicleSearch);
 router.get("/executive-dashboard/download", downloadExecutiveDashboardExcel);

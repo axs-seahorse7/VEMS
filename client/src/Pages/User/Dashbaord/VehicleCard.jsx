@@ -112,13 +112,29 @@ const  STAGES_REGISTRY = {
 
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
-function InfoRow({ icon, label, value, T }) {
+function InfoRow({ icon, label, value, tone = "blue", T }) {
   return (
-    <Row align="middle" style={{ minHeight: 26, padding: "1px 0", borderBottom: `1px solid ${T.divider}` }}>
-      <Col flex="18px" style={{ display: "flex", alignItems: "center", color: T.iconColor }}>
-        {icon}
+    <Row align="middle" style={{ minHeight: 28, padding: "2px 0", borderBottom: `1px solid ${T.divider}` }}>
+      <Col flex="28px" style={{ display: "flex", alignItems: "center" }}>
+        <Tag
+          color={tone}
+          bordered={false}
+          style={{
+            margin: 0,
+            padding: 0,
+            width: 22,
+            height: 22,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 6,
+            lineHeight: 1,
+          }}
+        >
+          {icon}
+        </Tag>
       </Col>
-      <Col flex="56px" style={{ paddingLeft: 6 }}>
+      <Col flex="56px" style={{ paddingLeft: 4 }}>
         <Text style={{ fontSize: 11, color: T.textLabel, whiteSpace: "nowrap" }}>{label}</Text>
       </Col>
       <Col flex="auto" style={{ paddingLeft: 4, minWidth: 0, overflow: "hidden" }}>
@@ -140,6 +156,8 @@ function InfoRow({ icon, label, value, T }) {
     </Row>
   );
 }
+
+
 
 // ─── OriginTracker ────────────────────────────────────────────────────────────
 function OriginTracker({ vehicle, isOverdue }) {
@@ -312,22 +330,22 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   const isIntraPlant = vehicle?.isIntraPlant || false;
 
   const STAGES = {
-    [STAGES_REGISTRY.WAITING_CHECKIN]: "Waiting Check-in",
-    [STAGES_REGISTRY.IN_TRANSIT]: "Waiting for Arrival",
-    [STAGES_REGISTRY.ARRIVED]: "Waiting for Check-in",
-    [STAGES_REGISTRY.WAITING_UNLOAD]: "Waiting for Unload",
-    [STAGES_REGISTRY.WAITING_LOAD]: "Waiting for Load",
-    [STAGES_REGISTRY.VEHICLE_UNLOADED]: "Vehicle Unloaded",
-    [STAGES_REGISTRY.SELECT_NEXT_LOCATION]: "Select Next Location",
-    [STAGES_REGISTRY.READY_FOR_SITE_CONFIRMATION]: "Ready for Site Confirmation",
-    [STAGES_REGISTRY.READY_FOR_EXIT_CHECKOUT]: "Waiting for Exit",
+    [STAGES_REGISTRY.WAITING_CHECKIN]:          "Waiting Check-in",
+    [STAGES_REGISTRY.IN_TRANSIT]:               "Waiting for Arrival",
+    [STAGES_REGISTRY.ARRIVED]:                  "Waiting for Check-in",
+    [STAGES_REGISTRY.WAITING_UNLOAD]:           "Waiting for Unload",
+    [STAGES_REGISTRY.WAITING_LOAD]:             "Waiting for Load",
+    [STAGES_REGISTRY.VEHICLE_UNLOADED]:         "Vehicle Unloaded",
+    [STAGES_REGISTRY.SELECT_NEXT_LOCATION]:     "Select Next Location",
+    [STAGES_REGISTRY.READY_FOR_SITE_CONFIRMATION]:"Ready for Site Confirmation",
+    [STAGES_REGISTRY.READY_FOR_EXIT_CHECKOUT]:  "Waiting for Exit",
     [STAGES_REGISTRY.READY_FOR_DISPATCH_CHECKOUT]: "Waiting for Dispatch",
-    [STAGES_REGISTRY.READY_FOR_ARRIVAL]: "Waiting for Arrival",
-    [STAGES_REGISTRY.READY_FOR_LOAD]: "Waiting for Load",
-    [STAGES_REGISTRY.READY_FOR_UNLOAD]: "Waiting for Unload",
-    [STAGES_REGISTRY.READY_FOR_ROUTE_CHANGE]: "Waiting for Route Change",
-    [STAGES_REGISTRY.READY_FOR_DISPATCH]: "Waiting for Dispatch",
-    [STAGES_REGISTRY.READY_FOR_CLOSE]: "Waiting for Close",
+    [STAGES_REGISTRY.READY_FOR_ARRIVAL]:        "Waiting for Arrival",
+    [STAGES_REGISTRY.READY_FOR_LOAD]:           "Waiting for Load",
+    [STAGES_REGISTRY.READY_FOR_UNLOAD]:         "Waiting for Unload",
+    [STAGES_REGISTRY.READY_FOR_ROUTE_CHANGE]:   "Waiting for Route Change",
+    [STAGES_REGISTRY.READY_FOR_DISPATCH]:       "Waiting for Dispatch",
+    [STAGES_REGISTRY.READY_FOR_CLOSE]:          "Waiting for Close",
   };
 
   
@@ -344,6 +362,12 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   const getActionLabel = (actor) => {
     return ACTIONS[actor] || "Action Required Security";
   };
+
+  // above the return, next to your other derived values
+  const labelActors =
+    workflow?.actionRequiredBy?.primaryActor ??
+    workflow?.actionRequiredBy?.actor ??
+    [];
 
   // ── Overdue logic ────────────────────────────────────────────────────────
   const isWaitingOutside =
@@ -417,7 +441,7 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
 
   // ── Card styles ──────────────────────────────────────────────────────────
   const URGENCY_THEME = {
-    none:     { bg: '#ffffff', border: '#e5e7eb', shadow: '0 1px 4px rgba(0,0,0,0.07)',       badgeBg: 'transparent',          badgePulse: 'transparent', textPrimary: '#111827', textSub: '#9ca3af', textLabel: '#6b7280', textValue: '#1e40af', divider: 'rgba(0,0,0,0.06)',        iconBox: '#f3f4f6',                iconColor: '#374151' },
+    none:     { bg: '#ffffff', border: '#e5e7eb', shadow: '0 1px 4px rgba(0,0,0,0.07)',       badgeBg: 'transparent',          badgePulse: 'transparent', textPrimary: '#111827', textSub: '#9ca3af', textLabel: '#6b7280', textValue: '#1e40af', divider: 'rgba(0,0,0,0.06)',        iconBox: '#e7eeff',                iconColor: '#4f92ff' },
     warn:     { bg: '#fffbeb', border: '#fcd34d', shadow: '0 2px 8px rgba(245,158,11,0.15)',  badgeBg: 'rgba(161,98,7,0.08)',   badgePulse: '#d97706',     textPrimary: '#78350f', textSub: '#92400e', textLabel: '#92400e', textValue: '#78350f', divider: 'rgba(217,119,6,0.2)',    iconBox: '#fef3c7',                iconColor: '#d97706' },
     alert:    { bg: '#fff7ed', border: '#fb923c', shadow: '0 2px 10px rgba(234,88,12,0.18)', badgeBg: 'rgba(154,52,18,0.10)',  badgePulse: '#ea580c',     textPrimary: '#7c2d12', textSub: '#9a3412', textLabel: '#9a3412', textValue: '#7c2d12', divider: 'rgba(234,88,12,0.2)',    iconBox: '#ffedd5',                iconColor: '#ea580c' },
     critical: { bg: '#c0392b', border: '#b91c1c', shadow: '0 2px 12px rgba(185,28,28,0.25)', badgeBg: 'rgba(127,29,29,0.7)',  badgePulse: '#fca5a5',     textPrimary: '#ffffff', textSub: '#fca5a5', textLabel: '#ffd6b8', textValue: '#ffffff', divider: 'rgba(255,255,255,0.18)', iconBox: 'rgba(255,255,255,0.15)', iconColor: '#ffffff' },
@@ -447,6 +471,10 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
   const overdueWaitTime = getWaitingTime(
     location === "inside_factory" ? vehicle.checkedInAt : vehicle.arrivedAt
   );
+
+
+
+ 
 
   return (
     <>
@@ -571,6 +599,7 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
                   <Text style={{ fontSize: 10, color: "#6b7280" }}>
                     {vehicleData?.transporterName}
                   </Text>
+                  
                   {vehicle?.isIntraPlant === true && <span style={{ fontSize: 10, color: "blue", marginLeft: 4, fontWeight: 600, border: `1px solid blue`, padding: "0 4px", borderRadius: 3 }}>
                     Intra-Plant
                   </span>}
@@ -657,7 +686,7 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
               </span>
             )}
             
-            {workflow?.actionRequiredBy?.actor?.length > 0 && !isClosed && (
+            {labelActors.length > 0 && !isClosed && (
               <span
                 className="action-tag-pulse"
                 style={{
@@ -673,11 +702,11 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
                   borderRadius: 4,
                 }}
               >
-                {vehicle?.material?.name === "RM" && workflow.actionRequiredBy.actor.includes("storeSite")
+                {vehicle?.material?.name === "RM" && labelActors.includes("storeSite")
                   ? getActionLabel("storeSite")
-                  : vehicle?.material?.name === "FG" && workflow.actionRequiredBy.actor.includes("dispatchSite")
+                  : vehicle?.material?.name === "FG" && labelActors.includes("dispatchSite")
                   ? getActionLabel("dispatchSite")
-                  : getActionLabel(workflow.actionRequiredBy.actor)}
+                  : getActionLabel(labelActors)}
               </span>
             )}
           </div>
@@ -687,45 +716,51 @@ const VehicleCard = React.forwardRef(({ vehicle, onClick, setSelectedTrip }, ref
 
           <Divider style={{ margin: "5px 0", borderColor: T.divider }} />
 
-          {/* ── Row 3: Info rows ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             <InfoRow
+              tone="blue"
               icon={<UserOutlined style={{ fontSize: 12 }} />}
               label="Driver"
               value={vehicle?.driver ? `${vehicle.driver.name} (${vehicle.driver.phone})` : "—"}
               T={T}
             />
             <InfoRow
+              tone="purple"
               icon={<RocketOutlined style={{ fontSize: 12 }} />}
               label="Purpose"
               value={vehicle?.purpose === "Pickup" ? "Pickup" : "Delivery"}
               T={T}
             />
             <InfoRow
+              tone="cyan"
               icon={<SwapRightOutlined style={{ fontSize: 12 }} />}
               label="Route"
               value={route}
               T={T}
             />
             <InfoRow
+              tone="orange"
               icon={<ReloadOutlined style={{ fontSize: 12 }} />}
               label="Load"
               value={loadStatus.charAt(0).toUpperCase() + loadStatus.slice(1)}
               T={T}
             />
             <InfoRow
+              tone="geekblue"
               icon={<InboxOutlined style={{ fontSize: 12 }} />}
               label="Material"
               value={vehicle?.material?.name ?? vehicle?.material?.material ?? "Empty"}
               T={T}
             />
-            <InfoRow
+            {/* <InfoRow
+              tone="green"
               icon={<SafetyOutlined style={{ fontSize: 12 }} />}
               label="Seal"
               value={vehicle?.material?.seal === "sealed" ? "Sealed" : "—"}
               T={T}
-            />
+            /> */}
             <InfoRow
+              tone="magenta"
               icon={<ClockCircleOutlined style={{ fontSize: 12 }} />}
               label="Started"
               value={fmtTime(vehicle?.createdAt)}

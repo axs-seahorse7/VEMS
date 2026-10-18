@@ -1,24 +1,20 @@
-function resolveSiteId(actorName, sites = []) {
-  if (!actorName) return [];
+const ACTOR_KEYWORD = {
+  atGate: "security",
+  storeSite: "store",
+  dispatchSite: "dispatch",
+};
 
-  let siteNames = [];
+function resolveSiteId(actors, sites = []) {
+  if (!actors?.length) return [];
 
-  if (actorName.includes("atGate")) {
-    siteNames = ["Security"];
-
-  } else if (actorName.includes("storeSite") && actorName.includes("dispatchSite")) {
-    siteNames = ["Store", "Dispatch"];
-
-  } else if (actorName.includes("storeSite")) {
-    siteNames = ["Store"];
-    
-  } else if (actorName.includes("dispatchSite")) {
-    siteNames = ["Dispatch"];
-  }
+  const keywords = actors.map((a) => ACTOR_KEYWORD[a]).filter(Boolean);
 
   return sites
-    .filter(site => siteNames.includes(site.name))
-    .map(site => site._id);
+    .filter((site) => {
+      const name = site.name?.trim().toLowerCase() || "";
+      return keywords.some((k) => name.includes(k));
+    })
+    .map((site) => site._id);
 }
 
 export default resolveSiteId;

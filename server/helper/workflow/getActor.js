@@ -4,13 +4,13 @@ import  { STAGES } from"./constant.js";
 function getActor(stage) {
   switch (stage) {
     case STAGES.WAITING_CHECKIN:
-      return ["atGate"];
+      return ["atGate", "storeSite", "dispatchSite"];
 
     case STAGES.IN_TRANSIT:
       return ["atGate"];
 
     case STAGES.ARRIVED:
-      return ["atGate"];
+      return ["atGate", "storeSite", "dispatchSite"];
 
     case STAGES.WAITING_UNLOAD:
       return ["storeSite", "dispatchSite"];
@@ -29,7 +29,6 @@ function getActor(stage) {
 
     case STAGES.READY_FOR_DISPATCH_CHECKOUT:
       return ["atGate"];
-
 
     case STAGES.READY_FOR_EXIT_CHECKOUT:
       return ["atGate"];

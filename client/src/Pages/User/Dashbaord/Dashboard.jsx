@@ -1210,7 +1210,7 @@ export default function VehicleDashboard() {
         <KpiCard label="Pickups"      value={totalPickup}             color="purple"  icon={Icon.package}  active={filter === "pickup"}     onClick={() => setFilter("pickup")} />
         <KpiCard label="Deliveries"   value={totalDelivery}           color="#ec4899" icon={Icon.location} active={filter === "delivery"}   onClick={() => setFilter("delivery")} />
         <KpiCard label="Dispatched"   value={totalDispatchedVehicles} color="#059669" icon={Icon.dispatch} active={filter === "dispatched"} onClick={() => setFilter(f => f === "dispatched" ? "all" : "dispatched")} />
-        <KpiCard label="Closed Trips" value={totalClosedVehicles}     color="#2C687B" icon={Icon.close}    active={filter === "closed"}     onClick={() => setFilter(f => f === "closed" ? "all" : "closed")} />
+        <KpiCard label="Completed Trips" value={totalClosedVehicles}     color="#2C687B" icon={Icon.close}    active={filter === "closed"}     onClick={() => setFilter(f => f === "closed" ? "all" : "closed")} />
       </div>
 
       {/* ── Offline Banner ── */}

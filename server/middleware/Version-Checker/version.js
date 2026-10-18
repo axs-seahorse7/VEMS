@@ -2,56 +2,51 @@
 
 import Version from "../../db/models/Version-Model/version.model.js";
 
-// Cache the active version in memory — re-fetch only every 60 seconds
-// so you're not hitting the DB on every single request
-let cachedVersion   = null;
-let lastFetchedAt   = null;
-const CACHE_TTL_MS  = 5 * 60 * 1000; // 5 minutes
+// Cache the active version per platform. Re-fetched at most every 60s,
+// and cleared right away when a version is activated (see clearVersionCache).
+const cache = new Map(); // platform -> { at, latest }
+const CACHE_TTL_MS = 60 * 1000;
 
 async function getActiveVersion(platform) {
-  const now = Date.now();
-  if (cachedVersion && lastFetchedAt && (now - lastFetchedAt) < CACHE_TTL_MS) {
-    return cachedVersion;
-  }
+  const hit = cache.get(platform);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.latest;
 
-  cachedVersion  = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean();
-  lastFetchedAt  = now;
-  return cachedVersion;
+  const latest = await Version.findOne({ isActive: true, isDeleted: false, platform }).sort({ createdAt: -1 })
+    .lean();
+  cache.set(platform, { at: Date.now(), latest });
+  return latest;
 }
+
+// Call this in PATCH /versions/:id/set-active (and delete/patch) so clients see changes at once
+export const clearVersionCache = () => cache.clear();
+const norm = (v) => String(v ?? "").trim().replace(/^v/i, "");
+const cmpVersion = (a, b) => norm(a).localeCompare(norm(b), undefined, { numeric: true });
 
 export const versionCheckMiddleware = async (req, res, next) => {
   const clientVersion = req.headers["x-app-version"];
-  const platform      = req.headers["x-app-platform"] || "web";
+  const platform = req.headers["x-app-platform"] || "web";
 
-  // Skip if client didn't send version header (e.g. Postman, server-to-server)
+  
+  // Skip if client didn't send a version header (Postman, server-to-server)
   if (!clientVersion) return next();
 
-  // Skip the version check route itself to avoid circular logic
+  // Skip the version check route itself
   if (req.path.includes("/versions/check")) return next();
 
   try {
     const latest = await getActiveVersion(platform);
 
-    if (!latest) return next();
-
-    if (latest.versionNumber !== clientVersion) {
-     
-      res.setHeader("x-latest-version",   latest.versionNumber);
-      res.setHeader("x-force-update",     String(latest.isForceUpdate));
-
-      if (latest.isForceUpdate) {
-        return res.status(426).json({   // 426 = Upgrade Required
-          success:       false,
-          forceUpdate:   true,
-          latestVersion: latest.versionNumber,
-          message:       `Version v${latest.versionNumber} is required. Please refresh the app.`,
-        });
-    }
-      // Soft update — let request through but tag it so frontend knows
-      res.locals.versionMismatch = true;
-      res.locals.latestVersion   = latest.versionNumber;
-    }
-
+    // Only an OLDER client is outdated. Same or newer (e.g. after a rollback) is fine.
+    if (latest) {
+        const outdated = cmpVersion(clientVersion, latest.versionNumber) < 0;
+        res.setHeader("x-latest-version", latest.versionNumber);
+        res.setHeader("x-force-update", String(outdated && !!latest.isForceUpdate));
+        res.vary("x-app-version");
+        if (outdated) {
+          res.locals.versionMismatch = true;
+          res.locals.latestVersion = latest.versionNumber;
+        }
+      }
   } catch (err) {
     // Never block a request because of a version check failure
     console.error("Version check middleware error:", err.message);

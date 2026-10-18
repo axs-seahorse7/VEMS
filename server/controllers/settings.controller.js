@@ -361,149 +361,135 @@ router.patch("/notifications/mark-read/:notifId", wrap(async (req, res) => {
 }));
 
 
-/** GET /api/settings/versions — all versions, newest first */
+
+
+const norm = (v) => String(v ?? "").trim().replace(/^v/i, "");
+const cmpVersion = (a, b) => norm(a).localeCompare(norm(b), undefined, { numeric: true });
+
+
+const EDITABLE = [
+  "versionNumber", "buildNumber", "releaseDate", "title",
+  "description", "features", "bugFixes", "isForceUpdate", "platform",
+]; // isActive is NOT editable here — use set-active
+
+const pick = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => keys.includes(k)));
+
+/** GET /api/settings/versions */
 router.get("/versions", wrap(async (req, res) => {
-  const { platform } = req.query;
   const filter = { isDeleted: false };
-  if (platform) filter.platform = platform;
- 
-  const versions = await Version.find(filter).sort({ createdAt: -1 }).lean();
-  ok(res, versions);
+  if (req.query.platform) filter.platform = req.query.platform;
+  ok(res, await Version.find(filter).sort({ createdAt: -1 }).lean());
 }));
- 
+
 router.get("/versions/active", wrap(async (req, res) => {
   const platform = req.query.platform ?? "web";
-  const version  = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean();
+  const version = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean();
   if (!version) return fail(res, "No active version found", 404);
   ok(res, version);
 }));
- 
+
 router.post("/versions", wrap(async (req, res) => {
+  const body = pick(req.body, EDITABLE);
+  const versionNumber = body.versionNumber?.trim();
+  const platform = body.platform ?? "web";
+  if (!versionNumber) return fail(res, "versionNumber is required");
+
   try {
-  const { versionNumber, platform = "web" } = req.body;
- 
-  if (!versionNumber?.trim()) return fail(res, "versionNumber is required");
- 
-  const exists = await Version.findOne({ versionNumber: versionNumber.trim(), platform });
-  if (exists) return fail(res, `Version ${versionNumber} already exists for ${platform}`, 409);
- 
-  const version = await Version.create({
-    ...req.body,
-    versionNumber: versionNumber.trim(),
-  });
- 
-  return res.status(201).json({ success: true, data: version });
-} catch (error) {
-  console.error("Error creating version:", error);
-  return res.status(500).json({ success: false, message: "Server error" });
-}
+    const version = await Version.create({ ...body, versionNumber, platform });
+    return res.status(201).json({ success: true, data: version });
+  } catch (err) {
+    if (err.code === 11000) {
+      return fail(res, `Version ${versionNumber} already exists for ${platform}`, 409);
+    }
+    throw err; // wrap() sends it to the shared error handler
+  }
 }));
- 
+
 router.patch("/versions/:id", wrap(async (req, res) => {
+  const updates = pick(req.body, EDITABLE);
+  if (updates.versionNumber) updates.versionNumber = updates.versionNumber.trim();
+
   try {
-  const allowed = [
-    "versionNumber", "buildNumber", "releaseDate", "title",
-    "description", "features", "bugFixes", "isForceUpdate", "isActive", "platform"
-  ];
-  const updates = Object.fromEntries(
-    Object.entries(req.body).filter(([k]) => allowed.includes(k))
-  );
- 
-  const version = await Version.findByIdAndUpdate(
-    req.params.id, updates, { new: true, runValidators: true }
-  );
-  if (!version) return res.status(404).json({ success: false, message: "Version not found" });
- 
-  return res.status(200).json({ success: true, data: version }  );
-} catch (error) {
-  console.error("Error updating version:", error);
-  return res.status(500).json({ success: false, message: "Server error" });
-}
+    const version = await Version.findOneAndUpdate(
+      { _id: req.params.id, isDeleted: false },
+      updates,
+      { new: true, runValidators: true }
+    );
+    if (!version) return fail(res, "Version not found", 404);
+    return res.status(200).json({ success: true, data: version });
+  } catch (err) {
+    if (err.code === 11000) return fail(res, "That version number already exists", 409);
+    throw err;
+  }
 }));
- 
+
 router.delete("/versions/:id", wrap(async (req, res) => {
-  try {
   const version = await Version.findByIdAndUpdate(
     req.params.id, { isDeleted: true, isActive: false }, { new: true }
   );
-  if (!version) return res.status(404).json({ success: false, message: "Version not found" });
+  if (!version) return fail(res, "Version not found", 404);
   return res.status(200).json({ success: true, message: "Version deleted", data: { _id: req.params.id } });
-} catch (error) {
-  console.error("Error deleting version:", error);
-  return res.status(500).json({ success: false, message: "Server error" });
-}
 }));
- 
 
 router.patch("/versions/:id/set-active", wrap(async (req, res) => {
-  try {
   const newActive = await Version.findById(req.params.id);
-  if (!newActive) return fail(res, "Version not found", 404);
- 
-  // 1. Deactivate all other versions for this platform
+  if (!newActive || newActive.isDeleted) return fail(res, "Version not found", 404);
+
+  const alreadyActive = newActive.isActive;
+
+  // 1. deactivate all others on this platform
   await Version.updateMany(
     { _id: { $ne: newActive._id }, platform: newActive.platform },
     { $set: { isActive: false } }
   );
- 
-  // 2. Activate this one
+
+  // 2. activate this one
   newActive.isActive = true;
   await newActive.save();
- 
-  // 3. Push update notification to all active, non-admin users
-  const notification = {
-    header:    `Update Available — v${newActive.versionNumber}`,
-    message:   newActive.isForceUpdate
-      ? `A required update (v${newActive.versionNumber}) is available. Please refresh to continue.`
-      : `A new version (v${newActive.versionNumber}) is available. ${newActive.title ?? ""}`.trim(),
-    isRead:    false,
-    createdAt: new Date(),
-  };
- 
-  await User.updateMany(
-    { isDeleted: false, isBlocked: false, isSystemAdmin: false, status: "active" },
-    {
-      $push: {
-        notifications: {
-          $each:  [notification],
-          $sort:  { createdAt: -1 },
-          $slice: 10,
-        },
-      },
+
+  // 3. notify users — only when this is a real change, and never fail the request over it
+  if (!alreadyActive) {
+    try {
+      const notification = {
+        header: `Update Available — v${newActive.versionNumber}`,
+        message: newActive.isForceUpdate
+          ? `A required update (v${newActive.versionNumber}) is available. Please refresh to continue.`
+          : `A new version (v${newActive.versionNumber}) is available. ${newActive.title ?? ""}`.trim(),
+        isRead: false,
+        createdAt: new Date(),
+      };
+      await User.updateMany(
+        { isDeleted: false, isBlocked: false, isSystemAdmin: false, status: "active" },
+        { $push: { notifications: { $each: [notification], $sort: { createdAt: -1 }, $slice: 10 } } }
+      );
+    } catch (err) {
+      console.error("Version notification push failed:", err);
     }
-  );
- 
+  }
+
   ok(res, newActive);
-} catch (error) {
-  console.error("Error setting active version:", error);
-  return res.status(500).json({ success: false, message: "Server error" });
-}
 }));
- 
+
 router.get("/versions/check", wrap(async (req, res) => {
-  // read from header (preferred) OR fallback to query param
   const clientVersion = req.headers["x-app-version"] || req.query.v;
-  const platform      = req.headers["x-app-platform"] || req.query.platform || "web";
+  const platform = req.headers["x-app-platform"] || req.query.platform || "web";
+  if (!clientVersion) return fail(res, "version header missing", 400);
 
-  try {
-    if (!clientVersion) return res.status(400).json({ success: false, message: "version header missing" });
+  const latest = await Version.findOne({ isActive: true, isDeleted: false, platform }).sort({ createdAt: -1 }).lean();
+  if (!latest) return res.status(200).json({ success: true, data: { upToDate: true } });
 
-    const latest = await Version.findOne({ isActive: true, isDeleted: false, platform }).lean().sort({ createdAt: -1 });
-    if (!latest) return res.status(200).json({ success: true, data: { upToDate: true } });
-
-    const upToDate = latest.versionNumber === clientVersion;
-    return res.status(200).json({ success: true, data: {
+  // client newer than (or equal to) the active version → up to date (e.g. after a rollback)
+  const upToDate = cmpVersion(clientVersion, latest.versionNumber) >= 0;
+  return res.status(200).json({
+    success: true,
+    data: {
       upToDate,
       currentVersion: clientVersion,
-      latestVersion:  latest.versionNumber,
-      isForceUpdate:  !upToDate && latest.isForceUpdate,
-      title:          latest.title,
-      } 
-    });
-  } catch (error) {
-    console.error("Error checking version:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
-  } 
+      latestVersion: latest.versionNumber,
+      isForceUpdate: !upToDate && !!latest.isForceUpdate,
+      title: latest.title,
+    },
+  });
 }));
 
 export default router;

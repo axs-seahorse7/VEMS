@@ -1,6 +1,7 @@
 import e from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 import cookieParser from "cookie-parser";
@@ -27,17 +28,22 @@ import analyticsRoutes from "../routes/analytics.route.js";
 import settingsRoutes from "../controllers/settings.controller.js";
 import {versionCheckMiddleware} from "../middleware/Version-Checker/version.js";
 
-const allowedOrigins = ['http://localhost:5173', 'https://vems-client.vercel.app', "http://192.168.19.100:5173",];
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://vems-client.vercel.app",
+  "http://192.168.19.100:5173",
+];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true, 
+  credentials: true,
+  exposedHeaders: ["x-latest-version", "x-force-update"],
 };
 
 const app = e();

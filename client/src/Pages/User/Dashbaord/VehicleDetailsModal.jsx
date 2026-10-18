@@ -526,8 +526,10 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
     try {
       const res = await api.post(`/trip/change-route/${trip._id}`, {
       newDestinationFactoryId: factory._id,
-      type: "internal"
+      type: "internal",
+      skipCheckin: modalProps.skipCheckin || false
       });
+
       onAction();
       message.success(res.data?.message || `Route changed to factory: ${factory.name}`);
     } catch (err) {
@@ -623,12 +625,14 @@ function WorkflowActions({ vehicle, factory, onAction, userFactoryId, userRole }
   // ─── Shared Payloads ─────────────────────────────────────────────────────────
   const vehiclePayload = { vehicleNumber: vehicle.vehicle?.vehicleNumber };
   const withFactory = { ...vehiclePayload, factoryId: userFactoryId };
+
   const withSourceDest = {
     ...vehiclePayload,
     sourceFactoryId: userFactoryId,
     destinationFactoryId: destId,
     purpose: trip?.purpose || "pickup",
   };
+
   const withTripFactory = { ...vehiclePayload, tripId: trip?._id, factoryId: userFactoryId };
    
   
@@ -841,6 +845,7 @@ const ACTIONS = {
   ROUTE_CHANGE_WITHOUT_UNLOAD: "ROUTE_CHANGE_WITHOUT_UNLOAD",
   VEHICLE_LOADED: "VEHICLE_LOADED",
   LOAD_AND_ROUTE_CHANGE: "LOAD_AND_ROUTE_CHANGE",
+  CHANGED_ROUTE_WITHOUT_CHECKIN: "CHANGED_ROUTE_WITHOUT_CHECKIN",
 
    // INTRA-FACTORY MOVEMENT ACTIONS
   ARRIVAL:          "ARRIVAL",
@@ -887,12 +892,20 @@ const ACTION_REGISTRY = {
     onConfirm: () => doAction(() => api.post(`/trip/arrive/${trip._id}`, withFactory)),
   },
 
+  [ACTIONS.CHANGED_ROUTE_WITHOUT_CHECKIN]: {
+    label: "Change route without Checkin → ",
+    confirmTitle: "Are you sure you want to move the vehicle to the Outside Factory?",
+    color: "#db4116",
+    onConfirm: () => openChangeRouteModal(trip, { skipCheckin: true }),
+  },
+
   [ACTIONS.UNLOAD]: {
     label: "↓ Mark Unloaded",
     confirmTitle: "Confirm the vehicle has been fully unloaded at the site?",
     color: "#f59e0b",
     onConfirm: () => doAction(() => api.post(`/trip/intra-plant-unload/${trip._id}`, withFactory)),
   },
+
 
   // [ACTIONS.LOAD]: {
   //   label: "↑ Mark Load Complete intra-plant",
@@ -1019,16 +1032,11 @@ const ACTION_REGISTRY = {
   },
 
   [ACTIONS.COMPLETE]: {
-    label: (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
-      ? "Mark Trip Completed & Close" : "Mark Ready to Checkout",
-    confirmTitle: type === "internal_transfer"
-      ? "This will complete the internal transfer and close the trip. Are you sure?"
-      : "Mark this vehicle as ready to checkout?",
+    label: type === "internal_transfer" ? "Mark Trip Completed & Close inside factory":   "Mark Ready to Checkout" ,
+    confirmTitle: type === "internal_transfer" ? "This will complete the internal transfer and close the trip. Are you sure?": "Mark this vehicle as ready to checkout?",
     color: "#8b5cf6",
     onConfirm: () => {
-      const endpoint = (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
-        ? `/trip/internal-transfer-complete/${trip._id}`
-        : `/trip/complete/${trip._id}`;
+      const endpoint = (type === "internal_transfer") ? `/trip/internal-transfer-complete/${trip._id}`: `/trip/complete/${trip._id}`;
       return doAction(() => api.post(endpoint, withTripFactory));
     },
   },
@@ -1071,8 +1079,7 @@ const visibleActions = canAct ? allowedActions.map((code) => {
       [ACTIONS.ROUTE_CHANGE_WITHOUT_UNLOAD]: "Yes, Change route without Unload → ",
       [ACTIONS.ROUTE_CHANGED]: "Yes, Move to Next Factory → ",
       [ACTIONS.ROUTE_CHANGE]: "Yes, Move to Next Location → ",
-      [ACTIONS.COMPLETE]: (type === "internal_transfer" && vehicle?.vehicle?.type === "Internal")
-        ? "Yes, Mark Trip Completed & Close" : "Yes, Mark Ready to Checkout",
+      [ACTIONS.COMPLETE]: (type === "internal_transfer")? "Yes, Mark Trip Completed & Close here" : "Yes, Mark Ready to Checkout",
       [ACTIONS.NEXT_TRIP]: "Yes, Load New Material & Next Trip → ",
       [ACTIONS.CLOSE]: "Yes, Close Trip",
       [ACTIONS.LOAD_AND_ROUTE_CHANGE]: "Yes, Load New Material & Next Trip → ",
@@ -1080,7 +1087,6 @@ const visibleActions = canAct ? allowedActions.map((code) => {
       [ACTIONS.DISPATCH]: "Yes, Dispatch Vehicle ",
       [ACTIONS.DISPATCH_CHECKOUT]: "Yes, Dispatch Vehicle (Checkout)",
       
-
   }
 
   const getConfirmButtonLabel = (actionCode) => {
@@ -1711,6 +1717,8 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   const userFactoryId = user?.factory._id;
   const [factories, setFactories] = useState([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
 
   const {data, isLoading: selectedTripLoading } = useQuery({
     queryKey: ["vehicle-trip", selectedVehicleId],
@@ -1726,7 +1734,6 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
   });
 
   const trip = data || null;
-  console.log("VEHICLE DETAILS MODAL DATA:", trip);
 
   const location    = trip?.location;
   const vehicleData = trip?.vehicle;
@@ -1804,6 +1811,15 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
     );
   }
 
+
+  const handleCopy = async (id) => {
+    try {
+      await navigator.clipboard.writeText(String(id));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch { /* clipboard unavailable */ }
+  };
+
   return (
     
     <Modal 
@@ -1840,14 +1856,55 @@ export default function VehicleDetailModal({ selectedVehicleId, onClose, onRefre
               )}
             </div>
 
-            <span style={{ fontSize: 11, fontWeight: 500, color: "#94a3b8", display: "flex", alignItems: "center", gap: 5 }}>
-              {trip?.updatedAt && (
-                <>
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#94a3b8", display: "inline-block" }} />
-                  Last updated {fmtTime(trip.updatedAt)}
-                </>
-              )}
-            </span>
+            {trip?.updatedAt && (
+            <div
+              style={{
+                display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8,
+                fontSize: 11, fontWeight: 500, color: "#64748b",
+              }}
+            >
+              {/* last updated */}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <i className="ri-time-line" style={{ fontSize: 13, color: "#94a3b8" }} />
+                Updated <b style={{ color: "#334155", fontWeight: 600 }}>{fmtTime(trip.updatedAt)}</b>
+              </span>
+
+              {/* <span style={{ width: 1, height: 12, background: "#e2e8f0" }} /> */}
+
+              {/* trip id + copy */}
+              {/* <span
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "2px 4px 2px 8px", borderRadius: 8,
+                  background: "#f5f3ff", border: "1px solid #ddd6fe",
+                }}
+              >
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.6, color: "#7c3aed" }}>TRIP ID</span>
+                <span
+                  title={String(trip._id)}
+                  style={{ fontFamily: "'DM Mono', ui-monospace, monospace", fontSize: 11, color: "#4c1d95" }}
+                >
+                  {trip._id}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(trip._id)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 3,
+                    padding: "1px 7px", borderRadius: 6, cursor: "pointer",
+                    border: `1px solid ${copied ? "#6ee7b7" : "#c4b5fd"}`,
+                    background: copied ? "#ecfdf5" : "#fff",
+                    color: copied ? "#047857" : "#7c3aed",
+                    fontSize: 10, fontWeight: 700, lineHeight: "16px",
+                    transition: "all .15s ease",
+                  }}
+                >
+                  <i className={copied ? "ri-check-line" : "ri-file-copy-line"} style={{ fontSize: 11 }} />
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </span> */}
+            </div>
+          )}
           </div>
         </div>
       }

@@ -390,71 +390,96 @@ export default function VehicleDrawer({ open = false, onClose = () => {} }) {
     return () => { cancelled = true; };
   }, [open]);
 
-  /* ── Fetch closed trips (first page / reset) ── */
-  const fetchClosedTrips = useCallback(async (from, to) => {
-    setClosedLoading(true); setClosedError(null);
-    setClosedTrips([]); setNextCursor(null); setHasMore(false);
-    try {
-      const params = {};
-      if (from) params.from = from.format("YYYY-MM-DD");
-      if (to)   params.to   = to.format("YYYY-MM-DD");
-      const res = await api.get("/trip/closed", { params });
-      setClosedTrips(res.data.data  || []);
-      setClosedStats(res.data.stats || null);
-      setIsDefaultRange(res.data.dateRange?.isDefault ?? true);
-      setNextCursor(res.data.pagination?.nextCursor ?? null);
-      setHasMore(res.data.pagination?.hasMore ?? false);
-    } catch (err) {
-      setClosedError(err.message);
-    } finally {
-      setClosedLoading(false);
-    }
-  }, []);
+ // Replace the block from `fetchClosedTrips` down to the `filtered` useMemo
+// with the code below. Also make sure `useRef` is imported from "react".
 
-  useEffect(() => {
-    if (!open) return;
-    fetchClosedTrips(dateRange[0], dateRange[1]);
-  }, [open, dateRange, fetchClosedTrips]);
+/* ── Debounced search value (server is queried with this, not every keystroke) ── */
+const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  /* ── Fetch next page (infinite scroll) ── */
-  const fetchMoreClosedTrips = useCallback(async () => {
-    if (!hasMore || isFetchingMore || closedLoading || !nextCursor) return;
-    setIsFetchingMore(true);
-    try {
-      const params = { cursor: nextCursor };
-      if (dateRange[0]) params.from = dateRange[0].format("YYYY-MM-DD");
-      if (dateRange[1]) params.to   = dateRange[1].format("YYYY-MM-DD");
-      const res = await api.get("/trip/closed", { params });
-      setClosedTrips(prev => [...prev, ...(res.data.data || [])]);
-      setNextCursor(res.data.pagination?.nextCursor ?? null);
-      setHasMore(res.data.pagination?.hasMore ?? false);
-    } 
-    finally {
-      setIsFetchingMore(false);
-    }
-  }, [hasMore, isFetchingMore, closedLoading, nextCursor, dateRange]);
+useEffect(() => {
+  const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
+  return () => clearTimeout(t);
+}, [search]);
 
-  /* ── Client-side search filter ── */
-  const sourceList = tab === "available" ? availableVehicles : closedTrips;
+// Guards against out-of-order responses (slow "MH1" reply landing after "MH12AB")
+const closedReqId = useRef(0);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    if (!q) return sourceList;
-    if (tab === "available") {
-      return sourceList.filter(v =>
-        (v.vehicleNumber  ?? "").toLowerCase().includes(q) ||
-        (v.typeOfVehicle  ?? "").toLowerCase().includes(q) ||
-        (v.type           ?? "").toLowerCase().includes(q) ||
-        (v.driverId?.name ?? "").toLowerCase().includes(q)
-      );
-    }
-    return sourceList.filter(v =>
-      (v.vehicle?.vehicleNumber  ?? "").toLowerCase().includes(q) ||
-      (v.driver?.driverName      ?? "").toLowerCase().includes(q) ||
-      (v.driver?.driverContact   ?? "").toLowerCase().includes(q)
-    );
-  }, [sourceList, search, tab]);
+/* ── Fetch closed trips (first page / reset) ── */
+const fetchClosedTrips = useCallback(async (from, to) => {
+  const reqId = ++closedReqId.current;
+  setClosedLoading(true); setClosedError(null);
+  setClosedTrips([]); setNextCursor(null); setHasMore(false);
+  try {
+    const params = {};
+    if (from) params.from = from.format("YYYY-MM-DD");
+    if (to)   params.to   = to.format("YYYY-MM-DD");
+    if (debouncedSearch) params.search = debouncedSearch;
 
+    const res = await api.get("/trip/closed", { params });
+    if (reqId !== closedReqId.current) return; // a newer request superseded this one
+
+    setClosedTrips(res.data.data || []);
+    setClosedStats(res.data.stats || null);
+    setIsDefaultRange(res.data.dateRange?.isDefault ?? true);
+    setNextCursor(res.data.pagination?.nextCursor ?? null);
+    setHasMore(res.data.pagination?.hasMore ?? false);
+  } catch (err) {
+    if (reqId === closedReqId.current) setClosedError(err.message);
+  } finally {
+    if (reqId === closedReqId.current) setClosedLoading(false);
+  }
+}, [debouncedSearch]); // ← search is now a dependency, so typing re-fetches
+
+useEffect(() => {
+  if (!open) return;
+  fetchClosedTrips(dateRange[0], dateRange[1]);
+}, [open, dateRange, fetchClosedTrips]);
+
+/* ── Fetch next page (infinite scroll) ── */
+const fetchMoreClosedTrips = useCallback(async () => {
+  if (!hasMore || isFetchingMore || closedLoading || !nextCursor) return;
+  const reqId = closedReqId.current;
+  setIsFetchingMore(true);
+  try {
+    const params = { cursor: nextCursor };
+    if (dateRange[0]) params.from = dateRange[0].format("YYYY-MM-DD");
+    if (dateRange[1]) params.to   = dateRange[1].format("YYYY-MM-DD");
+    if (debouncedSearch) params.search = debouncedSearch; // keep paging within the same search
+
+    const res = await api.get("/trip/closed", { params });
+    if (reqId !== closedReqId.current) return; // search/date changed mid-flight
+
+    setClosedTrips(prev => [...prev, ...(res.data.data || [])]);
+    setNextCursor(res.data.pagination?.nextCursor ?? null);
+    setHasMore(res.data.pagination?.hasMore ?? false);
+  } finally {
+    setIsFetchingMore(false);
+  }
+}, [hasMore, isFetchingMore, closedLoading, nextCursor, dateRange, debouncedSearch]);
+
+/* ── Client-side search filter ──
+ * "available" tab: still filtered locally.
+ * "closed" tab:    the SERVER already filtered it. Filtering again on the client
+ *                  would hide ObjectId matches (the id isn't in vehicleNumber /
+ *                  driverName / driverContact), so we return the list as-is.
+ */
+const sourceList = tab === "available" ? availableVehicles : closedTrips;
+
+const filtered = useMemo(() => {
+  if (tab === "closed") return sourceList;
+
+  const q = search.toLowerCase();
+  if (!q) return sourceList;
+  return sourceList.filter(v =>
+    (v.vehicleNumber  ?? "").toLowerCase().includes(q) ||
+    (v.typeOfVehicle  ?? "").toLowerCase().includes(q) ||
+    (v.type           ?? "").toLowerCase().includes(q) ||
+    (v.driverId?.name ?? "").toLowerCase().includes(q)
+  );
+}, [sourceList, search, tab]);
+
+// Optional: update the search input's placeholder for the closed tab, e.g.
+//   placeholder={tab === "closed" ? "Search vehicle no, driver, contact or ID" : "Search vehicles"}
   /* ── Download ── */
   // const handleDownload = () => {
   //   if (tab === "closed") exportClosedTripsXLSX(filtered);

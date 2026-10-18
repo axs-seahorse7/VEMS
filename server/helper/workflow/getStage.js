@@ -137,7 +137,19 @@ function getStage(trip, user) {
   if (
     !isIntraPlant &&
     location === "outside_factory"&&
-    phase === "DESTINATION" && phase === "DESTINATION" && tripState === "ACTIVE" && userFactoryId === String((typeof destinationFactoryId) === "object" ? destinationFactoryId?._id : destinationFactoryId)
+    phase === "DESTINATION" && 
+    tripState === "ACTIVE" && 
+    userFactoryId === String((typeof destinationFactoryId) === "object" ? destinationFactoryId?._id : destinationFactoryId)
+  ) {
+    return STAGES.ARRIVED;
+  }
+
+  if (
+    !isIntraPlant &&
+    location === "outside_factory"&&
+    phase === "ORIGIN" && status === "ROUTE_CHANGED" &&
+    tripState === "ACTIVE" && 
+    userFactoryId === String((typeof destinationFactoryId) === "object" ? destinationFactoryId?._id : destinationFactoryId)
   ) {
     return STAGES.ARRIVED;
   }
@@ -188,7 +200,11 @@ function getStage(trip, user) {
     return STAGES.READY_FOR_DISPATCH_CHECKOUT;
   }
 
-  if (!isIntraPlant && (tripState === "COMPLETED" || tripState === "ACTIVE") && type === "external_delivery" && location === "inside_factory" && (userFactoryId === String((typeof currentFactoryId) === "object" ? currentFactoryId?._id : currentFactoryId)) ) {
+  if (!isIntraPlant && 
+    (tripState === "COMPLETED" || tripState === "ACTIVE") && 
+    type === "external_delivery" && 
+    location === "inside_factory" && 
+    (userFactoryId === String((typeof currentFactoryId) === "object" ? currentFactoryId?._id : currentFactoryId)) ) {
     return STAGES.READY_FOR_EXIT_CHECKOUT;
   }
 
@@ -198,10 +214,14 @@ function getStage(trip, user) {
     return STAGES.VEHICLE_UNLOADED;
   }
 
-  if (!isIntraPlant && tripState === "COMPLETED" && location === "inside_factory" && (userFactoryId === String( (typeof destinationFactoryId) === "object" ? destinationFactoryId?._id : destinationFactoryId)) &&
-      loadStatus === "unloaded"
+  if (!isIntraPlant && 
+    tripState === "COMPLETED" && 
+    type === "internal_transfer" &&
+    location === "inside_factory" && 
+    (userFactoryId === String( (typeof destinationFactoryId) === "object" ? destinationFactoryId?._id : destinationFactoryId)) &&
+    loadStatus === "unloaded"
   ) {
-    return STAGES.READY_FOR_EXIT_CHECKOUT;
+    return STAGES.READY_FOR_CLOSE;
   }
 
   
