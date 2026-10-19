@@ -444,7 +444,6 @@ export default function ManageUsers() {
     setLoading(true);
     try {
       const res = await api.get("/users");
-      console.log("Fetched users:", res.data.users);
       setUsers(res.data.users);
     } catch {
       message.error("Failed to fetch users");

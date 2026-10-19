@@ -49,10 +49,10 @@ function PageUnavailable({ label }) {
 
 
 function PageContent({ page, ...props }) {
-  const user = useUser();
+  const {user} = useUser();
   const isSystemAdmin = user?.isSystemAdmin || false;
 
-  console.log("User in AdminApp.jsx:", user?.user);
+  console.log("User in AdminApp.jsx:", user);
 
   const { dates, setDates, tableData, setTableData, isFetching, setIsFetching } = props;
   if (page === "overview")        return <AdminDashboard activePage={page} setDates={setDates} setTableData={setTableData} setIsFetching={setIsFetching} />;
